@@ -397,6 +397,9 @@ class Orchestrator:
 
         cmd = ["claude", "--print", "--model", self.model, "-p", prompt]
 
+        # Remove CLAUDECODE env var to allow nested CLI launches
+        env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+
         try:
             loop = asyncio.get_event_loop()
             result = await loop.run_in_executor(
@@ -406,6 +409,7 @@ class Orchestrator:
                     capture_output=True,
                     text=True,
                     timeout=600,
+                    env=env,
                 ),
             )
             text = result.stdout + result.stderr
