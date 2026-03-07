@@ -187,9 +187,7 @@ class TestExtractSubsectionText:
     )
 
     def test_extracts_first_subsection(self, api_orchestrator):
-        result = api_orchestrator._extract_subsection_text(
-            self.SAMPLE_STATUTE, "a"
-        )
+        result = api_orchestrator._extract_subsection_text(self.SAMPLE_STATUTE, "a")
         assert result is not None
         assert "(a) In general" in result
         assert "credit is allowed" in result
@@ -197,32 +195,24 @@ class TestExtractSubsectionText:
         assert "Applicable percentage" not in result
 
     def test_extracts_middle_subsection(self, api_orchestrator):
-        result = api_orchestrator._extract_subsection_text(
-            self.SAMPLE_STATUTE, "b"
-        )
+        result = api_orchestrator._extract_subsection_text(self.SAMPLE_STATUTE, "b")
         assert result is not None
         assert "(b) Applicable percentage" in result
         assert "35 percent" in result
         assert "Dollar limit" not in result
 
     def test_extracts_last_subsection(self, api_orchestrator):
-        result = api_orchestrator._extract_subsection_text(
-            self.SAMPLE_STATUTE, "d"
-        )
+        result = api_orchestrator._extract_subsection_text(self.SAMPLE_STATUTE, "d")
         assert result is not None
         assert "(d) Earned income limitation" in result
 
     def test_handles_parenthesized_id(self, api_orchestrator):
-        result = api_orchestrator._extract_subsection_text(
-            self.SAMPLE_STATUTE, "(b)"
-        )
+        result = api_orchestrator._extract_subsection_text(self.SAMPLE_STATUTE, "(b)")
         assert result is not None
         assert "Applicable percentage" in result
 
     def test_returns_none_for_missing_subsection(self, api_orchestrator):
-        result = api_orchestrator._extract_subsection_text(
-            self.SAMPLE_STATUTE, "z"
-        )
+        result = api_orchestrator._extract_subsection_text(self.SAMPLE_STATUTE, "z")
         assert result is None
 
     def test_returns_none_for_empty_text(self, api_orchestrator):
