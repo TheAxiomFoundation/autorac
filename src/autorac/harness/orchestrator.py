@@ -875,7 +875,7 @@ Write .rac files to the output path. Run `autorac test` after each file.
             end_pos = min(start_pos + 10000, len(statute_text))
             return statute_text[start_pos:end_pos].strip()
 
-        end_match = re.search(end_pattern, statute_text[start_pos + 1:])
+        end_match = re.search(end_pattern, statute_text[start_pos + 1 :])
         if end_match:
             end_pos = start_pos + 1 + end_match.start()
         else:
@@ -896,10 +896,7 @@ Write .rac files to the output path. Run `autorac test` after each file.
     ) -> str:
         """Build prompt for the final aggregation wave that produces the root .rac file."""
         citation_clean = (
-            citation.replace("USC", "")
-            .replace("usc", "")
-            .replace("\u00a7", "")
-            .strip()
+            citation.replace("USC", "").replace("usc", "").replace("\u00a7", "").strip()
         )
         parts_list = citation_clean.split()
         section = parts_list[-1] if parts_list else "root"
