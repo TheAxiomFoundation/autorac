@@ -5,7 +5,6 @@ _extract_rac_content, and _resolve_external_dependencies methods.
 """
 
 import sys
-import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -15,7 +14,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from autorac.harness.orchestrator import (
     AgentRun,
-    Backend,
     Orchestrator,
     Phase,
 )
