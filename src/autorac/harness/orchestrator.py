@@ -589,11 +589,18 @@ class Orchestrator:
             print("  No RAC files found to validate", flush=True)
 
         duration = time.time() - oracle_start
-        tested = oracle_context.get("files_tested", 0)
         total = oracle_context.get("files_total", 0)
         untested = oracle_context.get("files_untested", total)
-        pe_str = f"{oracle_context['pe_match']:.1f}%" if oracle_context.get("pe_match") is not None else "UNTESTED"
-        taxsim_str = f"{oracle_context['taxsim_match']:.1f}%" if oracle_context.get("taxsim_match") is not None else "UNTESTED"
+        pe_str = (
+            f"{oracle_context['pe_match']:.1f}%"
+            if oracle_context.get("pe_match") is not None
+            else "UNTESTED"
+        )
+        taxsim_str = (
+            f"{oracle_context['taxsim_match']:.1f}%"
+            if oracle_context.get("taxsim_match") is not None
+            else "UNTESTED"
+        )
         print(
             f"  DONE: PE={pe_str}, TAXSIM={taxsim_str} "
             f"({untested}/{total} files had no tests) ({duration:.1f}s)",
@@ -1132,9 +1139,7 @@ Read any .rac file for reference on style and patterns."""
                 parts = import_path.split("/")
                 if len(parts) >= 2:
                     parent = "/".join(parts[:-1])
-                    target_candidates.append(
-                        rac_us_root / parent / f"{parts[-1]}.rac"
-                    )
+                    target_candidates.append(rac_us_root / parent / f"{parts[-1]}.rac")
 
                 found = False
                 for candidate in target_candidates:
@@ -1153,9 +1158,7 @@ Read any .rac file for reference on style and patterns."""
                     expected = rac_us_root / f"{import_path}.rac"
                     # If path looks like a section (e.g., "26/62"), use dir/section.rac
                     if len(parts) == 2:
-                        expected = (
-                            rac_us_root / parts[0] / parts[1] / f"{parts[1]}.rac"
-                        )
+                        expected = rac_us_root / parts[0] / parts[1] / f"{parts[1]}.rac"
                     unresolved.append((import_path, var_name, expected))
 
         return unresolved
@@ -1171,9 +1174,7 @@ Read any .rac file for reference on style and patterns."""
         subsections = "".join(f"({p})" for p in parts[2:])
         return f"{title} USC {section}{subsections}"
 
-    async def _resolve_external_dependencies(
-        self, output_path: Path
-    ) -> list[Path]:
+    async def _resolve_external_dependencies(self, output_path: Path) -> list[Path]:
         """Scan encoded files for unresolved imports, create stubs for missing ones.
 
         For each unresolved import:
@@ -1232,11 +1233,11 @@ Read any .rac file for reference on style and patterns."""
                     created.append(expected_path)
                     print(f"    Wrote: {expected_path}", flush=True)
                 else:
-                    print(f"    Warning: could not extract .rac from response", flush=True)
+                    print(
+                        "    Warning: could not extract .rac from response", flush=True
+                    )
             else:
-                print(
-                    f"    Warning: stub generation failed for {citation}", flush=True
-                )
+                print(f"    Warning: stub generation failed for {citation}", flush=True)
 
         if created:
             print(f"  Created {len(created)} stub file(s)", flush=True)

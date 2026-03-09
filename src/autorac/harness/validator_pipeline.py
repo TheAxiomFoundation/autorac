@@ -1073,10 +1073,6 @@ Output ONLY valid JSON:
             )
 
         # Run PE microsimulation and collect statistics
-        sample_clause = ""
-        if sample_size:
-            sample_clause = f".head({sample_size})"
-
         script = f"""
 import json
 import numpy as np
@@ -1133,7 +1129,8 @@ print("BENCHMARK:" + json.dumps(result))
         # Parse benchmark results
         try:
             benchmark_line = [
-                line for line in output.strip().split("\n")
+                line
+                for line in output.strip().split("\n")
                 if line.startswith("BENCHMARK:")
             ]
             if not benchmark_line:
@@ -1357,8 +1354,15 @@ print("BENCHMARK:" + json.dumps(result))
                 for key, value in parsed.items():
                     # Skip non-test keys (status, imports, entity, etc.)
                     if key in (
-                        "status", "imports", "entity", "period", "dtype",
-                        "unit", "label", "description", "default",
+                        "status",
+                        "imports",
+                        "entity",
+                        "period",
+                        "dtype",
+                        "unit",
+                        "label",
+                        "description",
+                        "default",
                     ):
                         continue
                     # .rac.test format: variable_name: [list of test dicts]
@@ -1398,7 +1402,11 @@ print("BENCHMARK:" + json.dumps(result))
                 tests_yaml_str = tests_match.group(1)
                 try:
                     parsed = yaml.safe_load(f"items:\n{tests_yaml_str}")
-                    if parsed and "items" in parsed and isinstance(parsed["items"], list):
+                    if (
+                        parsed
+                        and "items" in parsed
+                        and isinstance(parsed["items"], list)
+                    ):
                         for test_case in parsed["items"]:
                             if isinstance(test_case, dict) and "expect" in test_case:
                                 test_case["variable"] = var_name
