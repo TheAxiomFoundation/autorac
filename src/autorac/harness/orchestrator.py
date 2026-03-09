@@ -47,6 +47,7 @@ from .validator_pipeline import ValidatorPipeline
 class Phase(Enum):
     ANALYSIS = "analysis"
     ENCODING = "encoding"
+    RESOLVE_EXTERNALS = "resolve_externals"
     ORACLE = "oracle"
     REVIEW = "review"
     REPORT = "report"
@@ -99,6 +100,7 @@ class EncodingRun:
     agent_runs: List[AgentRun] = field(default_factory=list)
 
     files_created: List[str] = field(default_factory=list)
+    stubs_created: List[str] = field(default_factory=list)
     oracle_pe_match: Optional[float] = None
     oracle_taxsim_match: Optional[float] = None
     discrepancies: List[dict] = field(default_factory=list)
@@ -106,6 +108,16 @@ class EncodingRun:
     total_tokens: Optional[TokenUsage] = None
     total_cost_usd: float = 0.0
     autorac_version: str = ""
+
+
+STUB_GENERATOR_PROMPT = """You generate .rac stub files for external dependencies.
+
+You categorize variables into three types:
+1. **Computable from statute** (status: encoded) — the statute defines a clear formula
+2. **Stub** (status: stub) — statutory definition exists but full encoding needs more context
+3. **Input** (status: input) — an observable real-world fact no statute defines (wages, age, etc.)
+
+Always output raw .rac content with no markdown fencing or explanation."""
 
 
 # Agent prompt mapping -- all embedded, no plugin needed
@@ -116,6 +128,7 @@ AGENT_PROMPTS = {
     "formula_reviewer": FORMULA_REVIEWER_PROMPT,
     "parameter_reviewer": PARAMETER_REVIEWER_PROMPT,
     "integration_reviewer": INTEGRATION_REVIEWER_PROMPT,
+    "stub_generator": STUB_GENERATOR_PROMPT,
 }
 
 # DSL cheatsheet appended to encoder prompts for subsection-level encoding
@@ -329,6 +342,18 @@ class Orchestrator:
             if output_path.exists():
                 run.files_created = [str(f) for f in output_path.rglob("*.rac")]
 
+            # Phase 2.5: Resolve external dependencies (create stubs)
+            stubs = await self._resolve_external_dependencies(output_path)
+            if stubs:
+                run.stubs_created = [str(s) for s in stubs]
+                # Re-scan to include stubs in files_created
+                run.files_created = [str(f) for f in output_path.rglob("*.rac")]
+                # Also include stubs outside the output_path
+                for stub_path in stubs:
+                    stub_str = str(stub_path)
+                    if stub_str not in run.files_created:
+                        run.files_created.append(stub_str)
+
             # Phase 3: Oracle validation
             oracle_context = await self._run_oracle_validation(output_path)
             run.oracle_pe_match = oracle_context.get("pe_match")
@@ -413,7 +438,7 @@ class Orchestrator:
             "--model",
             self.model,
             "--mcp-config",
-            "{}",
+            '{"mcpServers":{}}',
             "--strict-mcp-config",
             "-p",
             prompt,
@@ -529,16 +554,56 @@ class Orchestrator:
                 oracle_context["taxsim_match"] = (
                     sum(taxsim_scores) / len(taxsim_scores) * 100
                 )
+            oracle_context["files_tested"] = len(pe_scores) + len(taxsim_scores)
+            oracle_context["files_total"] = len(rac_files)
+            oracle_context["files_untested"] = len(rac_files) - max(
+                len(pe_scores), len(taxsim_scores)
+            )
             oracle_context["discrepancies"] = [
                 {"description": issue} for issue in all_issues[:10]
             ]
+
+            # Microdata benchmark: run PE microsimulation for target variable
+            pe_variable = self._infer_pe_variable(output_path)
+            if pe_variable:
+                print(
+                    f"  Microdata benchmark: {pe_variable} (CPS)",
+                    flush=True,
+                )
+                try:
+                    benchmark = pipeline._run_microdata_benchmark(
+                        output_path, pe_variable=pe_variable
+                    )
+                    oracle_context["microdata_benchmark"] = {
+                        "variable": pe_variable,
+                        "score": benchmark.score,
+                        "issues": benchmark.issues,
+                    }
+                    if benchmark.raw_output:
+                        oracle_context["microdata_stats"] = benchmark.raw_output
+                    for issue in benchmark.issues:
+                        print(f"    {issue}", flush=True)
+                except Exception as e:
+                    print(f"    Benchmark error: {e}", flush=True)
         else:
             print("  No RAC files found to validate", flush=True)
 
         duration = time.time() - oracle_start
+        total = oracle_context.get("files_total", 0)
+        untested = oracle_context.get("files_untested", total)
+        pe_str = (
+            f"{oracle_context['pe_match']:.1f}%"
+            if oracle_context.get("pe_match") is not None
+            else "UNTESTED"
+        )
+        taxsim_str = (
+            f"{oracle_context['taxsim_match']:.1f}%"
+            if oracle_context.get("taxsim_match") is not None
+            else "UNTESTED"
+        )
         print(
-            f"  DONE: PE={oracle_context.get('pe_match', 'N/A')}%, "
-            f"TAXSIM={oracle_context.get('taxsim_match', 'N/A')}% ({duration:.1f}s)",
+            f"  DONE: PE={pe_str}, TAXSIM={taxsim_str} "
+            f"({untested}/{total} files had no tests) ({duration:.1f}s)",
             flush=True,
         )
 
@@ -995,6 +1060,272 @@ Existing .rac files: {rac_us_path}/
 Read any .rac file for reference on style and patterns."""
 
     # ========================================================================
+    # External dependency resolution
+    # ========================================================================
+
+    # Map IRC section → PolicyEngine variable for microdata benchmarking
+    _PE_VARIABLE_MAP = {
+        "32": "eitc",
+        "24": "ctc",
+        "21": "cdcc",  # child and dependent care credit
+        "36B": "premium_tax_credit",
+        "63": "standard_deduction",
+        "1": "income_tax",
+        "62": "adjusted_gross_income",
+    }
+
+    def _infer_pe_variable(self, output_path: Path) -> str | None:
+        """Infer the PolicyEngine variable from the output path.
+
+        Maps IRC section numbers to PE variable names for benchmarking.
+        """
+        # Extract section from path like .../statute/26/32/...
+        parts = output_path.parts
+        try:
+            statute_idx = parts.index("statute")
+            if statute_idx + 2 < len(parts):
+                section = parts[statute_idx + 2]  # e.g., "32"
+                return self._PE_VARIABLE_MAP.get(section)
+        except ValueError:
+            pass
+        return None
+
+    _IMPORT_RE = re.compile(r"^\s*-\s+(\S+)#(\S+)", re.MULTILINE)
+
+    def _find_statute_root(self, output_path: Path) -> Path:
+        """Find the statute/ root directory by walking up from output_path."""
+        current = output_path
+        while current != current.parent:
+            if current.name == "statute":
+                return current
+            current = current.parent
+        return Path.home() / "RulesFoundation" / "rac-us" / "statute"
+
+    def _scan_unresolved_imports(
+        self, output_path: Path
+    ) -> list[tuple[str, str, Path]]:
+        """Scan .rac files for imports whose target files don't exist.
+
+        Returns list of (citation_path, variable_name, expected_file_path) tuples.
+        """
+        rac_us_root = self._find_statute_root(output_path)
+        unresolved = []
+        seen = set()
+
+        # Scan all .rac files in the output directory
+        for rac_file in output_path.rglob("*.rac"):
+            content = rac_file.read_text()
+            for match in self._IMPORT_RE.finditer(content):
+                import_path = match.group(1)
+                var_name = match.group(2)
+
+                # Strip " as alias" if present
+                if " as " in var_name:
+                    var_name = var_name.split(" as ")[0]
+
+                key = (import_path, var_name)
+                if key in seen:
+                    continue
+                seen.add(key)
+
+                # Check if target file exists
+                # import_path like "26/62" → statute/26/62/62.rac or statute/26/62.rac
+                target_candidates = [
+                    rac_us_root / import_path / f"{import_path.split('/')[-1]}.rac",
+                    rac_us_root / f"{import_path}.rac",
+                ]
+                # Also check parent dir for subsection imports
+                # e.g., "26/21/b" → statute/26/21/b.rac
+                parts = import_path.split("/")
+                if len(parts) >= 2:
+                    parent = "/".join(parts[:-1])
+                    target_candidates.append(rac_us_root / parent / f"{parts[-1]}.rac")
+
+                found = False
+                for candidate in target_candidates:
+                    if candidate.exists():
+                        # Verify the variable is actually defined in the file
+                        try:
+                            target_content = candidate.read_text()
+                            if f"{var_name}:" in target_content:
+                                found = True
+                                break
+                        except Exception:
+                            pass
+
+                if not found:
+                    # Determine where the file should go
+                    expected = rac_us_root / f"{import_path}.rac"
+                    # If path looks like a section (e.g., "26/62"), use dir/section.rac
+                    if len(parts) == 2:
+                        expected = rac_us_root / parts[0] / parts[1] / f"{parts[1]}.rac"
+                    unresolved.append((import_path, var_name, expected))
+
+        return unresolved
+
+    def _citation_from_path(self, import_path: str) -> str:
+        """Convert an import path like '26/62' to a citation like '26 USC 62'."""
+        parts = import_path.split("/")
+        if len(parts) < 2:
+            return import_path
+        title = parts[0]
+        section = parts[1]
+        # Build subsection notation: 26/21/b/1/C → 26 USC 21(b)(1)(C)
+        subsections = "".join(f"({p})" for p in parts[2:])
+        return f"{title} USC {section}{subsections}"
+
+    async def _resolve_external_dependencies(self, output_path: Path) -> list[Path]:
+        """Scan encoded files for unresolved imports, create stubs for missing ones.
+
+        For each unresolved import:
+        1. Fetch statute text from atlas
+        2. Ask LLM to determine: computable (encode), stub (needs future work), or input
+        3. Write the appropriate .rac file
+
+        Returns list of stub file paths created.
+        """
+        unresolved = self._scan_unresolved_imports(output_path)
+        if not unresolved:
+            return []
+
+        print(
+            f"\n[{datetime.utcnow().strftime('%H:%M:%S')}] RESOLVE_EXTERNALS: "
+            f"{len(unresolved)} unresolved import(s)",
+            flush=True,
+        )
+
+        # Group by target file (multiple variables may come from same section)
+        from collections import defaultdict
+
+        by_file: dict[Path, list[tuple[str, str]]] = defaultdict(list)
+        for import_path, var_name, expected_path in unresolved:
+            by_file[expected_path].append((import_path, var_name))
+
+        created: list[Path] = []
+
+        for expected_path, vars_list in by_file.items():
+            import_path = vars_list[0][0]
+            var_names = [v[1] for v in vars_list]
+            citation = self._citation_from_path(import_path)
+
+            print(f"  Creating stub for {citation}: {', '.join(var_names)}", flush=True)
+
+            # Fetch statute text
+            statute_text = self._fetch_statute_text(citation)
+
+            # Build prompt for LLM to generate the stub
+            prompt = self._build_stub_prompt(
+                citation, import_path, var_names, statute_text
+            )
+
+            agent_run = await self._run_agent(
+                agent_key="stub_generator",
+                prompt=prompt,
+                phase=Phase.RESOLVE_EXTERNALS,
+            )
+
+            if agent_run.result and not agent_run.error:
+                # Extract .rac content from LLM response
+                rac_content = self._extract_rac_content(agent_run.result)
+                if rac_content:
+                    expected_path.parent.mkdir(parents=True, exist_ok=True)
+                    expected_path.write_text(rac_content)
+                    created.append(expected_path)
+                    print(f"    Wrote: {expected_path}", flush=True)
+                else:
+                    print(
+                        "    Warning: could not extract .rac from response", flush=True
+                    )
+            else:
+                print(f"    Warning: stub generation failed for {citation}", flush=True)
+
+        if created:
+            print(f"  Created {len(created)} stub file(s)", flush=True)
+
+        return created
+
+    def _build_stub_prompt(
+        self,
+        citation: str,
+        import_path: str,
+        var_names: list[str],
+        statute_text: str | None,
+    ) -> str:
+        """Build prompt for LLM to generate a stub .rac file."""
+        statute_section = ""
+        if statute_text:
+            statute_section = f"""
+## Statute text
+
+```
+{statute_text[:5000]}
+```
+"""
+
+        vars_section = "\n".join(f"- `{v}`" for v in var_names)
+
+        return f"""Generate a .rac stub file for {citation} (import path: {import_path}).
+
+The following variable(s) are imported from this section by other encoded files:
+{vars_section}
+
+{statute_section}
+
+## Your task
+
+For each variable listed above, determine which category it falls into:
+
+1. **Computable from statute**: The statute text defines this variable with a clear formula
+   or rule. Write `status: encoded` and include the formula.
+
+2. **Defined but not yet encodable**: The statute defines this concept but encoding the full
+   formula requires other sections not yet available. Write `status: stub` with entity/period/dtype
+   metadata but no formula.
+
+3. **True input**: No statute defines this — it's an observable fact about the taxpayer
+   (wages earned, age, months of school attendance, etc.). Write `status: input` with
+   entity/period/dtype metadata and a `default:` value (usually 0 for Money/Integer,
+   false for Boolean).
+
+## Output format
+
+Return ONLY the .rac file content. No markdown fences, no explanation. The file should:
+- Start with `# {citation}` header
+- Include the statute text in a triple-quoted docstring
+- Set `status:` to encoded, stub, or input
+- Define each variable with proper entity, period, dtype, label, description
+- For computable variables, include temporal formula blocks
+- For input variables, include `default:` field
+- Follow RAC DSL conventions (expression-based formulas, no `return` keyword,
+  only literals -1, 0, 1, 2, 3 allowed)
+"""
+
+    def _extract_rac_content(self, llm_response: str) -> str | None:
+        """Extract .rac file content from LLM response.
+
+        Handles both raw content and markdown-fenced responses.
+        """
+        # Try to extract from code fence
+        fence_match = re.search(
+            r"```(?:yaml|rac)?\s*\n(.*?)```", llm_response, re.DOTALL
+        )
+        if fence_match:
+            return fence_match.group(1).strip() + "\n"
+
+        # If response starts with # (raw .rac content), use as-is
+        stripped = llm_response.strip()
+        if stripped.startswith("#"):
+            return stripped + "\n"
+
+        # Look for the first line that starts with # (skip preamble)
+        lines = stripped.split("\n")
+        for i, line in enumerate(lines):
+            if line.startswith("# "):
+                return "\n".join(lines[i:]).strip() + "\n"
+
+        return None
+
+    # ========================================================================
     # Statute text fetching
     # ========================================================================
 
@@ -1103,10 +1434,21 @@ Read any .rac file for reference on style and patterns."""
     def _format_oracle_summary(self, context: dict) -> str:
         """Format oracle context for reviewer prompts."""
         parts = []
+        total = context.get("files_total", 0)
+        untested = context.get("files_untested", total)
+        if untested > 0:
+            parts.append(
+                f"WARNING: {untested}/{total} files had NO inline tests "
+                f"and could not be validated against oracles."
+            )
         if context.get("pe_match") is not None:
             parts.append(f"PE match: {context['pe_match']}%")
+        else:
+            parts.append("PE: UNTESTED (no inline tests with expected values)")
         if context.get("taxsim_match") is not None:
             parts.append(f"TAXSIM match: {context['taxsim_match']}%")
+        else:
+            parts.append("TAXSIM: UNTESTED (no inline tests)")
         if context.get("discrepancies"):
             parts.append(f"Discrepancies: {len(context['discrepancies'])}")
             for d in context["discrepancies"][:3]:

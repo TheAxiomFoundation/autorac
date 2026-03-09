@@ -787,16 +787,16 @@ Output ONLY valid JSON:
         start = time.time()
         issues = []
 
-        # Read and parse RAC file
+        # Read test content (from .rac.test companion or inline)
         try:
-            rac_content = Path(rac_file).read_text()
+            rac_content = self._read_test_content(rac_file)
         except Exception as e:
             duration = int((time.time() - start) * 1000)
             return ValidationResult(
                 validator_name="policyengine",
                 passed=False,
                 score=0.0,
-                issues=[f"Failed to read RAC file: {e}"],
+                issues=[f"Failed to read RAC/test file: {e}"],
                 duration_ms=duration,
                 error=str(e),
             )
@@ -904,6 +904,18 @@ Output ONLY valid JSON:
             duration_ms=duration,
         )
 
+    def _read_test_content(self, rac_file: Path) -> str:
+        """Read test content from .rac.test companion file or inline tests.
+
+        Checks for companion .rac.test file first, falls back to inline.
+        """
+        # Check for companion .rac.test file
+        test_file = Path(str(rac_file) + ".test")
+        if test_file.exists():
+            return test_file.read_text()
+        # Fall back to inline tests in the .rac file itself
+        return rac_file.read_text()
+
     def _run_taxsim(self, rac_file: Path) -> ValidationResult:
         """Validate against TAXSIM oracle.
 
@@ -913,30 +925,30 @@ Output ONLY valid JSON:
         start = time.time()
         issues = []
 
-        # Read RAC file
+        # Read test content (from .rac.test companion or inline)
         try:
-            rac_content = Path(rac_file).read_text()
+            rac_content = self._read_test_content(rac_file)
         except Exception as e:
             duration = int((time.time() - start) * 1000)
             return ValidationResult(
                 validator_name="taxsim",
                 passed=False,
                 score=0.0,
-                issues=[f"Failed to read RAC file: {e}"],
+                issues=[f"Failed to read RAC/test file: {e}"],
                 duration_ms=duration,
                 error=str(e),
             )
 
-        # Extract tests
-        tests = self._extract_tests_from_rac(rac_content)
+        # Extract tests (v2 parser handles .rac.test format)
+        tests = self._extract_tests_from_rac_v2(rac_content)
 
         if not tests:
             duration = int((time.time() - start) * 1000)
             return ValidationResult(
                 validator_name="taxsim",
-                passed=True,
-                score=1.0,
-                issues=["No test cases found to validate"],
+                passed=False,
+                score=None,
+                issues=["No test cases found — cannot validate"],
                 duration_ms=duration,
             )
 
@@ -1017,6 +1029,155 @@ Output ONLY valid JSON:
                 passed=False,
                 score=None,
                 issues=[f"TAXSIM validation error: {e}"],
+                duration_ms=duration,
+                error=str(e),
+            )
+
+    def _run_microdata_benchmark(
+        self,
+        output_path: Path,
+        pe_variable: str = "eitc",
+        year: int = 2024,
+        sample_size: int | None = None,
+    ) -> ValidationResult:
+        """Benchmark RAC encoding against PolicyEngine using CPS microdata.
+
+        Runs PE Microsimulation on the enhanced CPS, extracts the target
+        variable for all tax units, and reports the benchmark. Since RAC
+        doesn't have a runtime yet, this establishes the PE baseline that
+        RAC must match as inputs get wired up.
+
+        Args:
+            output_path: Directory containing .rac files for the section.
+            pe_variable: PE variable to benchmark against (e.g., "eitc").
+            year: Tax year for the simulation.
+            sample_size: If set, only use this many tax units (for speed).
+
+        Returns:
+            ValidationResult with benchmark statistics.
+        """
+        start = time.time()
+        issues = []
+
+        # Find PE-capable Python
+        pe_python = self._find_pe_python()
+        if not pe_python:
+            duration = int((time.time() - start) * 1000)
+            return ValidationResult(
+                validator_name="microdata_benchmark",
+                passed=False,
+                score=0.0,
+                issues=["No PolicyEngine-capable Python found"],
+                duration_ms=duration,
+                error="policyengine-us not available",
+            )
+
+        # Run PE microsimulation and collect statistics
+        script = f"""
+import json
+import numpy as np
+from policyengine_us import Microsimulation
+
+m = Microsimulation()
+values = m.calculate('{pe_variable}', {year})
+weights = m.calculate('tax_unit_weight', {year})
+
+# Core stats
+total = len(values)
+nonzero = int(np.sum(np.array(values) > 0))
+weights_arr = np.array(weights)
+values_arr = np.array(values)
+weighted_nonzero = float(np.sum(weights_arr * (values_arr > 0)))
+weighted_total = float(np.sum(weights_arr))
+weighted_sum = float(np.sum(weights_arr * values_arr))
+mean_val = float(values.mean())
+median_val = float(np.median(values))
+max_val = float(values.max())
+p25 = float(np.percentile(values[values > 0], 25)) if nonzero > 0 else 0
+p75 = float(np.percentile(values[values > 0], 75)) if nonzero > 0 else 0
+
+result = {{
+    "variable": "{pe_variable}",
+    "year": {year},
+    "total_tax_units": total,
+    "nonzero_count": nonzero,
+    "weighted_nonzero": weighted_nonzero,
+    "weighted_total": weighted_total,
+    "weighted_sum_billions": weighted_sum / 1e9,
+    "mean": mean_val,
+    "median": median_val,
+    "max": max_val,
+    "p25_nonzero": p25,
+    "p75_nonzero": p75,
+}}
+print("BENCHMARK:" + json.dumps(result))
+"""
+
+        output = self._run_pe_subprocess(script, pe_python)
+
+        if output is None:
+            duration = int((time.time() - start) * 1000)
+            return ValidationResult(
+                validator_name="microdata_benchmark",
+                passed=False,
+                score=0.0,
+                issues=["PE microsimulation failed to run"],
+                duration_ms=duration,
+                error="Microsimulation execution failed",
+            )
+
+        # Parse benchmark results
+        try:
+            benchmark_line = [
+                line
+                for line in output.strip().split("\n")
+                if line.startswith("BENCHMARK:")
+            ]
+            if not benchmark_line:
+                duration = int((time.time() - start) * 1000)
+                return ValidationResult(
+                    validator_name="microdata_benchmark",
+                    passed=False,
+                    score=0.0,
+                    issues=[f"No BENCHMARK output from PE. Output: {output[:200]}"],
+                    duration_ms=duration,
+                )
+
+            stats = json.loads(benchmark_line[0].split("BENCHMARK:")[1])
+
+            # RAC match rate starts at 0% — no runtime yet
+            rac_match_rate = 0.0
+
+            issues = [
+                f"PE benchmark for {pe_variable} ({year}):",
+                f"  Tax units: {stats['total_tax_units']:,} "
+                f"({stats['nonzero_count']:,} with {pe_variable} > 0)",
+                f"  Weighted recipients: {stats['weighted_nonzero']:,.0f}",
+                f"  Weighted total: ${stats['weighted_sum_billions']:.1f}B",
+                f"  Mean: ${stats['mean']:,.0f}, Median: ${stats['median']:,.0f}, "
+                f"Max: ${stats['max']:,.0f}",
+                f"  P25-P75 (nonzero): ${stats['p25_nonzero']:,.0f}-${stats['p75_nonzero']:,.0f}",
+                f"  RAC match rate: {rac_match_rate:.1%} "
+                f"(no RAC runtime — benchmark only)",
+            ]
+
+            duration = int((time.time() - start) * 1000)
+            return ValidationResult(
+                validator_name="microdata_benchmark",
+                passed=False,  # 0% match until RAC runtime exists
+                score=rac_match_rate,
+                issues=issues,
+                duration_ms=duration,
+                raw_output=json.dumps(stats, indent=2),
+            )
+
+        except Exception as e:
+            duration = int((time.time() - start) * 1000)
+            return ValidationResult(
+                validator_name="microdata_benchmark",
+                passed=False,
+                score=0.0,
+                issues=[f"Failed to parse benchmark output: {e}"],
                 duration_ms=duration,
                 error=str(e),
             )
@@ -1157,43 +1318,103 @@ Output ONLY valid JSON:
     def _extract_tests_from_rac_v2(self, rac_content: str) -> list[dict]:
         """Extract test cases from per-definition test blocks.
 
-        Supports both unified `name:` and legacy `variable name:` syntax.
+        Supports three formats:
+        1. .rac.test format: `variable_name:` with direct list of test cases
+        2. Unified `name:` blocks with nested `tests:` section
+        3. Legacy `tests:` top-level section
+
         Returns list of dicts with keys: variable, name, period, inputs, expect.
         """
         tests = []
 
-        # Match both unified `name:` and legacy `variable name:` definition blocks
-        var_pattern = re.compile(
-            r"^(?:variable\s+)?(\w+):\s*\n(.*?)(?=^(?:variable\s+)?\w+:|\Z)",
-            re.MULTILINE | re.DOTALL,
-        )
+        # Try full YAML parse first — handles .rac.test format cleanly
+        try:
+            # Strip comments and docstrings before parsing
+            content_lines = []
+            in_docstring = False
+            for line in rac_content.split("\n"):
+                stripped = line.strip()
+                if stripped.startswith('"""') or stripped.startswith("'''"):
+                    if in_docstring:
+                        in_docstring = False
+                        continue
+                    elif stripped.count('"""') == 1 or stripped.count("'''") == 1:
+                        in_docstring = True
+                        continue
+                if in_docstring:
+                    continue
+                if stripped.startswith("#"):
+                    continue
+                content_lines.append(line)
 
-        for var_match in var_pattern.finditer(rac_content):
-            var_name = var_match.group(1)
-            var_block = var_match.group(2)
+            clean_content = "\n".join(content_lines)
+            parsed = yaml.safe_load(clean_content)
 
-            # Find tests section within this variable block
-            tests_pattern = re.compile(
-                r"^\s+tests:\s*\n((?:\s+-.*\n?|\s+\w.*\n?)*)",
-                re.MULTILINE,
+            if isinstance(parsed, dict):
+                for key, value in parsed.items():
+                    # Skip non-test keys (status, imports, entity, etc.)
+                    if key in (
+                        "status",
+                        "imports",
+                        "entity",
+                        "period",
+                        "dtype",
+                        "unit",
+                        "label",
+                        "description",
+                        "default",
+                    ):
+                        continue
+                    # .rac.test format: variable_name: [list of test dicts]
+                    if isinstance(value, list):
+                        for test_case in value:
+                            if isinstance(test_case, dict) and "expect" in test_case:
+                                test_case["variable"] = key
+                                tests.append(test_case)
+                    # Nested tests: section within a variable block
+                    elif isinstance(value, dict) and "tests" in value:
+                        for test_case in value.get("tests", []):
+                            if isinstance(test_case, dict) and "expect" in test_case:
+                                test_case["variable"] = key
+                                tests.append(test_case)
+        except Exception:
+            pass
+
+        # Fallback: regex-based extraction for inline tests
+        if not tests:
+            var_pattern = re.compile(
+                r"^(?:variable\s+)?(\w+):\s*\n(.*?)(?=^(?:variable\s+)?\w+:|\Z)",
+                re.MULTILINE | re.DOTALL,
             )
-            tests_match = tests_pattern.search(var_block)
-            if not tests_match:
-                continue
 
-            tests_yaml_str = tests_match.group(1)
-            try:
-                parsed = yaml.safe_load(f"items:\n{tests_yaml_str}")
-                if parsed and "items" in parsed and isinstance(parsed["items"], list):
-                    for test_case in parsed["items"]:
-                        if isinstance(test_case, dict) and "expect" in test_case:
-                            test_case["variable"] = var_name
-                            tests.append(test_case)
-            except Exception:
-                # Try individual test extraction as fallback
-                pass
+            for var_match in var_pattern.finditer(rac_content):
+                var_name = var_match.group(1)
+                var_block = var_match.group(2)
 
-        # If no v2-style tests found, fall back to legacy extraction
+                tests_pattern = re.compile(
+                    r"^\s+tests:\s*\n((?:\s+-.*\n?|\s+\w.*\n?)*)",
+                    re.MULTILINE,
+                )
+                tests_match = tests_pattern.search(var_block)
+                if not tests_match:
+                    continue
+
+                tests_yaml_str = tests_match.group(1)
+                try:
+                    parsed = yaml.safe_load(f"items:\n{tests_yaml_str}")
+                    if (
+                        parsed
+                        and "items" in parsed
+                        and isinstance(parsed["items"], list)
+                    ):
+                        for test_case in parsed["items"]:
+                            if isinstance(test_case, dict) and "expect" in test_case:
+                                test_case["variable"] = var_name
+                                tests.append(test_case)
+                except Exception:
+                    pass
+
+        # Last resort: legacy extraction
         if not tests:
             tests = self._extract_tests_from_rac(rac_content)
 
