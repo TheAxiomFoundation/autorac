@@ -63,6 +63,7 @@ def sync_run_to_supabase(
         "timestamp": run.timestamp.isoformat(),
         "citation": run.citation,
         "file_path": run.file_path,
+        "autorac_version": run.autorac_version or None,
         "complexity": {
             "cross_references": run.complexity.cross_references,
             "has_nested_structure": run.complexity.has_nested_structure,
@@ -315,8 +316,8 @@ def sync_sdk_sessions_to_supabase(
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
 
-    # Get sessions (SDK sessions start with "sdk-")
-    query = "SELECT * FROM sessions WHERE id LIKE 'sdk-%'"
+    # Get sessions (SDK and orchestrator sessions)
+    query = "SELECT * FROM sessions WHERE id LIKE 'sdk-%' OR id LIKE 'orch-%'"
     params = []
     if session_id:
         query = "SELECT * FROM sessions WHERE id = ?"
