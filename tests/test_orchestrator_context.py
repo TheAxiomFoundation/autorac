@@ -491,10 +491,11 @@ class TestEncodeNonUscPathDerivation:
 
         Tests the path derivation logic extracted from Orchestrator.encode().
         """
+        import re
         from pathlib import Path
 
         citation = "RI CCAP 218-RICR-20-00-4"
-        is_usc = "USC" in citation.upper()
+        is_usc = bool(re.search(r"\bUSC\b", citation, re.IGNORECASE))
         assert not is_usc
 
         slug = citation.replace(" ", "-").lower()
@@ -505,10 +506,11 @@ class TestEncodeNonUscPathDerivation:
 
     def test_usc_uses_title_section(self):
         """USC citation produces title/section path structure."""
+        import re
         from pathlib import Path
 
         citation = "26 USC 21"
-        is_usc = "USC" in citation.upper()
+        is_usc = bool(re.search(r"\bUSC\b", citation, re.IGNORECASE))
         assert is_usc
 
         citation_clean = (
@@ -526,3 +528,11 @@ class TestEncodeNonUscPathDerivation:
             / section.replace("(", "/").replace(")", "")
         )
         assert "/26/21" in str(output_path)
+
+    def test_usc_substring_not_false_positive(self):
+        """Citation containing 'USC' as substring (e.g. 'Massachusetts') is not USC."""
+        import re
+
+        citation = "Massachusetts CCAP 101"
+        is_usc = bool(re.search(r"\bUSC\b", citation, re.IGNORECASE))
+        assert not is_usc

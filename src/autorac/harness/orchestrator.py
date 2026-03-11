@@ -257,7 +257,7 @@ class Orchestrator:
         """
         # Derive output path from citation if not provided
         if output_path is None:
-            is_usc = "USC" in citation.upper()
+            is_usc = bool(re.search(r"\bUSC\b", citation, re.IGNORECASE))
             if is_usc:
                 citation_clean = (
                     citation.replace("USC", "")

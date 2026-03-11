@@ -1334,13 +1334,14 @@ def cmd_coverage(args):
 def cmd_encode(args):
     """Encode a statute using the SDK orchestrator with full logging."""
     import asyncio
+    import re
     from datetime import datetime
 
     from .harness.orchestrator import Orchestrator
 
     # Parse citation to get output path
     # Keep original case for subsection letters (a), (b), etc.
-    is_usc = "USC" in args.citation.upper()
+    is_usc = bool(re.search(r"\bUSC\b", args.citation, re.IGNORECASE))
     if is_usc:
         citation = (
             args.citation.replace("USC", "").replace("usc", "").replace("§", "").strip()
