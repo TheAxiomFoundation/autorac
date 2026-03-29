@@ -714,6 +714,45 @@ qualifying_child_count:
         rac_file = pipeline.rac_us_path / "26" / "21" / "b" / "1" / "A.rac"
         assert pipeline._infer_title_from_rac_path(rac_file) == "26"
 
+    def test_infer_title_from_rac_path_skips_non_statute_eval_layout(self, pipeline):
+        rac_file = pipeline.rac_us_path / "claude-opus" / "source" / "9-CCR-2503-6-3.606.1.rac"
+        assert pipeline._infer_title_from_rac_path(rac_file) is None
+
+    def test_ci_skips_cross_statute_rule_for_non_statute_eval_layout(self, pipeline):
+        rac_file = pipeline.rac_us_path / "claude-opus" / "source" / "9-CCR-2503-6-3.606.1.rac"
+        rac_file.parent.mkdir(parents=True, exist_ok=True)
+        rac_file.write_text(
+            '''
+"""
+This section references section 3.606.2 for earned income disregards.
+"""
+
+status: encoded
+
+basic_cash_assistance:
+    entity: TaxUnit
+    period: Month
+    dtype: Money
+'''
+        )
+
+        with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run:
+            mock_run.side_effect = [
+                Mock(
+                    stdout="============================================================\nTests: 0  Passed: 0  Failed: 0\nNo tests found.\n",
+                    stderr="",
+                    returncode=0,
+                ),
+                Mock(
+                    stdout="Checked 1 .rac files\n\nAll files pass validation\n",
+                    stderr="",
+                    returncode=0,
+                ),
+            ]
+            result = pipeline._run_ci(rac_file)
+
+        assert result.passed is True
+
     def test_ci_duration(self, pipeline, temp_rac_file):
         """CI includes duration."""
         with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run:

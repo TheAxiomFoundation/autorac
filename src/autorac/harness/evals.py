@@ -525,7 +525,7 @@ def _run_single_eval(
     if output_file.exists():
         metrics = evaluate_artifact(
             rac_file=output_file,
-            rac_root=output_file.parents[2],
+            rac_root=output_file.parents[1],
             rac_path=rac_path,
             source_text=source_text,
         )
@@ -607,7 +607,7 @@ def _run_single_source_eval(
     if output_file.exists():
         metrics = evaluate_artifact(
             rac_file=output_file,
-            rac_root=output_file.parents[2],
+            rac_root=output_file.parents[1],
             rac_path=rac_path,
             source_text=source_text,
         )

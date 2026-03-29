@@ -889,21 +889,18 @@ class ValidatorPipeline:
         resolved_file = rac_file.resolve()
         with contextlib.suppress(ValueError):
             relative = resolved_file.relative_to(resolved_root)
-            if relative.parts:
+            if relative.parts and re.fullmatch(
+                r"[0-9A-Za-z.-]+", relative.parts[0]
+            ) and any(ch.isdigit() for ch in relative.parts[0]):
                 return relative.parts[0]
+            return None
 
         parts = list(resolved_file.parts)
         with contextlib.suppress(ValueError):
             statute_idx = parts.index("statute")
             if statute_idx + 1 < len(parts):
                 return parts[statute_idx + 1]
-
-        numericish_parts = [
-            part
-            for part in resolved_file.parts
-            if re.fullmatch(r"[0-9A-Za-z.-]+", part) and any(ch.isdigit() for ch in part)
-        ]
-        return numericish_parts[0] if numericish_parts else None
+        return None
 
     def _run_reviewer(
         self,
