@@ -2299,6 +2299,95 @@ class TestBuildPeScenarioScript:
         assert "'child'" in script
         assert "if not in_london and (not is_single or has_child):" in script
 
+    def test_uk_benefit_cap_80a_2_b_script_supports_joint_claimant_inputs(
+        self, pipeline
+    ):
+        script = pipeline._build_pe_scenario_script(
+            "benefit_cap",
+            {
+                "is_joint_claimant": True,
+                "first_joint_claimant_resident_in_greater_london": True,
+                "second_joint_claimant_resident_in_greater_london": False,
+                "is_single_claimant": False,
+                "single_claimant_resident_in_greater_london": False,
+                "single_claimant_responsible_for_child_or_qualifying_young_person": False,
+                "period": "2025-04-01",
+            },
+            "2025",
+            25323,
+            country="uk",
+            rac_var="benefit_cap_80A_2_b_amount",
+        )
+        assert "'region': {2025: 'LONDON'}" in script
+        assert "'spouse'" in script
+        assert "if in_london and (not is_single or has_child):" in script
+
+    def test_uk_benefit_cap_80a_2_b_script_supports_single_claimant_with_child(
+        self, pipeline
+    ):
+        script = pipeline._build_pe_scenario_script(
+            "benefit_cap",
+            {
+                "is_joint_claimant": False,
+                "first_joint_claimant_resident_in_greater_london": False,
+                "second_joint_claimant_resident_in_greater_london": False,
+                "is_single_claimant": True,
+                "single_claimant_resident_in_greater_london": True,
+                "single_claimant_responsible_for_child_or_qualifying_young_person": True,
+                "period": "2025-04-01",
+            },
+            "2025",
+            25323,
+            country="uk",
+            rac_var="benefit_cap_80A_2_b_amount",
+        )
+        assert "'region': {2025: 'LONDON'}" in script
+        assert "'spouse'" not in script
+        assert "'child'" in script
+        assert "is_single = True" in script
+
+    def test_uk_benefit_cap_80a_2_d_script_supports_household_inputs(
+        self, pipeline
+    ):
+        script = pipeline._build_pe_scenario_script(
+            "benefit_cap",
+            {
+                "household_not_resident_in_greater_london": True,
+                "benefit_cap_joint_claimants": True,
+                "benefit_cap_single_claimant_responsible_for_child_or_qualifying_young_person": False,
+                "period": "2025-04-01",
+            },
+            "2025",
+            22020,
+            country="uk",
+            rac_var="benefit_cap_relevant_amount_80a_2_d",
+        )
+        assert "'region': {2025: 'NORTH_EAST'}" in script
+        assert "'spouse'" in script
+        assert "if not in_london and (not is_single or has_child):" in script
+
+    def test_uk_benefit_cap_80a_2_d_script_supports_single_claimant_without_child(
+        self, pipeline
+    ):
+        script = pipeline._build_pe_scenario_script(
+            "benefit_cap",
+            {
+                "household_not_resident_in_greater_london": True,
+                "benefit_cap_joint_claimants": False,
+                "benefit_cap_single_claimant_responsible_for_child_or_qualifying_young_person": False,
+                "period": "2025-04-01",
+            },
+            "2025",
+            0,
+            country="uk",
+            rac_var="benefit_cap_relevant_amount_80a_2_d",
+        )
+        assert "'region': {2025: 'NORTH_EAST'}" in script
+        assert "'spouse'" not in script
+        assert "'child'" not in script
+        assert "is_single = True" in script
+        assert "has_child = False" in script
+
     def test_uk_benefit_cap_explicit_inputs_override_leaf_heuristics(
         self, pipeline
     ):
@@ -2527,6 +2616,15 @@ class TestResolvePeVariable:
             pipeline._resolve_pe_variable(
                 "uk", "benefit_cap_single_claimant_greater_london_annual_limit"
             )
+            == "benefit_cap"
+        )
+
+    def test_resolves_uk_benefit_cap_80a_2_b_amount(self, pipeline):
+        assert pipeline._resolve_pe_variable("uk", "benefit_cap_80A_2_b_amount") == "benefit_cap"
+
+    def test_resolves_uk_benefit_cap_relevant_amount_80a_2_d(self, pipeline):
+        assert (
+            pipeline._resolve_pe_variable("uk", "benefit_cap_relevant_amount_80a_2_d")
             == "benefit_cap"
         )
 

@@ -2125,13 +2125,16 @@ print("BENCHMARK:" + json.dumps(result))
             return True
         if any(
             marker in rac_var_lower
-            for marker in ("_applies", "exempt", "reduction", "relevant_amount")
+            for marker in ("_applies", "exempt", "reduction", "relevant_amount_applies")
         ):
             return False
         return any(
             marker in rac_var_lower
             for marker in (
                 "annual_limit",
+                "_amount",
+                "relevant_amount",
+                "80a_2_",
                 "single_claimant",
                 "joint_claimant",
                 "greater_london",
@@ -2577,6 +2580,8 @@ print(f'RESULT:{{val}}')
             if not leaf_in_london:
                 if any("outside_london" in key for key in lowered_keys):
                     leaf_in_london = False
+                elif any("not_resident_in_greater_london" in key for key in lowered_keys):
+                    leaf_in_london = False
                 elif any("greater_london" in key for key in lowered_keys):
                     leaf_in_london = True
 
@@ -2586,7 +2591,10 @@ print(f'RESULT:{{val}}')
                     for key in lowered_keys
                 ):
                     leaf_is_single = False
-                elif any("single_claimant" in key or key.endswith("single") for key in lowered_keys):
+                elif any(
+                    "single_claimant" in key or key.endswith("single")
+                    for key in lowered_keys
+                ):
                     leaf_is_single = True
 
             if not leaf_has_child:
@@ -2611,16 +2619,29 @@ print(f'RESULT:{{val}}')
                     leaf_has_child = True
 
             in_london = leaf_in_london
-            explicit_greater_london = next(
-                (
+            explicit_greater_london_keys = [
+                bool(value)
+                for key, value in lowered.items()
+                if (
+                    "greater_london" in str(key).lower()
+                    and "not_resident_in_greater_london" not in str(key).lower()
+                    and value is not None
+                )
+            ]
+            if explicit_greater_london_keys:
+                in_london = any(explicit_greater_london_keys)
+            elif any(
+                "not_resident_in_greater_london" in str(key).lower() and value is not None
+                for key, value in lowered.items()
+            ):
+                in_london = not any(
                     bool(value)
                     for key, value in lowered.items()
-                    if "greater_london" in str(key).lower() and value is not None
-                ),
-                None,
-            )
-            if explicit_greater_london is not None:
-                in_london = explicit_greater_london
+                    if (
+                        "not_resident_in_greater_london" in str(key).lower()
+                        and value is not None
+                    )
+                )
             elif any(
                 "outside_london" in str(key).lower() and value is not None
                 for key, value in lowered.items()
@@ -2630,13 +2651,23 @@ print(f'RESULT:{{val}}')
             is_single = leaf_is_single
             if any(
                 (
-                    "joint_claimant" in str(key).lower()
+                    "joint_claimants" in str(key).lower()
+                    or "joint_claimant" in str(key).lower()
                     or "couple" in str(key).lower()
                 )
-                and bool(value)
+                and value is not None
                 for key, value in lowered.items()
             ):
-                is_single = False
+                is_single = not any(
+                    bool(value)
+                    for key, value in lowered.items()
+                    if (
+                        "joint_claimants" in str(key).lower()
+                        or "joint_claimant" in str(key).lower()
+                        or "couple" in str(key).lower()
+                    )
+                    and value is not None
+                )
             elif any(
                 "single" in str(key).lower() and value is not None
                 for key, value in lowered.items()
@@ -2662,6 +2693,22 @@ print(f'RESULT:{{val}}')
             )
             if explicit_not_responsible is not None:
                 has_child = not explicit_not_responsible
+            explicit_responsible = next(
+                (
+                    bool(value)
+                    for key, value in lowered.items()
+                    if (
+                        "responsible_for_child_or_qualifying_young_person"
+                        in str(key).lower()
+                        and "not_responsible_for_child_or_qualifying_young_person"
+                        not in str(key).lower()
+                        and value is not None
+                    )
+                ),
+                None,
+            )
+            if explicit_responsible is not None:
+                has_child = explicit_responsible
             if any(
                 (
                     "no_child" in str(key).lower()
@@ -2671,13 +2718,17 @@ print(f'RESULT:{{val}}')
                 for key, value in lowered.items()
             ):
                 has_child = False
-            elif explicit_not_responsible is None and any(
+            elif (
+                explicit_not_responsible is None
+                and explicit_responsible is None
+                and any(
                 (
                     "child" in str(key).lower()
                     or "young_person" in str(key).lower()
                 )
                 and value is not None
                 for key, value in lowered.items()
+                )
             ):
                 has_child = any(
                     bool(value)
