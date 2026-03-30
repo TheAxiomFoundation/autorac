@@ -2557,28 +2557,77 @@ print(f'RESULT:{{val}}')
         if pe_var == "benefit_cap" and self._is_uk_benefit_cap_amount_var(
             rac_var_lower
         ):
-            in_london = any(
+            lowered_keys = [str(key).lower() for key in lowered.keys()]
+            leaf_in_london = any(
                 marker in rac_var_lower
                 for marker in ("greater_london", "in_london", "london")
             ) and "outside_london" not in rac_var_lower
-            if any(
-                "outside_london" in str(key).lower() and value is not None
-                for key, value in lowered.items()
-            ):
-                in_london = False
-            elif any(
-                "greater_london" in str(key).lower() and value is not None
-                for key, value in lowered.items()
-            ):
-                in_london = True
-
-            is_single = (
+            leaf_is_single = (
                 any(marker in rac_var_lower for marker in ("single_claimant", "single"))
                 and not any(
                     marker in rac_var_lower
                     for marker in ("joint_claimant", "couple", "family")
                 )
             )
+            leaf_has_child = any(
+                marker in rac_var_lower
+                for marker in ("child", "young_person", "family")
+            ) and "no_child" not in rac_var_lower
+
+            if not leaf_in_london:
+                if any("outside_london" in key for key in lowered_keys):
+                    leaf_in_london = False
+                elif any("greater_london" in key for key in lowered_keys):
+                    leaf_in_london = True
+
+            if not leaf_is_single:
+                if any(
+                    "joint_claimant" in key or "couple" in key or "family" in key
+                    for key in lowered_keys
+                ):
+                    leaf_is_single = False
+                elif any("single_claimant" in key or key.endswith("single") for key in lowered_keys):
+                    leaf_is_single = True
+
+            if not leaf_has_child:
+                if any(
+                    "not_responsible_for_child_or_qualifying_young_person" in key
+                    or "no_child" in key
+                    or "without_child" in key
+                    for key in lowered_keys
+                ):
+                    leaf_has_child = False
+                elif any(
+                    (
+                        "responsible_for_child_or_qualifying_young_person" in key
+                        or "child" in key
+                        or "young_person" in key
+                        or "family" in key
+                    )
+                    and "not_responsible_for_child_or_qualifying_young_person"
+                    not in key
+                    for key in lowered_keys
+                ):
+                    leaf_has_child = True
+
+            in_london = leaf_in_london
+            explicit_greater_london = next(
+                (
+                    bool(value)
+                    for key, value in lowered.items()
+                    if "greater_london" in str(key).lower() and value is not None
+                ),
+                None,
+            )
+            if explicit_greater_london is not None:
+                in_london = explicit_greater_london
+            elif any(
+                "outside_london" in str(key).lower() and value is not None
+                for key, value in lowered.items()
+            ):
+                in_london = False
+
+            is_single = leaf_is_single
             if any(
                 (
                     "joint_claimant" in str(key).lower()
@@ -2598,10 +2647,21 @@ print(f'RESULT:{{val}}')
                     if "single" in str(key).lower() and value is not None
                 )
 
-            has_child = any(
-                marker in rac_var_lower
-                for marker in ("child", "young_person", "family")
-            ) and "no_child" not in rac_var_lower
+            has_child = leaf_has_child
+            explicit_not_responsible = next(
+                (
+                    bool(value)
+                    for key, value in lowered.items()
+                    if (
+                        "not_responsible_for_child_or_qualifying_young_person"
+                        in str(key).lower()
+                    )
+                    and value is not None
+                ),
+                None,
+            )
+            if explicit_not_responsible is not None:
+                has_child = not explicit_not_responsible
             if any(
                 (
                     "no_child" in str(key).lower()
@@ -2611,7 +2671,7 @@ print(f'RESULT:{{val}}')
                 for key, value in lowered.items()
             ):
                 has_child = False
-            elif any(
+            elif explicit_not_responsible is None and any(
                 (
                     "child" in str(key).lower()
                     or "young_person" in str(key).lower()
@@ -2640,6 +2700,14 @@ print(f'RESULT:{{val}}')
             region_value = "LONDON" if in_london else "NORTH_EAST"
             people = "{" + ", ".join(people_parts) + "}"
             members_str = "[" + ", ".join(f"'{member}'" for member in members) + "]"
+            if leaf_is_single and leaf_in_london and not leaf_has_child:
+                match_condition = "if is_single and in_london and not has_child:"
+            elif leaf_is_single and not leaf_in_london and not leaf_has_child:
+                match_condition = "if is_single and not in_london and not has_child:"
+            elif leaf_in_london:
+                match_condition = "if in_london and (not is_single or has_child):"
+            else:
+                match_condition = "if not in_london and (not is_single or has_child):"
 
             return f"""
 from policyengine_uk import Simulation
@@ -2652,7 +2720,13 @@ situation = {{
 
 sim = Simulation(situation=situation)
 annual = sim.calculate('benefit_cap', int('{year}'))
-val = float(annual[0])
+is_single = {is_single}
+in_london = {in_london}
+has_child = {has_child}
+{match_condition}
+    val = float(annual[0])
+else:
+    val = 0.0
 print(f'RESULT:{{val}}')
 """
 

@@ -30,8 +30,8 @@ from autorac.harness.validator_pipeline import (
     PARAMETER_REVIEWER_PROMPT,
     RAC_REVIEWER_PROMPT,
     OracleSubprocessResult,
-    extract_numbers_from_text,
     extract_grounding_values,
+    extract_numbers_from_text,
     run_claude_code,
 )
 
@@ -2280,6 +2280,7 @@ class TestBuildPeScenarioScript:
         )
         assert "'region': {2025: 'LONDON'}" in script
         assert "'members': ['adult']" in script
+        assert "if is_single and in_london and not has_child:" in script
         assert "val = float(annual[0])" in script
 
     def test_uk_benefit_cap_family_outside_london_leaf_script_builds_family_case(
@@ -2296,6 +2297,68 @@ class TestBuildPeScenarioScript:
         assert "'region': {2025: 'NORTH_EAST'}" in script
         assert "'spouse'" in script
         assert "'child'" in script
+        assert "if not in_london and (not is_single or has_child):" in script
+
+    def test_uk_benefit_cap_explicit_inputs_override_leaf_heuristics(
+        self, pipeline
+    ):
+        script = pipeline._build_pe_scenario_script(
+            "benefit_cap",
+            {
+                "is_single_claimant": False,
+                "is_resident_in_greater_london": False,
+                "is_responsible_for_child_or_qualifying_young_person": True,
+                "period": "2025",
+            },
+            "2025",
+            0,
+            country="uk",
+            rac_var="benefit_cap_single_claimant_greater_london_annual_limit",
+        )
+        assert "'region': {2025: 'NORTH_EAST'}" in script
+        assert "'spouse'" in script
+        assert "'child'" in script
+
+    def test_uk_benefit_cap_negated_child_helper_false_means_no_child(
+        self, pipeline
+    ):
+        script = pipeline._build_pe_scenario_script(
+            "benefit_cap",
+            {
+                "benefit_cap_single_claimant": True,
+                "benefit_cap_resident_in_greater_london": True,
+                "benefit_cap_not_responsible_for_child_or_qualifying_young_person": True,
+                "period": "2025-03-21",
+            },
+            "2025",
+            16967,
+            country="uk",
+            rac_var="benefit_cap_applicable_annual_limit_80a_2_a",
+        )
+        assert "'members': ['adult']" in script
+        assert "'child'" not in script
+        assert "has_child = False" in script
+        assert "if is_single and in_london and not has_child:" in script
+
+    def test_uk_benefit_cap_negated_child_helper_true_means_child_present(
+        self, pipeline
+    ):
+        script = pipeline._build_pe_scenario_script(
+            "benefit_cap",
+            {
+                "benefit_cap_single_claimant": True,
+                "benefit_cap_resident_in_greater_london": True,
+                "benefit_cap_not_responsible_for_child_or_qualifying_young_person": False,
+                "period": "2025-03-21",
+            },
+            "2025",
+            0,
+            country="uk",
+            rac_var="benefit_cap_applicable_annual_limit_80a_2_a",
+        )
+        assert "'child'" in script
+        assert "has_child = True" in script
+        assert "if is_single and in_london and not has_child:" in script
 
 
 class TestIsPeTestMappable:
