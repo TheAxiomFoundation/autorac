@@ -1238,15 +1238,13 @@ Output ONLY valid JSON:
             )
 
         # Map RAC variables to PE variables
-        pe_var_map = self._get_pe_variable_map(country)
-
         # Run comparison for each test
         matches = 0
         total = 0
         unsupported_count = 0
         for test in tests:
             rac_var = test.get("variable", "")
-            pe_var = pe_var_map.get(rac_var)
+            pe_var = self._resolve_pe_variable(country, rac_var)
             expected = test.get("expect")
             inputs = test.get("inputs", {})
             period = test.get("period", "2024-01")
@@ -1256,17 +1254,17 @@ Output ONLY valid JSON:
             if expected is None:
                 continue
 
-            if not pe_var:
-                issues.append(f"No PE mapping for RAC variable '{rac_var}'")
-                total += 1
-                continue
-
             mappable, reason = self._is_pe_test_mappable(country, rac_var, inputs)
             if not mappable:
                 issues.append(
                     f"PolicyEngine unavailable for '{test.get('name', rac_var)}': {reason}"
                 )
                 unsupported_count += 1
+                continue
+
+            if not pe_var:
+                issues.append(f"No PE mapping for RAC variable '{rac_var}'")
+                total += 1
                 continue
 
             # Build and run PE scenario — include period in inputs for monthly detection
@@ -1799,6 +1797,28 @@ print("BENCHMARK:" + json.dumps(result))
                 return [normalize_test_value(item) for item in value]
             return value
 
+        def unwrap_entity_wrapper(value: Any) -> Any:
+            if not isinstance(value, dict) or len(value) != 1:
+                return value
+            wrapper, inner = next(iter(value.items()))
+            if not isinstance(inner, dict):
+                return value
+            wrapper_key = str(wrapper).lower().replace(" ", "_")
+            entity_wrappers = {
+                "person",
+                "people",
+                "family",
+                "families",
+                "household",
+                "households",
+                "tax_unit",
+                "taxunit",
+                "tax_units",
+                "benunit",
+                "benunits",
+            }
+            return inner if wrapper_key in entity_wrappers else value
+
         # Try full YAML parse first — handles .rac.test format cleanly
         try:
             # Strip comments and docstrings before parsing
@@ -1879,6 +1899,8 @@ print("BENCHMARK:" + json.dumps(result))
                     if not isinstance(outputs, dict):
                         continue
                     inputs = test_case.get("input", test_case.get("inputs", {}))
+                    inputs = unwrap_entity_wrapper(inputs)
+                    outputs = unwrap_entity_wrapper(outputs)
                     normalized_inputs = (
                         {
                             key: normalize_test_value(value)
@@ -2007,11 +2029,11 @@ print("BENCHMARK:" + json.dumps(result))
         self, country: str, rac_var: str, inputs: dict
     ) -> tuple[bool, str | None]:
         """Return whether the test case can be represented in PolicyEngine."""
-        if country == "uk" and rac_var in {
-            "child_benefit_enhanced_rate_amount",
-            "child_benefit_regulation_2_1_a_amount",
-            "child_benefit_enhanced_rate",
-        }:
+        rac_var_lower = rac_var.lower()
+        if country == "uk" and (
+            "child_benefit_enhanced_rate" in rac_var_lower
+            or "child_benefit_regulation_2_1_a" in rac_var_lower
+        ):
             for key, value in inputs.items():
                 key_lower = str(key).lower()
                 if (
@@ -2027,7 +2049,31 @@ print("BENCHMARK:" + json.dumps(result))
                         False,
                         "RAC test encodes take-up/payability conditions that PolicyEngine UK's statutory rate variable does not represent directly",
                     )
+        if (
+            country == "uk"
+            and "child_benefit_enhanced_rate" in rac_var_lower
+            and rac_var_lower.endswith("_applies")
+        ):
+            return (
+                False,
+                "RAC helper boolean does not have a direct PolicyEngine UK analogue",
+            )
         return True, None
+
+    def _resolve_pe_variable(self, country: str, rac_var: str) -> str | None:
+        """Resolve a RAC variable to a PolicyEngine variable, including heuristics."""
+        pe_var = self._get_pe_variable_map(country).get(rac_var)
+        if pe_var:
+            return pe_var
+
+        rac_var_lower = rac_var.lower()
+        if country == "uk" and (
+            "child_benefit_enhanced_rate" in rac_var_lower
+            or "child_benefit_regulation_2_1_a" in rac_var_lower
+        ):
+            return "child_benefit_respective_amount"
+
+        return None
 
     def _build_pe_scenario_script(
         self,
@@ -2175,7 +2221,12 @@ print(f'RESULT:{{val}}')
             "only_person" in key and bool(value) for key, value in lowered.items()
         )
         elder_or_eldest = any(
-            ("elder_or_eldest" in key or "eldest_person" in key) and bool(value)
+            (
+                "elder_or_eldest" in key
+                or "eldest_person" in key
+                or "eldest_child" in key
+            )
+            and bool(value)
             for key, value in lowered.items()
         )
         payable = next(

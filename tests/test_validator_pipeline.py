@@ -218,6 +218,26 @@ class TestExtractTestsFromRacV2ListFormat:
         assert tests[0]["inputs"]["child_benefit_age_order"] == 2
         assert tests[0]["expect"] == 0
 
+    def test_unwraps_entity_wrapper_inputs_and_outputs(self, pipeline):
+        content = """
+- name: family_wrapped_case
+  period: 2025-04-07
+  input:
+    family:
+      is_eldest_child_for_child_benefit: true
+      number_of_children: 3
+  output:
+    family:
+      child_benefit_enhanced_rate: 26.05
+"""
+        tests = pipeline._extract_tests_from_rac_v2(content)
+
+        assert len(tests) == 1
+        assert tests[0]["variable"] == "child_benefit_enhanced_rate"
+        assert tests[0]["inputs"]["is_eldest_child_for_child_benefit"] is True
+        assert tests[0]["inputs"]["number_of_children"] == 3
+        assert tests[0]["expect"] == 26.05
+
 
 # =========================================================================
 # Prompt constants
@@ -1962,6 +1982,21 @@ class TestBuildPeScenarioScript:
         assert "monthly[1]" in script
         assert "would_claim_child_benefit': {2025: True}" in script
 
+    def test_uk_child_benefit_leaf_script_supports_eldest_child_name(self, pipeline):
+        script = pipeline._build_pe_scenario_script(
+            "child_benefit_respective_amount",
+            {
+                "is_eldest_child_for_child_benefit": True,
+                "period": "2025-04-07",
+            },
+            "2025",
+            26.05,
+            country="uk",
+            rac_var="child_benefit_enhanced_rate",
+        )
+        assert "'target', 'younger'" in script
+        assert "monthly[0]" in script
+
 
 class TestIsPeTestMappable:
     def test_uk_child_benefit_paragraph_exception_true_is_unmappable(self, pipeline):
@@ -1993,6 +2028,38 @@ class TestIsPeTestMappable:
 
         assert mappable is False
         assert "take-up" in reason.lower()
+
+    def test_uk_child_benefit_substring_mapped_rate_not_payable_is_unmappable(
+        self, pipeline
+    ):
+        mappable, reason = pipeline._is_pe_test_mappable(
+            "uk",
+            "child_benefit_enhanced_rate_paragraph_1_a",
+            {"child_benefit_payable_in_respect_of_person": False},
+        )
+
+        assert mappable is False
+        assert "take-up" in reason.lower()
+
+    def test_uk_child_benefit_helper_boolean_is_unmappable(self, pipeline):
+        mappable, reason = pipeline._is_pe_test_mappable(
+            "uk",
+            "child_benefit_enhanced_rate_paragraph_1_a_applies",
+            {},
+        )
+
+        assert mappable is False
+        assert "helper boolean" in reason.lower()
+
+
+class TestResolvePeVariable:
+    def test_resolves_uk_child_benefit_enhanced_rate_family_by_substring(self, pipeline):
+        assert (
+            pipeline._resolve_pe_variable(
+                "uk", "child_benefit_enhanced_rate_paragraph_1_a"
+            )
+            == "child_benefit_respective_amount"
+        )
 
 
 class TestDetectPolicyengineCountry:
