@@ -1850,6 +1850,44 @@ tests:
         assert tests[0]["inputs"] == {"has_partner": False}
         assert tests[0]["expect"] == 218.15
 
+    def test_v2_accepts_top_level_expect_mapping(self, pipeline):
+        content = """
+- name: claimant_has_partner
+  period: 2025-03-31
+  input:
+    claimant_has_partner: true
+  expect:
+    standard_minimum_guarantee_6_1_a: 332.95
+"""
+        tests = pipeline._extract_tests_from_rac_v2(content)
+        assert len(tests) == 1
+        assert tests[0]["variable"] == "standard_minimum_guarantee_6_1_a"
+        assert tests[0]["inputs"] == {"claimant_has_partner": True}
+        assert tests[0]["expect"] == 332.95
+
+    def test_v2_accepts_top_level_named_case_blocks(self, pipeline):
+        content = """
+eligible_case:
+  period: 2025
+  input:
+    is_single_claimant: true
+    resident_in_greater_london: false
+    responsible_for_child_or_qualifying_young_person: true
+  output:
+    benefit_cap_relevant_amount_80A_2_d_ii: 22020
+"""
+        tests = pipeline._extract_tests_from_rac_v2(content)
+        assert len(tests) == 1
+        assert tests[0]["name"] == "eligible_case"
+        assert tests[0]["period"] == 2025
+        assert tests[0]["variable"] == "benefit_cap_relevant_amount_80A_2_d_ii"
+        assert tests[0]["inputs"] == {
+            "is_single_claimant": True,
+            "resident_in_greater_london": False,
+            "responsible_for_child_or_qualifying_young_person": True,
+        }
+        assert tests[0]["expect"] == 22020
+
 
 # =========================================================================
 # _build_pe_situation
@@ -1972,6 +2010,7 @@ class TestGetPeVariableMap:
         assert mapping["child_benefit_enhanced_weekly_rate"] == "child_benefit_respective_amount"
         assert mapping["child_benefit_regulation_2_1_a_amount"] == "child_benefit_respective_amount"
         assert mapping["child_benefit_reg2_1_a"] == "child_benefit_respective_amount"
+        assert mapping["child_benefit_weekly_rate"] == "child_benefit_respective_amount"
         assert mapping["uk_child_benefit_other_child_weekly_rate"] == "child_benefit_respective_amount"
         assert mapping["child_benefit_reg2_1_b"] == "child_benefit_respective_amount"
         assert mapping["child_benefit_weekly_rate_other_case"] == "child_benefit_respective_amount"
@@ -2132,6 +2171,23 @@ class TestBuildPeScenarioScript:
         assert "'target', 'younger'" in script
         assert "target_index = 0" in script
 
+    def test_uk_child_benefit_generic_weekly_rate_uses_enhanced_branch_logic(
+        self, pipeline
+    ):
+        script = pipeline._build_pe_scenario_script(
+            "child_benefit_respective_amount",
+            {
+                "child_benefit_only_or_eldest_person_condition": True,
+                "period": "2025-04-07",
+            },
+            "2025",
+            26.05,
+            country="uk",
+            rac_var="child_benefit_weekly_rate",
+        )
+        assert "if bool(eldest[target_index]):" in script
+        assert "val = float(monthly[target_index]) * 12 / 52" in script
+
     def test_uk_child_benefit_leaf_script_supports_eldest_or_only_name(self, pipeline):
         script = pipeline._build_pe_scenario_script(
             "child_benefit_respective_amount",
@@ -2143,6 +2199,23 @@ class TestBuildPeScenarioScript:
             26.05,
             country="uk",
             rac_var="child_benefit_enhanced_weekly_rate",
+        )
+        assert "'target', 'younger'" in script
+        assert "target_index = 0" in script
+
+    def test_uk_child_benefit_generic_enhanced_condition_alias_targets_eldest(
+        self, pipeline
+    ):
+        script = pipeline._build_pe_scenario_script(
+            "child_benefit_respective_amount",
+            {
+                "child_benefit_enhanced_rate_condition": True,
+                "period": "2025-04-07",
+            },
+            "2025",
+            26.05,
+            country="uk",
+            rac_var="child_benefit_rate_regulation_2_1_a",
         )
         assert "'target', 'younger'" in script
         assert "target_index = 0" in script
@@ -2210,6 +2283,25 @@ class TestBuildPeScenarioScript:
             17.25,
             country="uk",
             rac_var="child_benefit_weekly_rate_other_case",
+        )
+        assert (
+            "if bool(eldest[target_index]):\n    val = 0.0\nelse:\n    val = float(monthly[target_index]) * 12 / 52"
+            in script
+        )
+
+    def test_uk_child_benefit_generic_weekly_rate_with_other_case_uses_other_branch(
+        self, pipeline
+    ):
+        script = pipeline._build_pe_scenario_script(
+            "child_benefit_respective_amount",
+            {
+                "child_benefit_any_other_case": True,
+                "period": "2025-04-07",
+            },
+            "2025",
+            17.25,
+            country="uk",
+            rac_var="child_benefit_weekly_rate",
         )
         assert (
             "if bool(eldest[target_index]):\n    val = 0.0\nelse:\n    val = float(monthly[target_index]) * 12 / 52"
@@ -2288,6 +2380,24 @@ class TestBuildPeScenarioScript:
         assert "scenario_is_couple = False" in script
         assert "if scenario_is_couple:" in script
         assert "val = 0.0" in script
+
+    def test_uk_pension_credit_regulation_6_1_a_alias_builds_couple_branch(
+        self, pipeline
+    ):
+        script = pipeline._build_pe_scenario_script(
+            "standard_minimum_guarantee",
+            {
+                "claimant_has_partner": True,
+                "period": "2025-03-31",
+            },
+            "2025",
+            332.95,
+            country="uk",
+            rac_var="amount_of_the_guarantee_credit_6_1_a",
+        )
+        assert "scenario_is_couple = True" in script
+        assert "if scenario_is_couple:" in script
+        assert "val = weekly" in script
 
     def test_uk_scottish_child_payment_leaf_script_builds_scotland_uc_scenario(
         self, pipeline
@@ -2525,6 +2635,25 @@ class TestBuildPeScenarioScript:
         assert "has_child = True" in script
         assert "if is_single and in_london and not has_child:" in script
 
+    def test_uk_benefit_cap_no_child_leaf_is_not_reclassified_by_child_key_presence(
+        self, pipeline
+    ):
+        script = pipeline._build_pe_scenario_script(
+            "benefit_cap",
+            {
+                "benefit_cap_single_claimant": True,
+                "benefit_cap_resident_in_greater_london": True,
+                "benefit_cap_responsible_for_child_or_qualifying_young_person": False,
+                "period": "2025-03-21",
+            },
+            "2025",
+            16967,
+            country="uk",
+            rac_var="benefit_cap_relevant_amount_single_claimant_greater_london_no_child",
+        )
+        assert "has_child = False" in script
+        assert "if is_single and in_london and not has_child:" in script
+
 
 class TestIsPeTestMappable:
     def test_uk_child_benefit_paragraph_exception_true_is_unmappable(self, pipeline):
@@ -2532,6 +2661,18 @@ class TestIsPeTestMappable:
             "uk",
             "child_benefit_enhanced_rate",
             {"child_benefit_paragraphs_two_to_five_apply": True},
+        )
+
+        assert mappable is False
+        assert "does not represent directly" in reason
+
+    def test_uk_child_benefit_paragraph_exception_numeric_alias_is_unmappable(
+        self, pipeline
+    ):
+        mappable, reason = pipeline._is_pe_test_mappable(
+            "uk",
+            "child_benefit_weekly_rate",
+            {"child_benefit_regulation_2_paragraphs_2_to_5_apply": True},
         )
 
         assert mappable is False
@@ -2659,6 +2800,18 @@ class TestResolvePeVariable:
             == "child_benefit_respective_amount"
         )
 
+    def test_resolves_uk_child_benefit_generic_weekly_rate(self, pipeline):
+        assert (
+            pipeline._resolve_pe_variable("uk", "child_benefit_weekly_rate")
+            == "child_benefit_respective_amount"
+        )
+
+    def test_resolves_uk_child_benefit_rate_regulation_alias(self, pipeline):
+        assert (
+            pipeline._resolve_pe_variable("uk", "child_benefit_rate_regulation_2_1_a")
+            == "child_benefit_respective_amount"
+        )
+
     def test_resolves_uk_pension_credit_standard_minimum_guarantee_couple(
         self, pipeline
     ):
@@ -2672,6 +2825,12 @@ class TestResolvePeVariable:
     ):
         assert (
             pipeline._resolve_pe_variable("uk", "standard_minimum_guarantee_single_weekly_rate")
+            == "standard_minimum_guarantee"
+        )
+
+    def test_resolves_uk_pension_credit_regulation_6_1_a_alias(self, pipeline):
+        assert (
+            pipeline._resolve_pe_variable("uk", "amount_of_the_guarantee_credit_6_1_a")
             == "standard_minimum_guarantee"
         )
 

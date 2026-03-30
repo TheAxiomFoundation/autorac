@@ -452,15 +452,26 @@ def _fetch_legislation_gov_uk_document(
     source_dir = Path(output_root) / "_legislation_gov_uk" / _slugify(source_id)
     source_dir.mkdir(parents=True, exist_ok=True)
 
-    akn_response = requests.get(f"{content_url}/data.akn", timeout=30)
-    akn_response.raise_for_status()
-    clml_response = requests.get(f"{content_url}/data.xml", timeout=30)
-    clml_response.raise_for_status()
-
     akn_file = source_dir / "source.akn"
     clml_file = source_dir / "source.xml"
-    akn_file.write_text(akn_response.text)
-    clml_file.write_text(clml_response.text)
+    if (
+        akn_file.exists()
+        and clml_file.exists()
+        and akn_file.stat().st_size > 0
+        and clml_file.stat().st_size > 0
+    ):
+        return FetchedLegislationGovUkDocument(
+            source_id=source_id,
+            content_url=content_url,
+            akn_file=akn_file,
+            clml_file=clml_file,
+        )
+
+    akn_file.write_text(_fetch_legislation_gov_uk_text(f"{content_url}/data.akn"))
+    try:
+        clml_file.write_text(_fetch_legislation_gov_uk_text(f"{content_url}/data.xml"))
+    except requests.RequestException as exc:
+        clml_file.write_text(f"<!-- source.xml unavailable: {exc} -->\n")
 
     return FetchedLegislationGovUkDocument(
         source_id=source_id,
@@ -468,6 +479,33 @@ def _fetch_legislation_gov_uk_document(
         akn_file=akn_file,
         clml_file=clml_file,
     )
+
+
+def _fetch_legislation_gov_uk_text(
+    url: str,
+    *,
+    attempts: int = 3,
+    timeout: int = 30,
+) -> str:
+    """Fetch one legislation.gov.uk payload with retry for transient failures."""
+    last_error: Exception | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            response = requests.get(url, timeout=timeout)
+            response.raise_for_status()
+            return response.text
+        except requests.RequestException as exc:
+            last_error = exc
+            response = getattr(exc, "response", None)
+            status_code = getattr(response, "status_code", None)
+            retriable = status_code in {429, 500, 502, 503, 504} or status_code is None
+            if attempt >= attempts or not retriable:
+                raise
+            time.sleep(0.5 * attempt)
+
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError(f"Failed to fetch legislation.gov.uk resource: {url}")
 
 
 def _akn_title(element: ET.Element) -> str:
@@ -1332,6 +1370,7 @@ def _run_single_eval(
         workspace.context_files,
         target_file_name=relative_output.name,
         include_tests=False,
+        runner_backend=runner.backend,
     )
     response = _run_prompt_eval(runner, workspace, prompt)
     output_file = Path(output_root) / runner.name / relative_output
@@ -1416,6 +1455,7 @@ def _run_single_source_eval(
         workspace.context_files,
         target_file_name=relative_output.name,
         include_tests=True,
+        runner_backend=runner.backend,
     )
     response = _run_prompt_eval(runner, workspace, prompt)
     output_file = Path(output_root) / runner.name / relative_output
@@ -1484,8 +1524,21 @@ def _build_eval_prompt(
     context_files: list[EvalContextFile],
     target_file_name: str,
     include_tests: bool = False,
+    runner_backend: str = "codex",
 ) -> str:
     """Build a prompt-only eval request with explicit provenance rules."""
+    inline_source_section = ""
+    if runner_backend == "openai":
+        inline_source = workspace.source_file.read_text().strip()
+        inline_source_section = f"""
+You do not have filesystem tool access in this eval. The exact contents of `./source.txt`
+are copied inline below and must be treated as the contents of that file.
+
+=== BEGIN SOURCE.TXT ===
+{inline_source}
+=== END SOURCE.TXT ===
+"""
+
     context_section = ""
     if context_files:
         listed = "\n".join(f"- `{item.workspace_path}`" for item in context_files)
@@ -1502,7 +1555,22 @@ you may use one scaffold date from the copied precedent files.
 Prefer the earliest scaffold date unless a matching copied concept clearly uses a later one.
 Numeric grounding rules do not apply to the YYYY-MM-DD tokens inside that temporal clause.
 """
-        context_section = f"""
+        if runner_backend == "openai":
+            context_section = f"""
+Implementation precedent files are available below as inline copies.
+You may use ONLY the copied files below for syntax, naming, entity, import, re-export, and style conventions.
+They are not legal authority and may not justify new substantive numeric values.
+Prefer importing or re-exporting a copied concept instead of inventing a fresh stub input when a matching concept already exists.
+{scaffold_date_lines}
+
+Available precedent files:
+{listed}
+
+Inline precedent file copies:
+{_format_inline_context_snippets(workspace, context_files)}
+"""
+        else:
+            context_section = f"""
 Implementation precedent files are available under `./context/`.
 You may use ONLY the copied files below for syntax, naming, entity, import, re-export, and style conventions.
 They are not legal authority and may not justify new substantive numeric values.
@@ -1529,6 +1597,7 @@ Available precedent files:
 - The `.rac.test` file must contain 3-5 cases covering a base case, a boundary case, and one alternate branch.
 - The alternate branch must vary a real legal condition from the source text, not just reuse the same branch on another date.
 - Test inputs must contain factual predicates or quantities, not the output variable being asserted.
+- Use `output:` mappings in `.rac.test` cases, not `expect:` blocks.
 - The `.rac.test` file must contain YAML only, with no trailing notes or prose.
 - Do not include markdown fences or explanation.
 """
@@ -1548,6 +1617,9 @@ Available precedent files:
 - Prefer `Person` when the source states an amount or condition "in respect of" a child, qualifying young person, or other individual.
 - Use `Family` only when the encoded quantity is explicitly aggregate at claimant or benefit-unit level.
 - For UK rate leaves with one grounded monetary amount, encode the directly payable person-level or unit-level amount described by the text; do not collapse it into an unconditional family-level constant.
+- For UK branch leaves like `(a)`, `(b)`, or `80A(2)(c)`, encode the branch identity in the output variable name. Do not reuse generic parent variable names like `child_benefit_weekly_rate`, `standard_minimum_guarantee`, or `benefit_cap` for a branch-specific leaf.
+- In `.rac.test`, use helper/input names that expose the actual legal facts from the source text. Prefer names like `child_benefit_is_only_person`, `child_benefit_is_elder_or_eldest_person`, `claimant_has_partner`, `is_single_claimant`, `is_joint_claimant`, `resident_in_greater_london`, or `responsible_for_child_or_qualifying_young_person`.
+- In `.rac.test`, avoid opaque placeholders like `*_condition`, `*_eligibility_flag`, or `family_has_partner` when a more direct legal-fact name is available from the source text.
 - In `.rac.test`, choose periods on or after the explicit effective date in `./source.txt`.
 - Do not add speculative future-period tests that would rely on uprating, later amendments, or rates not stated in `./source.txt`.
 """
@@ -1556,6 +1628,7 @@ Available precedent files:
 
 Primary legal authority:
 - `./source.txt` contains the complete source text for this target source slice.
+{inline_source_section}
 
 Context mode: `{mode}`
 {context_section}
@@ -1585,6 +1658,25 @@ Rules:
 - Do not use YAML-style `if:` / `then:` / `else:` blocks.
 {file_output_rules}
 """
+
+
+def _format_inline_context_snippets(
+    workspace: EvalWorkspace,
+    context_files: list[EvalContextFile],
+    max_chars_per_file: int = 6000,
+) -> str:
+    """Inline copied precedent files for non-tool backends like Responses API."""
+    snippets: list[str] = []
+    for item in context_files:
+        path = workspace.root / item.workspace_path
+        try:
+            content = path.read_text().strip()
+        except OSError:
+            continue
+        if len(content) > max_chars_per_file:
+            content = content[:max_chars_per_file].rstrip() + "\n... [truncated]"
+        snippets.append(f"=== FILE: {item.workspace_path} ===\n{content}")
+    return "\n\n".join(snippets)
 
 
 def _collect_scaffold_dates(
@@ -1992,12 +2084,21 @@ def _run_openai_prompt_eval(
     }
 
     start = time.time()
-    response = requests.post(
-        "https://api.openai.com/v1/responses",
-        headers=headers,
-        json=body,
-        timeout=600,
-    )
+    try:
+        response = _post_openai_eval_request(headers=headers, body=body)
+    except requests.RequestException as exc:
+        duration_ms = int((time.time() - start) * 1000)
+        return EvalPromptResponse(
+            text="",
+            duration_ms=duration_ms,
+            trace={
+                "provider": "openai",
+                "backend": "responses",
+                "model": runner.model,
+                "request_body": body,
+            },
+            error=str(exc),
+        )
     duration_ms = int((time.time() - start) * 1000)
 
     request_id = response.headers.get("x-request-id")
@@ -2047,6 +2148,41 @@ def _run_openai_prompt_eval(
         estimated_cost_usd=estimate_usage_cost_usd(runner.model, tokens),
         trace=trace,
     )
+
+
+def _post_openai_eval_request(
+    headers: dict[str, str],
+    body: dict[str, object],
+    attempts: int = 3,
+) -> requests.Response:
+    """POST a Responses API eval request with transient retry handling."""
+    last_response: requests.Response | None = None
+    last_error: requests.RequestException | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            response = requests.post(
+                "https://api.openai.com/v1/responses",
+                headers=headers,
+                json=body,
+                timeout=(30, 180),
+            )
+        except requests.RequestException as exc:
+            last_error = exc
+            if attempt == attempts:
+                raise
+            time.sleep(0.5 * attempt)
+            continue
+
+        last_response = response
+        if response.status_code not in {429, 500, 502, 503, 504} or attempt == attempts:
+            return response
+        time.sleep(0.5 * attempt)
+
+    if last_response is not None:
+        return last_response
+    if last_error is not None:
+        raise last_error
+    raise requests.RequestException("OpenAI eval request failed without response")
 
 
 def _command_looks_out_of_bounds(command: str, workspace_root: Path) -> bool:

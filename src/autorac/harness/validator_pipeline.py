@@ -1952,7 +1952,7 @@ print("BENCHMARK:" + json.dumps(result))
                 for test_case in test_cases:
                     if not isinstance(test_case, dict):
                         continue
-                    outputs = test_case.get("output")
+                    outputs = test_case.get("output", test_case.get("expect"))
                     if not isinstance(outputs, dict):
                         continue
                     inputs = test_case.get("input", test_case.get("inputs", {}))
@@ -2011,6 +2011,37 @@ print("BENCHMARK:" + json.dumps(result))
                                     }
                                 normalized_case["variable"] = key
                                 tests.append(normalized_case)
+                    # Top-level named test block:
+                    # case_name:
+                    #   period: ...
+                    #   input: ...
+                    #   output/expect: ...
+                    elif isinstance(value, dict) and any(
+                        io_key in value for io_key in ("input", "inputs")
+                    ) and any(io_key in value for io_key in ("output", "expect")):
+                        outputs = value.get("output", value.get("expect"))
+                        if isinstance(outputs, dict):
+                            inputs = value.get("input", value.get("inputs", {}))
+                            inputs = unwrap_entity_wrapper(inputs)
+                            outputs = unwrap_entity_wrapper(outputs)
+                            normalized_inputs = (
+                                {
+                                    input_key: normalize_test_value(input_value)
+                                    for input_key, input_value in inputs.items()
+                                }
+                                if isinstance(inputs, dict)
+                                else inputs or {}
+                            )
+                            for variable, expected in outputs.items():
+                                tests.append(
+                                    {
+                                        "variable": variable,
+                                        "name": value.get("name", key),
+                                        "period": value.get("period"),
+                                        "inputs": normalized_inputs,
+                                        "expect": normalize_test_value(expected),
+                                    }
+                                )
                     # Nested tests: section within a variable block
                     elif isinstance(value, dict) and "tests" in value:
                         for test_case in value.get("tests", []):
@@ -2085,6 +2116,7 @@ print("BENCHMARK:" + json.dumps(result))
                 "child_benefit_enhanced_weekly_rate": "child_benefit_respective_amount",
                 "child_benefit_regulation_2_1_a_amount": "child_benefit_respective_amount",
                 "child_benefit_reg2_1_a": "child_benefit_respective_amount",
+                "child_benefit_weekly_rate": "child_benefit_respective_amount",
                 "uk_child_benefit_other_child_weekly_rate": "child_benefit_respective_amount",
                 "child_benefit_other_child_weekly_rate": "child_benefit_respective_amount",
                 "child_benefit_weekly_rate_other_case": "child_benefit_respective_amount",
@@ -2133,12 +2165,13 @@ print("BENCHMARK:" + json.dumps(result))
             for marker in (
                 "child_benefit_enhanced_rate",
                 "child_benefit_enhanced_weekly_rate",
-                "child_benefit_regulation_2_1_a",
-                "child_benefit_reg2_1_a",
+                "child_benefit_weekly_rate",
+                "regulation_2_1_a",
+                "reg2_1_a",
                 "child_benefit_other_child",
                 "other_case",
-                "child_benefit_regulation_2_1_b",
-                "child_benefit_reg2_1_b",
+                "regulation_2_1_b",
+                "reg2_1_b",
             )
         )
 
@@ -2150,15 +2183,15 @@ print("BENCHMARK:" + json.dumps(result))
             for marker in (
                 "child_benefit_other_child",
                 "other_case",
-                "child_benefit_regulation_2_1_b",
-                "child_benefit_reg2_1_b",
+                "regulation_2_1_b",
+                "reg2_1_b",
             )
         )
 
     @staticmethod
     def _is_uk_pension_credit_standard_minimum_guarantee_var(rac_var: str) -> bool:
         rac_var_lower = rac_var.lower()
-        return "minimum_guarantee" in rac_var_lower and any(
+        if "minimum_guarantee" in rac_var_lower and any(
             marker in rac_var_lower
             for marker in (
                 "standard_minimum_guarantee",
@@ -2167,6 +2200,10 @@ print("BENCHMARK:" + json.dumps(result))
                 "couple",
                 "single",
             )
+        ):
+            return True
+        return "guarantee_credit" in rac_var_lower and any(
+            marker in rac_var_lower for marker in ("6_1_a", "6_1_b", "regulation_6_1")
         )
 
     @staticmethod
@@ -2179,7 +2216,14 @@ print("BENCHMARK:" + json.dumps(result))
             return False
         return "no_partner" not in rac_var_lower and any(
             marker in rac_var_lower
-            for marker in ("couple", "partner_rate", "with_partner", "partner")
+            for marker in (
+                "couple",
+                "partner_rate",
+                "with_partner",
+                "partner",
+                "6_1_a",
+                "regulation_6_1_a",
+            )
         )
 
     @staticmethod
@@ -2187,7 +2231,13 @@ print("BENCHMARK:" + json.dumps(result))
         rac_var_lower = rac_var.lower()
         return any(
             marker in rac_var_lower
-            for marker in ("single", "no_partner", "without_partner")
+            for marker in (
+                "single",
+                "no_partner",
+                "without_partner",
+                "6_1_b",
+                "regulation_6_1_b",
+            )
         )
 
     @staticmethod
@@ -2270,6 +2320,7 @@ print("BENCHMARK:" + json.dumps(result))
                 if (
                     "subject_to_paragraphs" in key_lower
                     or "paragraphs_two_to_five_apply" in key_lower
+                    or "paragraphs_2_to_5_apply" in key_lower
                 ) and bool(value):
                     return (
                         False,
@@ -2677,6 +2728,39 @@ print(f'RESULT:{{val}}')
                 marker in rac_var_lower
                 for marker in ("child", "young_person", "family")
             ) and "no_child" not in rac_var_lower
+            has_leaf_location_hint = any(
+                marker in rac_var_lower
+                for marker in (
+                    "greater_london",
+                    "in_london",
+                    "london",
+                    "outside_london",
+                    "not_resident_in_greater_london",
+                )
+            )
+            has_leaf_single_hint = any(
+                marker in rac_var_lower
+                for marker in (
+                    "single_claimant",
+                    "single",
+                    "joint_claimant",
+                    "joint_claimants",
+                    "couple",
+                    "family",
+                )
+            )
+            has_leaf_child_hint = any(
+                marker in rac_var_lower
+                for marker in (
+                    "no_child",
+                    "without_child",
+                    "not_responsible_for_child_or_qualifying_young_person",
+                    "responsible_for_child_or_qualifying_young_person",
+                    "child",
+                    "young_person",
+                    "family",
+                )
+            )
 
             if branch_category is not None:
                 leaf_is_single = branch_category[0] == "single"
@@ -2684,7 +2768,7 @@ print(f'RESULT:{{val}}')
                 leaf_has_child = branch_category[2] == "child"
 
             if branch_category is None:
-                if not leaf_in_london:
+                if not has_leaf_location_hint:
                     if any("outside_london" in key for key in lowered_keys):
                         leaf_in_london = False
                     elif any(
@@ -2695,7 +2779,7 @@ print(f'RESULT:{{val}}')
                     elif any("greater_london" in key for key in lowered_keys):
                         leaf_in_london = True
 
-                if not leaf_is_single:
+                if not has_leaf_single_hint:
                     if any(
                         "joint_claimant" in key or "couple" in key or "family" in key
                         for key in lowered_keys
@@ -2707,7 +2791,7 @@ print(f'RESULT:{{val}}')
                     ):
                         leaf_is_single = True
 
-                if not leaf_has_child:
+                if not has_leaf_child_hint:
                     if any(
                         "not_responsible_for_child_or_qualifying_young_person" in key
                         or "no_child" in key
@@ -2921,6 +3005,16 @@ print(f'RESULT:{{val}}')
             ),
             None,
         )
+        enhanced_rate_condition = next(
+            (
+                bool(value)
+                for key, value in lowered.items()
+                if "enhanced_rate_condition" in key and value is not None
+            ),
+            None,
+        )
+        if enhanced_rate_condition is not None and not (only_person or elder_or_eldest):
+            elder_or_eldest = enhanced_rate_condition
         child_or_qyp = next(
             (
                 bool(value)
@@ -2975,7 +3069,12 @@ print(f'RESULT:{{val}}')
             target_index = 1
 
         value_expr = "float(monthly[target_index]) * 12 / 52"
-        if self._is_uk_child_benefit_other_child_rate_var(rac_var_lower):
+        use_other_child_branch = self._is_uk_child_benefit_other_child_rate_var(
+            rac_var_lower
+        ) or (
+            rac_var_lower == "child_benefit_weekly_rate" and other_case is not None
+        )
+        if use_other_child_branch:
             result_logic = f"""
 if bool(eldest[target_index]):
     val = 0.0

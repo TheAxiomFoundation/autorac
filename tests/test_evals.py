@@ -2,7 +2,9 @@
 
 import json
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
+
+import requests
 
 from autorac.harness.evals import (
     EvalArtifactMetrics,
@@ -16,6 +18,7 @@ from autorac.harness.evals import (
     _hydrate_eval_root,
     _materialize_eval_artifact,
     _normalize_legislation_gov_uk_source_ref,
+    _post_openai_eval_request,
     _resolve_akn_section_eid,
     evaluate_artifact,
     extract_akn_section_text,
@@ -536,6 +539,85 @@ class TestUkLegislationFetch:
         assert mock_get.call_args_list[0].args[0].endswith("/data.akn")
         assert mock_get.call_args_list[1].args[0].endswith("/data.xml")
 
+    def test_fetch_legislation_gov_uk_document_uses_cache_when_files_exist(
+        self, tmp_path
+    ):
+        source_dir = tmp_path / "_legislation_gov_uk" / "ukpga-2010-1-section-1"
+        source_dir.mkdir(parents=True)
+        (source_dir / "source.akn").write_text("<cached-akn/>")
+        (source_dir / "source.xml").write_text("<cached-clml/>")
+
+        with patch("requests.get") as mock_get:
+            fetched = _fetch_legislation_gov_uk_document(
+                "https://www.legislation.gov.uk/ukpga/2010/1/section/1",
+                tmp_path,
+            )
+
+        assert fetched.akn_file.read_text() == "<cached-akn/>"
+        assert fetched.clml_file.read_text() == "<cached-clml/>"
+        mock_get.assert_not_called()
+
+    def test_fetch_legislation_gov_uk_document_retries_transient_http_errors(
+        self, tmp_path
+    ):
+        class FakeResponse:
+            def __init__(self, text: str, status_code: int = 200):
+                self.text = text
+                self.status_code = status_code
+
+            def raise_for_status(self):
+                if self.status_code >= 400:
+                    raise requests.HTTPError(response=self)
+                return None
+
+        with patch(
+            "requests.get",
+            side_effect=[
+                FakeResponse("bad gateway", 502),
+                FakeResponse("<akomaNtoso/>"),
+                FakeResponse("<Legislation/>"),
+            ],
+        ) as mock_get, patch("time.sleep"):
+            fetched = _fetch_legislation_gov_uk_document(
+                "https://www.legislation.gov.uk/ukpga/2010/1/section/1",
+                tmp_path,
+            )
+
+        assert fetched.akn_file.read_text() == "<akomaNtoso/>"
+        assert fetched.clml_file.read_text() == "<Legislation/>"
+        assert mock_get.call_count == 3
+
+    def test_fetch_legislation_gov_uk_document_allows_missing_clml_when_akn_succeeds(
+        self, tmp_path
+    ):
+        class FakeResponse:
+            def __init__(self, text: str, status_code: int = 200):
+                self.text = text
+                self.status_code = status_code
+
+            def raise_for_status(self):
+                if self.status_code >= 400:
+                    raise requests.HTTPError(response=self)
+                return None
+
+        with patch(
+            "requests.get",
+            side_effect=[
+                FakeResponse("<akomaNtoso/>"),
+                requests.exceptions.ReadTimeout("timed out"),
+                requests.exceptions.ReadTimeout("timed out"),
+                requests.exceptions.ReadTimeout("timed out"),
+            ],
+        ) as mock_get, patch("time.sleep"):
+            fetched = _fetch_legislation_gov_uk_document(
+                "https://www.legislation.gov.uk/ukpga/2010/1/section/1",
+                tmp_path,
+            )
+
+        assert fetched.akn_file.read_text() == "<akomaNtoso/>"
+        assert "unavailable" in fetched.clml_file.read_text().lower()
+        assert mock_get.call_count == 4
+
     def test_run_legislation_gov_uk_section_eval_uses_primary_akn_node_when_unspecified(
         self, tmp_path
     ):
@@ -774,6 +856,62 @@ class TestEvalPrompt:
         assert "Do not add speculative future-period tests" in prompt
         assert "must vary a real legal condition" in prompt
         assert "must contain factual predicates or quantities, not the output variable" in prompt
+        assert "Use `output:` mappings in `.rac.test` cases" in prompt
+
+    def test_build_eval_prompt_for_uk_branch_leaves_requires_branch_specific_names(
+        self, tmp_path
+    ):
+        workspace = prepare_eval_workspace(
+            citation="uksi/2002/1792/regulation/6",
+            runner=parse_runner_spec("openai:gpt-5.4"),
+            output_root=tmp_path / "out",
+            source_text="(a) 332.95 per week in the case of a claimant who has a partner.",
+            rac_path=tmp_path / "rac",
+            mode="cold",
+            extra_context_paths=[],
+        )
+
+        prompt = _build_eval_prompt(
+            "uksi/2002/1792/regulation/6",
+            "cold",
+            workspace,
+            [],
+            target_file_name="uksi-2002-1792-regulation-6.rac",
+            include_tests=True,
+            runner_backend="openai",
+        )
+
+        assert "encode the branch identity in the output variable name" in prompt
+        assert "`standard_minimum_guarantee`" in prompt
+        assert "`child_benefit_weekly_rate`" in prompt
+
+    def test_build_eval_prompt_for_uk_leaf_discourages_opaque_condition_helpers(
+        self, tmp_path
+    ):
+        workspace = prepare_eval_workspace(
+            citation="uksi/2006/965/regulation/2",
+            runner=parse_runner_spec("openai:gpt-5.4"),
+            output_root=tmp_path / "out",
+            source_text="(a) ... only person or elder or eldest person ... £26.05.",
+            rac_path=tmp_path / "rac",
+            mode="cold",
+            extra_context_paths=[],
+        )
+
+        prompt = _build_eval_prompt(
+            "uksi/2006/965/regulation/2",
+            "cold",
+            workspace,
+            [],
+            target_file_name="uksi-2006-965-regulation-2.rac",
+            include_tests=True,
+            runner_backend="openai",
+        )
+
+        assert "avoid opaque placeholders like `*_condition`" in prompt
+        assert "`child_benefit_is_only_person`" in prompt
+        assert "`claimant_has_partner`" in prompt
+        assert "`is_joint_claimant`" in prompt
 
     def test_build_eval_prompt_includes_import_vs_local_helper_protocol(
         self, tmp_path
@@ -799,6 +937,73 @@ class TestEvalPrompt:
         assert "emit the upstream import instead of restating the concept locally" in prompt
         assert "still emit the unresolved import path" in prompt
         assert "otherwise keep the helper local to this leaf" in prompt
+
+    def test_build_eval_prompt_for_openai_inlines_source_text(self, tmp_path):
+        workspace = prepare_eval_workspace(
+            citation="uksi/2006/965/regulation/2",
+            runner=parse_runner_spec("openai:gpt-5.4"),
+            output_root=tmp_path / "out",
+            source_text="Editorial note: current text valid from 2025-04-07.\n26.05",
+            rac_path=tmp_path / "rac",
+            mode="cold",
+            extra_context_paths=[],
+        )
+
+        prompt = _build_eval_prompt(
+            "uksi/2006/965/regulation/2",
+            "cold",
+            workspace,
+            [],
+            target_file_name="uksi-2006-965-regulation-2.rac",
+            include_tests=True,
+            runner_backend="openai",
+        )
+
+        assert "You do not have filesystem tool access in this eval" in prompt
+        assert "=== BEGIN SOURCE.TXT ===" in prompt
+        assert "Editorial note: current text valid from 2025-04-07." in prompt
+        assert "26.05" in prompt
+
+
+class TestOpenAIEvalRequest:
+    def test_post_openai_eval_request_retries_transient_status(self):
+        error_response = Mock()
+        error_response.status_code = 502
+        ok_response = Mock()
+        ok_response.status_code = 200
+
+        with patch("autorac.harness.evals.requests.post") as mock_post, patch(
+            "autorac.harness.evals.time.sleep"
+        ):
+            mock_post.side_effect = [error_response, ok_response]
+
+            response = _post_openai_eval_request(
+                headers={"Authorization": "Bearer test"},
+                body={"model": "gpt-5.4", "input": "hi"},
+            )
+
+        assert response is ok_response
+        assert mock_post.call_count == 2
+
+    def test_post_openai_eval_request_retries_request_exception(self):
+        ok_response = Mock()
+        ok_response.status_code = 200
+
+        with patch("autorac.harness.evals.requests.post") as mock_post, patch(
+            "autorac.harness.evals.time.sleep"
+        ):
+            mock_post.side_effect = [
+                requests.exceptions.ReadTimeout("timed out"),
+                ok_response,
+            ]
+
+            response = _post_openai_eval_request(
+                headers={"Authorization": "Bearer test"},
+                body={"model": "gpt-5.4", "input": "hi"},
+            )
+
+        assert response is ok_response
+        assert mock_post.call_count == 2
 
 
 class TestEvalSuiteManifest:
