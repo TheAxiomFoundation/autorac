@@ -334,6 +334,11 @@ def main():
         help="eId of the AKN hcontainer section to extract",
     )
     eval_akn_section_parser.add_argument(
+        "--allow-parent",
+        action="store_true",
+        help="Allow encoding a parent section even when atomic child sections exist",
+    )
+    eval_akn_section_parser.add_argument(
         "--runner",
         action="append",
         default=[],
@@ -1739,6 +1744,7 @@ def cmd_eval_akn_section(args):
         rac_path=rac_path,
         mode=args.mode,
         extra_context_paths=[Path(path) for path in args.allow_context],
+        allow_parent=args.allow_parent,
     )
 
     if args.json:

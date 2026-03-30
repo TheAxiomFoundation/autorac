@@ -8,6 +8,7 @@ from autorac.harness.evals import (
     _build_eval_prompt,
     _command_looks_out_of_bounds,
     _hydrate_eval_root,
+    _resolve_akn_section_eid,
     evaluate_artifact,
     extract_akn_section_text,
     parse_runner_spec,
@@ -147,6 +148,83 @@ class TestAknSectionEval:
         assert (
             mock_run_source_eval.call_args.kwargs["source_text"]
             == "3.606.1 Basic Cash Assistance\n\nA. Payment of Basic Cash Assistance Grants"
+        )
+
+    def test_run_akn_section_eval_rejects_parent_section_by_default(self, tmp_path):
+        akn_file = tmp_path / "doc.xml"
+        akn_file.write_text(
+            """
+<akomaNtoso xmlns="http://docs.oasis-open.org/legaldocml/ns/akn/3.0">
+  <doc>
+    <mainBody>
+      <hcontainer name="section" eId="sec_3_606_1">
+        <num>3.606.1</num>
+        <heading>Basic Cash Assistance</heading>
+        <hcontainer name="section" eId="sec_3_606_1_f">
+          <num>F</num>
+          <content><p>Grant standard table text.</p></content>
+        </hcontainer>
+        <hcontainer name="section" eId="sec_3_606_1_g">
+          <num>G</num>
+          <content><p>Pregnancy allowance text.</p></content>
+        </hcontainer>
+      </hcontainer>
+    </mainBody>
+  </doc>
+</akomaNtoso>
+            """.strip()
+        )
+
+        with patch("autorac.harness.evals.run_source_eval") as mock_run_source_eval:
+            try:
+                run_akn_section_eval(
+                    source_id="9 CCR 2503-6 3.606.1",
+                    akn_file=akn_file,
+                    section_eid="sec_3_606_1",
+                    runner_specs=["codex:gpt-5.4"],
+                    output_root=tmp_path / "out",
+                    rac_path=tmp_path / "rac",
+                    mode="cold",
+                    extra_context_paths=[],
+                )
+            except ValueError as exc:
+                message = str(exc)
+            else:
+                raise AssertionError("Expected parent-section guardrail to raise")
+
+        assert "Choose an atomic child section instead" in message
+        assert "sec_3_606_1_f" in message
+        assert "sec_3_606_1_g" in message
+        mock_run_source_eval.assert_not_called()
+
+    def test_resolve_akn_section_eid_allows_parent_when_opted_in(self, tmp_path):
+        akn_file = tmp_path / "doc.xml"
+        akn_file.write_text(
+            """
+<akomaNtoso xmlns="http://docs.oasis-open.org/legaldocml/ns/akn/3.0">
+  <doc>
+    <mainBody>
+      <hcontainer name="section" eId="sec_3_606_1">
+        <num>3.606.1</num>
+        <heading>Basic Cash Assistance</heading>
+        <hcontainer name="section" eId="sec_3_606_1_f">
+          <num>F</num>
+          <content><p>Grant standard table text.</p></content>
+        </hcontainer>
+      </hcontainer>
+    </mainBody>
+  </doc>
+</akomaNtoso>
+            """.strip()
+        )
+
+        assert (
+            _resolve_akn_section_eid(
+                akn_file,
+                "sec_3_606_1",
+                allow_parent=True,
+            )
+            == "sec_3_606_1"
         )
 
 

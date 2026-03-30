@@ -227,13 +227,49 @@ def _akn_child_text(parent: ET.Element, child_tag: str) -> str:
     return _collapse_whitespace("".join(child.itertext()))
 
 
+def _find_akn_section(root: ET.Element, section_eid: str) -> ET.Element:
+    section = root.find(f".//akn:hcontainer[@eId='{section_eid}']", AKN_NS)
+    if section is None:
+        raise ValueError(f"Section eId not found: {section_eid}")
+    return section
+
+
+def _resolve_akn_section_eid(
+    akn_file: Path,
+    section_eid: str,
+    allow_parent: bool = False,
+) -> str:
+    """Resolve an AKN section target, rejecting parent nodes by default."""
+    tree = ET.parse(akn_file)
+    root = tree.getroot()
+    section = _find_akn_section(root, section_eid)
+    child_sections = section.findall("akn:hcontainer", AKN_NS)
+    if allow_parent or not child_sections:
+        return section_eid
+
+    child_summaries: list[str] = []
+    for child in child_sections[:8]:
+        child_eid = child.get("eId", "<unknown>")
+        label = " ".join(
+            item
+            for item in (_akn_child_text(child, "num"), _akn_child_text(child, "heading"))
+            if item
+        ).strip()
+        child_summaries.append(f"{child_eid} ({label or 'child'})")
+
+    suggestions = ", ".join(child_summaries)
+    raise ValueError(
+        f"Section {section_eid} has child sections. "
+        f"Choose an atomic child section instead: {suggestions}. "
+        "Pass allow_parent=True only when you intentionally need the parent layer."
+    )
+
+
 def extract_akn_section_text(akn_file: Path, section_eid: str) -> str:
     """Extract one Akoma Ntoso section as plain source text for evals."""
     tree = ET.parse(akn_file)
     root = tree.getroot()
-    section = root.find(f".//akn:hcontainer[@eId='{section_eid}']", AKN_NS)
-    if section is None:
-        raise ValueError(f"Section eId not found in {akn_file}: {section_eid}")
+    section = _find_akn_section(root, section_eid)
 
     parts: list[str] = []
     title = " ".join(
@@ -277,11 +313,17 @@ def run_akn_section_eval(
     rac_path: Path,
     mode: EvalMode = "repo-augmented",
     extra_context_paths: list[Path] | None = None,
+    allow_parent: bool = False,
 ) -> list[EvalResult]:
     """Run a deterministic comparison on one section extracted from AKN XML."""
+    resolved_section_eid = _resolve_akn_section_eid(
+        akn_file,
+        section_eid,
+        allow_parent=allow_parent,
+    )
     return run_source_eval(
         source_id=source_id,
-        source_text=extract_akn_section_text(akn_file, section_eid),
+        source_text=extract_akn_section_text(akn_file, resolved_section_eid),
         runner_specs=runner_specs,
         output_root=output_root,
         rac_path=rac_path,
