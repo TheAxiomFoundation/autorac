@@ -1756,6 +1756,26 @@ tests:
         tests = pipeline._extract_tests_from_rac_v2(content)
         assert isinstance(tests, list)
 
+    def test_v2_unwraps_single_person_inside_people_wrapper(self, pipeline):
+        content = """
+- name: base_case_other_case
+  period: 2025-07-07
+  input:
+    people:
+      child:
+        is_child_or_qualifying_young_person: true
+        child_benefit_other_case: true
+  output:
+    child_benefit_weekly_rate_other_case:
+      child: 17.25
+"""
+        tests = pipeline._extract_tests_from_rac_v2(content)
+        assert len(tests) == 1
+        assert tests[0]["inputs"] == {
+            "is_child_or_qualifying_young_person": True,
+            "child_benefit_other_case": True,
+        }
+
 
 # =========================================================================
 # _build_pe_situation
@@ -1880,6 +1900,7 @@ class TestGetPeVariableMap:
         assert mapping["child_benefit_reg2_1_a"] == "child_benefit_respective_amount"
         assert mapping["uk_child_benefit_other_child_weekly_rate"] == "child_benefit_respective_amount"
         assert mapping["child_benefit_reg2_1_b"] == "child_benefit_respective_amount"
+        assert mapping["child_benefit_weekly_rate_other_case"] == "child_benefit_respective_amount"
         assert mapping["standard_minimum_guarantee_couple_weekly_rate"] == "standard_minimum_guarantee"
         assert mapping["standard_minimum_guarantee_single_weekly_rate"] == "standard_minimum_guarantee"
 
@@ -2086,6 +2107,58 @@ class TestBuildPeScenarioScript:
         assert "else:" in script
         assert "val = float(monthly[target_index]) * 12 / 52" in script
 
+    def test_uk_child_benefit_other_case_false_targets_eldest_person(
+        self, pipeline
+    ):
+        script = pipeline._build_pe_scenario_script(
+            "child_benefit_respective_amount",
+            {
+                "child_benefit_other_case": False,
+                "period": "2025-04-07",
+            },
+            "2025",
+            0,
+            country="uk",
+            rac_var="child_benefit_weekly_rate_other_case",
+        )
+        assert "target_index = 0" in script
+
+    def test_uk_child_benefit_other_case_alias_uses_other_child_branch(
+        self, pipeline
+    ):
+        script = pipeline._build_pe_scenario_script(
+            "child_benefit_respective_amount",
+            {
+                "child_benefit_other_case": True,
+                "period": "2025-04-07",
+            },
+            "2025",
+            17.25,
+            country="uk",
+            rac_var="child_benefit_weekly_rate_other_case",
+        )
+        assert (
+            "if bool(eldest[target_index]):\n    val = 0.0\nelse:\n    val = float(monthly[target_index]) * 12 / 52"
+            in script
+        )
+
+    def test_uk_child_benefit_not_child_or_qyp_false_uses_adult_target(
+        self, pipeline
+    ):
+        script = pipeline._build_pe_scenario_script(
+            "child_benefit_respective_amount",
+            {
+                "is_child_or_qualifying_young_person": False,
+                "period": "2025-04-07",
+            },
+            "2025",
+            0,
+            country="uk",
+            rac_var="child_benefit_weekly_rate_other_case",
+        )
+        assert "'age': {2025: 20}" in script
+        assert "target_index = 0" in script
+
     def test_uk_pension_credit_couple_leaf_script_builds_couple_scenario(
         self, pipeline
     ):
@@ -2209,6 +2282,12 @@ class TestResolvePeVariable:
     def test_resolves_uk_child_benefit_reg2_1_b_alias(self, pipeline):
         assert (
             pipeline._resolve_pe_variable("uk", "child_benefit_reg2_1_b")
+            == "child_benefit_respective_amount"
+        )
+
+    def test_resolves_uk_child_benefit_other_case_alias(self, pipeline):
+        assert (
+            pipeline._resolve_pe_variable("uk", "child_benefit_weekly_rate_other_case")
             == "child_benefit_respective_amount"
         )
 

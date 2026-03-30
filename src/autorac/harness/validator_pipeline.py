@@ -1817,7 +1817,13 @@ print("BENCHMARK:" + json.dumps(result))
                 "benunit",
                 "benunits",
             }
-            return inner if wrapper_key in entity_wrappers else value
+            if wrapper_key not in entity_wrappers:
+                return value
+            if len(inner) == 1:
+                _, nested = next(iter(inner.items()))
+                if isinstance(nested, dict):
+                    return nested
+            return inner
 
         # Try full YAML parse first — handles .rac.test format cleanly
         try:
@@ -1983,6 +1989,7 @@ print("BENCHMARK:" + json.dumps(result))
                 "child_benefit_reg2_1_a": "child_benefit_respective_amount",
                 "uk_child_benefit_other_child_weekly_rate": "child_benefit_respective_amount",
                 "child_benefit_other_child_weekly_rate": "child_benefit_respective_amount",
+                "child_benefit_weekly_rate_other_case": "child_benefit_respective_amount",
                 "child_benefit_regulation_2_1_b_amount": "child_benefit_respective_amount",
                 "child_benefit_reg2_1_b": "child_benefit_respective_amount",
                 "standard_minimum_guarantee_couple_weekly_rate": "standard_minimum_guarantee",
@@ -2026,6 +2033,7 @@ print("BENCHMARK:" + json.dumps(result))
                 "child_benefit_regulation_2_1_a",
                 "child_benefit_reg2_1_a",
                 "child_benefit_other_child",
+                "other_case",
                 "child_benefit_regulation_2_1_b",
                 "child_benefit_reg2_1_b",
             )
@@ -2038,6 +2046,7 @@ print("BENCHMARK:" + json.dumps(result))
             marker in rac_var_lower
             for marker in (
                 "child_benefit_other_child",
+                "other_case",
                 "child_benefit_regulation_2_1_b",
                 "child_benefit_reg2_1_b",
             )
@@ -2382,6 +2391,26 @@ print(f'RESULT:{{val}}')
             ),
             True,
         )
+        other_case = next(
+            (
+                bool(value)
+                for key, value in lowered.items()
+                if "other_case" in key and value is not None
+            ),
+            None,
+        )
+        child_or_qyp = next(
+            (
+                bool(value)
+                for key, value in lowered.items()
+                if (
+                    "child_or_qualifying_young_person" in key
+                    or "child_or_qyp" in key
+                )
+                and value is not None
+            ),
+            True,
+        )
         age_order = next(
             (
                 int(value)
@@ -2391,7 +2420,12 @@ print(f'RESULT:{{val}}')
             None,
         )
 
-        if age_order is not None:
+        if not child_or_qyp:
+            people = f"{{'target': {{'age': {{{year}: 20}}}}}}"
+            benunit_members = "['target']"
+            household_members = "['target']"
+            target_index = 0
+        elif age_order is not None:
             if age_order <= 1:
                 people = f"{{'target': {{'age': {{{year}: 10}}}}}}"
                 benunit_members = "['target']"
@@ -2407,7 +2441,7 @@ print(f'RESULT:{{val}}')
             benunit_members = "['target']"
             household_members = "['target']"
             target_index = 0
-        elif elder_or_eldest:
+        elif elder_or_eldest or other_case is False:
             people = f"""{{'target': {{'age': {{{year}: 12}}}}, 'younger': {{'age': {{{year}: 11}}}}}}"""
             benunit_members = "['target', 'younger']"
             household_members = "['target', 'younger']"
