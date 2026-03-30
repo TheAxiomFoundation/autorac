@@ -169,6 +169,8 @@ class TestCriticalRulesInPrompts:
             output_path=Path("/tmp/test"),
         )
         assert "CROSS-STATUTE DEFINITIONS MUST BE IMPORTED" in prompt
+        assert "still emit the best import path" in prompt
+        assert "keep the helper local to this leaf" in prompt
 
     def test_subsection_prompt_requires_status_and_four_space_rac_format(
         self, cli_orchestrator
@@ -259,6 +261,8 @@ class TestCriticalRulesInPrompts:
             statute_text="Test text",
         )
         assert "CROSS-STATUTE DEFINITIONS MUST BE IMPORTED" in prompt
+        assert "still emit the best import path" in prompt
+        assert "keep the helper local to this leaf" in prompt
 
     def test_fallback_prompt_requires_status_and_four_space_rac_format(
         self, cli_orchestrator
@@ -517,7 +521,7 @@ class TestReviewContext:
     def test_run_reviews_parallel_inlines_file_context(
         self, openai_orchestrator, tmp_path, monkeypatch
     ):
-        from autorac.harness.orchestrator import AgentRun, Phase
+        from autorac.harness.orchestrator import AgentRun
 
         rac_file = tmp_path / "26" / "24" / "a" / "a.rac"
         rac_file.parent.mkdir(parents=True)
@@ -685,7 +689,7 @@ class TestAggregatorWaveInEncoding:
         self, cli_orchestrator, analysis_json, tmp_path, monkeypatch
     ):
         """Completed subsection runs should be logged before the whole encode finishes."""
-        from autorac.harness.orchestrator import AgentRun, Phase
+        from autorac.harness.orchestrator import AgentRun
 
         output_path = tmp_path / "26" / "21"
         output_path.mkdir(parents=True)
@@ -746,7 +750,7 @@ class TestAggregatorWaveInEncoding:
         self, cli_orchestrator, tmp_path, monkeypatch
     ):
         """A failed compile in wave 0 should stop dependent later waves."""
-        from autorac.harness.orchestrator import AgentRun, Phase
+        from autorac.harness.orchestrator import AgentRun
 
         analysis_json = """<!-- STRUCTURED_OUTPUT
 {"subsections": [
@@ -805,7 +809,7 @@ class TestAggregatorWaveInEncoding:
         self, cli_orchestrator, tmp_path, monkeypatch
     ):
         """A compile failure should trigger a focused repair attempt before aborting."""
-        from autorac.harness.orchestrator import AgentRun, Phase
+        from autorac.harness.orchestrator import AgentRun
 
         analysis_json = """<!-- STRUCTURED_OUTPUT
 {"subsections": [
@@ -939,7 +943,12 @@ class TestLogAgentRunNoTruncation:
 class TestProvenanceLogging:
     def test_log_agent_run_persists_assistant_message(self, cli_orchestrator):
         """Assistant responses should be logged as first-class session events."""
-        from autorac.harness.orchestrator import AgentMessage, AgentRun, Phase, TokenUsage
+        from autorac.harness.orchestrator import (
+            AgentMessage,
+            AgentRun,
+            Phase,
+            TokenUsage,
+        )
 
         agent_run = AgentRun(
             agent_type="encoder",

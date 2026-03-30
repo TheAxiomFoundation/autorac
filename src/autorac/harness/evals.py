@@ -1071,6 +1071,9 @@ Rules:
 - Any numeric literal in your output must appear in `./source.txt`, unless it is -1, 0, 1, 2, or 3.
 - Include the source text in a triple-quoted docstring.
 - Use RAC DSL conventions.
+- If `./source.txt` explicitly cites another section or source for a definition, emit the upstream import instead of restating the concept locally.
+- If that cited upstream file is absent from this workspace, still emit the unresolved import path; the external-stub workflow is expected to fill it in later.
+- If the source text only implies a shared concept, import an existing canonical concept only when one is actually present in the workspace; otherwise keep the helper local to this leaf.
 - Do not invent schema keys like `namespace:`, `parameter`, `variable`, or `rule:`.
 {schema_rules}{uk_guidance}
 - Prefer standard RAC blocks shaped like:

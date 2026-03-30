@@ -46,6 +46,8 @@ statute/26/32/c/2/A.rac  =  26 USC 32(c)(2)(A)
 - [ ] No simplifications beyond what rule says
 - [ ] Cross-references resolved correctly
 - [ ] If the source text says a term is defined in another section, this file imports that upstream definition instead of restating it locally
+- [ ] If that upstream file is not encoded yet, this file still emits the unresolved import so the stub can be created automatically
+- [ ] If the source text does not explicitly cite another source, local leaf helpers are acceptable unless a matching canonical nearby concept already exists
 - [ ] Uses built-in functions (`marginal_agg()`) where appropriate
 
 ### Parameterization
@@ -281,6 +283,8 @@ You audit how .rac files connect together - imports, exports, and the dependency
 - [ ] No circular dependencies
 - [ ] No missing files
 - [ ] Cross-statute definition references (e.g. "as defined in section 152(c)") are satisfied by imports from the cited section
+- [ ] Explicit cited sources are imported even when they currently resolve only to a stub
+- [ ] Purely implied shared concepts are imported only when a matching canonical concept already exists; otherwise leaf-local helpers are acceptable
 
 ### Parent-Child Integration
 - [ ] Parent files import from subdirectory files

@@ -807,6 +807,61 @@ qualifying_child_count:
 
         assert result.passed is True
 
+    def test_ci_adds_non_blocking_shared_concept_advisory(self, pipeline):
+        """CI emits advisory text when a nearby file already defines the same symbol."""
+        sibling = pipeline.rac_us_path / "26" / "24" / "b.rac"
+        sibling.parent.mkdir(parents=True, exist_ok=True)
+        sibling.write_text(
+            '''
+"""
+(b) Nearby sibling.
+"""
+
+status: encoded
+
+shared_eligibility_flag:
+    entity: TaxUnit
+    period: Year
+    dtype: Boolean
+'''
+        )
+
+        rac_file = pipeline.rac_us_path / "26" / "24" / "c.rac"
+        rac_file.write_text(
+            '''
+"""
+(c) Current subsection with an implied shared concept.
+"""
+
+status: encoded
+
+shared_eligibility_flag:
+    entity: TaxUnit
+    period: Year
+    dtype: Boolean
+'''
+        )
+
+        with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run:
+            mock_run.side_effect = [
+                Mock(
+                    stdout="============================================================\nTests: 0  Passed: 0  Failed: 0\nNo tests found.\n",
+                    stderr="",
+                    returncode=0,
+                ),
+                Mock(
+                    stdout="Checked 1 .rac files\n\nAll files pass validation\n",
+                    stderr="",
+                    returncode=0,
+                ),
+            ]
+            result = pipeline._run_ci(rac_file)
+
+        assert result.passed is True
+        assert result.raw_output is not None
+        assert "Shared concept advisory" in result.raw_output
+        assert "26/24/b#shared_eligibility_flag" in result.raw_output
+
     def test_infer_title_from_rac_path_uses_title_not_section(self, pipeline):
         rac_file = pipeline.rac_us_path / "26" / "21" / "b" / "1" / "A.rac"
         assert pipeline._infer_title_from_rac_path(rac_file) == "26"

@@ -174,6 +174,16 @@ another statute for a definition or eligibility condition, import that upstream
 definition or predicate. Do NOT restate it locally or invent a new leaf-local
 stand-in just because the current file needs the concept.
 
+If the cited upstream section is not encoded yet, still emit the best import path
+for the cited source. The orchestrator will create the upstream stub file from
+that unresolved import. Do NOT fall back to a local duplicate just because the
+upstream file is missing.
+
+If the source text does NOT explicitly cite another source, prefer an existing
+canonical nearby concept only when one already exists and clearly matches the
+semantics. Otherwise keep the helper local to this leaf instead of inventing a
+new stub or speculative import.
+
 ## RAC Format
 
 ```yaml

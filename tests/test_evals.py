@@ -17,8 +17,8 @@ from autorac.harness.evals import (
     extract_akn_section_text,
     parse_runner_spec,
     prepare_eval_workspace,
-    run_legislation_gov_uk_section_eval,
     run_akn_section_eval,
+    run_legislation_gov_uk_section_eval,
     run_source_eval,
     select_context_files,
 )
@@ -761,6 +761,31 @@ class TestEvalPrompt:
         assert "Do not add speculative future-period tests" in prompt
         assert "must vary a real legal condition" in prompt
         assert "must contain factual predicates or quantities, not the output variable" in prompt
+
+    def test_build_eval_prompt_includes_import_vs_local_helper_protocol(
+        self, tmp_path
+    ):
+        workspace = prepare_eval_workspace(
+            citation="26 USC 24(c)",
+            runner=parse_runner_spec("codex:gpt-5.4"),
+            output_root=tmp_path / "out",
+            source_text='The term "qualifying child" means a qualifying child as defined in section 152(c).',
+            rac_path=tmp_path / "rac",
+            mode="cold",
+            extra_context_paths=[],
+        )
+
+        prompt = _build_eval_prompt(
+            "26 USC 24(c)",
+            "cold",
+            workspace,
+            [],
+            target_file_name="24-c.rac",
+        )
+
+        assert "emit the upstream import instead of restating the concept locally" in prompt
+        assert "still emit the unresolved import path" in prompt
+        assert "otherwise keep the helper local to this leaf" in prompt
 
 
 class TestRepoAugmentedContext:

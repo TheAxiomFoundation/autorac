@@ -171,6 +171,21 @@ _DEFINITION_CROSS_REFERENCE_PATTERN = re.compile(
     r"section\s+([0-9A-Za-z.-]+(?:\([^)]+\))*)",
     re.IGNORECASE,
 )
+_DEFINED_SYMBOL_METADATA_KEYS = {
+    "imports",
+    "status",
+    "description",
+    "label",
+    "entity",
+    "period",
+    "dtype",
+    "unit",
+    "indexed_by",
+    "tests",
+    "default",
+    "stub_for",
+    "skip_reason",
+}
 
 
 def extract_grounding_values(content: str) -> list[tuple[int, str, float]]:
@@ -741,6 +756,10 @@ class ValidatorPipeline:
         except Exception as e:
             issues.append(f"Cross-reference import check exception: {e}")
 
+        advisories: list[str] = []
+        with contextlib.suppress(Exception):
+            advisories = self._build_import_advisories(rac_file)
+
         duration = int((time.time() - start) * 1000)
 
         return ValidationResult(
@@ -749,6 +768,7 @@ class ValidatorPipeline:
             issues=issues,
             duration_ms=duration,
             error=issues[0] if issues else None,
+            raw_output="\n".join(advisories) if advisories else None,
         )
 
     def _copy_validation_import_closure(
@@ -841,6 +861,19 @@ class ValidatorPipeline:
             return Path(normalized)
         return Path(f"{normalized}.rac")
 
+    def _extract_defined_symbols(self, content: str) -> list[str]:
+        """Extract top-level RAC definition names."""
+        definitions: list[str] = []
+        for line in content.splitlines():
+            match = re.match(r"^([A-Za-z_]\w*):\s*$", line)
+            if not match:
+                continue
+            name = match.group(1)
+            if name in _DEFINED_SYMBOL_METADATA_KEYS:
+                continue
+            definitions.append(name)
+        return definitions
+
     def _check_cross_statute_definition_imports(self, rac_file: Path) -> list[str]:
         """Flag missing imports for explicit cross-statute definition references."""
         if rac_file.stem == rac_file.parent.name:
@@ -871,6 +904,64 @@ class ValidatorPipeline:
                 f"from {import_path}"
             )
         return issues
+
+    def _build_import_advisories(self, rac_file: Path) -> list[str]:
+        """Return non-blocking advice about likely shared concepts."""
+        content = rac_file.read_text()
+        definitions = self._extract_defined_symbols(content)
+        if not definitions:
+            return []
+
+        source_root = self._validation_source_root(rac_file)
+        search_root = self._candidate_concept_search_root(rac_file, source_root)
+        if not search_root.exists():
+            return []
+
+        imports = set(self._extract_import_paths(content))
+        advisories: list[str] = []
+        seen: set[tuple[str, str]] = set()
+
+        for candidate_file in search_root.rglob("*.rac"):
+            if candidate_file.resolve() == rac_file.resolve():
+                continue
+            candidate_defs = set(
+                self._extract_defined_symbols(candidate_file.read_text())
+            )
+            overlap = sorted(set(definitions) & candidate_defs)
+            if not overlap:
+                continue
+            import_base = self._relative_import_base(candidate_file, source_root)
+            if not import_base or import_base in imports:
+                continue
+            for name in overlap:
+                key = (name, import_base)
+                if key in seen:
+                    continue
+                seen.add(key)
+                advisories.append(
+                    "Shared concept advisory: "
+                    f"`{name}` is also defined in `{import_base}#{name}`. "
+                    "If the semantics match, prefer importing or re-exporting that "
+                    "canonical concept instead of duplicating it locally."
+                )
+        return advisories
+
+    def _candidate_concept_search_root(self, rac_file: Path, source_root: Path) -> Path:
+        """Choose a nearby subtree for conservative shared-concept advisories."""
+        with contextlib.suppress(ValueError):
+            relative = rac_file.resolve().relative_to(source_root.resolve())
+            if len(relative.parts) >= 2:
+                return source_root / relative.parts[0] / relative.parts[1]
+        return rac_file.parent
+
+    def _relative_import_base(
+        self, candidate_file: Path, source_root: Path
+    ) -> str | None:
+        """Convert a RAC file path to an import base without the symbol suffix."""
+        with contextlib.suppress(ValueError):
+            relative = candidate_file.resolve().relative_to(source_root.resolve())
+            return str(relative.with_suffix("")).replace(os.sep, "/")
+        return None
 
     def _extract_definition_cross_references(
         self, source_text: str, title: str

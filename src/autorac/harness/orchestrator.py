@@ -1237,7 +1237,7 @@ Output path: {output_path}
 5. **WRITE TESTS** - Write 3-5 test cases in a companion `.rac.test` file next to your `.rac` file. Tests should cover the main computation, edge cases (zero values, thresholds), and boundary conditions.
 6. **PARENT IMPORTS FROM CHILDREN** - Parent files MUST import from their children using `from ./{{child}}` — NEVER re-define parameters or formulas that exist in child files. Parents are aggregators/routers only.
 7. **INDEXED_BY FOR INFLATION** - For parameters subject to inflation/COLA adjustments (e.g., dollar thresholds in 26 USC 1(f)), include `indexed_by: <index_variable>` in the parameter definition.
-8. **CROSS-STATUTE DEFINITIONS MUST BE IMPORTED** - If the source text says a term is defined in another section, or relies on another section's definition/eligibility rule, import that upstream definition or predicate. Do NOT restate it locally or invent a leaf-local stand-in.
+8. **CROSS-STATUTE DEFINITIONS MUST BE IMPORTED** - If the source text says a term is defined in another section, or relies on another section's definition/eligibility rule, import that upstream definition or predicate. Do NOT restate it locally or invent a leaf-local stand-in. If the cited upstream file is missing, still emit the best import path so the external-stub workflow can create it. If the source text only implies a shared concept, import an existing canonical nearby concept only when one already exists; otherwise keep the helper local to this leaf.
 
 {output_instructions}
 {DSL_CHEATSHEET}
@@ -1562,7 +1562,11 @@ Output path: {output_path}
             "8. **CROSS-STATUTE DEFINITIONS MUST BE IMPORTED** - If the source "
             "text says a term is defined in another section, or relies on another "
             "section's definition/eligibility rule, import that upstream definition "
-            "or predicate. Do NOT restate it locally or invent a leaf-local stand-in.",
+            "or predicate. Do NOT restate it locally or invent a leaf-local stand-in. "
+            "If the cited upstream file is missing, still emit the best import path "
+            "so the external-stub workflow can create it. If the source text only "
+            "implies a shared concept, import an existing canonical nearby concept "
+            "only when one already exists; otherwise keep the helper local to this leaf.",
             "",
             (
                 "Write the .rac file to the output path. Run `python -m rac.test_runner <file>` after writing."
