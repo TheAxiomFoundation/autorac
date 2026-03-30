@@ -2102,6 +2102,8 @@ print("BENCHMARK:" + json.dumps(result))
         rac_var_lower = rac_var.lower()
         if "scottish_child_payment" not in rac_var_lower:
             return False
+        if rac_var_lower == "scottish_child_payment":
+            return True
         if any(
             marker in rac_var_lower
             for marker in ("_applies", "eligible", "would_claim", "qualifying")
@@ -2477,6 +2479,7 @@ print(f'RESULT:{{val}}')
                     if (
                         "eligible_child" in str(key).lower()
                         or "is_child" in str(key).lower()
+                        or "qualifying_child" in str(key).lower()
                     )
                     and value is not None
                 ),

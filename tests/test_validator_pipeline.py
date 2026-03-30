@@ -2251,6 +2251,22 @@ class TestBuildPeScenarioScript:
         assert "annual = sim.calculate('scottish_child_payment', int('2025'))" in script
         assert "val = float(annual[0]) / 52" in script
 
+    def test_uk_scottish_child_payment_qualifying_child_false_uses_ineligible_age(
+        self, pipeline
+    ):
+        script = pipeline._build_pe_scenario_script(
+            "scottish_child_payment",
+            {
+                "is_qualifying_child_for_scottish_child_payment": False,
+                "period": "2025-07-07",
+            },
+            "2025",
+            0,
+            country="uk",
+            rac_var="scottish_child_payment_weekly_value",
+        )
+        assert "'age': {2025: 17}" in script
+
 
 class TestIsPeTestMappable:
     def test_uk_child_benefit_paragraph_exception_true_is_unmappable(self, pipeline):
@@ -2394,6 +2410,12 @@ class TestResolvePeVariable:
     def test_resolves_uk_scottish_child_payment_weekly_rate(self, pipeline):
         assert (
             pipeline._resolve_pe_variable("uk", "scottish_child_payment_weekly_rate")
+            == "scottish_child_payment"
+        )
+
+    def test_resolves_uk_scottish_child_payment_exact_name(self, pipeline):
+        assert (
+            pipeline._resolve_pe_variable("uk", "scottish_child_payment")
             == "scottish_child_payment"
         )
 
