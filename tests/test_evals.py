@@ -2021,6 +2021,42 @@ class TestSourceEval:
 
         assert "uc_standard_allowance_single_claimant_aged_under_25" in prompt
 
+    def test_build_eval_prompt_single_amount_slice_disallows_speculative_future_tests(
+        self, tmp_path
+    ):
+        runner = parse_runner_spec("openai:gpt-5.4")
+        workspace = prepare_eval_workspace(
+            citation="uksi/2002/2005/schedule/2",
+            runner=runner,
+            output_root=tmp_path / "out",
+            source_text=(
+                "Editorial note: current text valid from 2025-04-06.\n\n"
+                "Structured table:\n"
+                "Relevant element | Maximum annual rate\n"
+                "Severe disability element | £1734\n"
+            ),
+            rac_path=tmp_path / "rac",
+            mode="cold",
+            extra_context_paths=[],
+        )
+
+        prompt = _build_eval_prompt(
+            "uksi/2002/2005/schedule/2",
+            "cold",
+            workspace,
+            [],
+            target_file_name="example.rac",
+            include_tests=True,
+            runner_backend="openai",
+        )
+
+        assert "base case plus an effective-date boundary is sufficient" in prompt
+        assert (
+            "Add a later same-amount case only when `./source.txt` explicitly says the amount remains unchanged through that later date."
+            in prompt
+        )
+        assert "Do not add speculative future-period tests" in prompt
+
     def test_allows_relative_workspace_reads(self, tmp_path):
         (tmp_path / "source.txt").write_text("text\n")
         command = "bash -lc 'cat ./source.txt && sed -n \"1,40p\" context/26/24/b.rac'"

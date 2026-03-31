@@ -1730,8 +1730,9 @@ Available precedent files:
 <raw .rac content>
 === FILE: {test_file_name} ===
 <raw .rac.test YAML>
-- The `.rac.test` file must contain 3-5 cases covering a base case, a boundary case, and one alternate branch.
-- The alternate branch must vary a real legal condition from the source text, not just reuse the same branch on another date.
+- The `.rac.test` file must contain 2-4 cases.
+- For a single fixed-amount source slice, a base case plus an effective-date boundary is sufficient.
+- Add an alternate branch only when `./source.txt` states another grounded branch condition or amount.
 - Test inputs must contain factual predicates or quantities, not the output variable being asserted.
 - Use `output:` mappings in `.rac.test` cases, not `expect:` blocks.
 - The `.rac.test` file must contain YAML only, with no trailing notes or prose.
@@ -1775,7 +1776,9 @@ Available precedent files:
 - Do not invent sample ages like `2`, `3`, `24`, or `25` just to witness a row condition; if the row says "aged under 25", prefer a helper like `claimant_aged_under_25`.
 - For a one-row fixed-amount slice with a single canonical subject, keep `.rac.test` outputs scalar instead of nested wrappers like `{person: 1, value: ...}`.
 - For a one-row fixed-amount slice, every `.rac.test` case should keep the row-defining conditions satisfied; do not negate them in alternate tests unless `./source.txt` states another grounded amount for that alternate branch.
-- For a one-row fixed-amount slice, the allowed `.rac.test` shapes are base case, effective-date boundary, and later same-amount case. Do not include `alternate_branch_*` tests unless `./source.txt` states a second grounded amount.
+- For a one-row fixed-amount slice, the allowed `.rac.test` shapes are base case and effective-date boundary.
+- Add a later same-amount case only when `./source.txt` explicitly says the amount remains unchanged through that later date.
+- Do not include `alternate_branch_*` tests unless `./source.txt` states a second grounded amount.
 - Do not use thousands separators in RAC numeric literals or `.rac.test` outputs; write `2500`, not `2,500`.
 """
     target_hint_guidance = ""
