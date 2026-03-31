@@ -7,6 +7,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -2124,13 +2125,34 @@ def _run_codex_prompt_eval(
     ]
 
     start = time.time()
-    result = subprocess.run(
-        cmd,
-        capture_output=True,
-        text=True,
-        cwd=workspace.root,
-        timeout=600,
-    )
+    terminated_after_output = False
+    with tempfile.NamedTemporaryFile(mode="w+", delete=False) as stdout_file, tempfile.NamedTemporaryFile(
+        mode="w+", delete=False
+    ) as stderr_file:
+        stdout_path = Path(stdout_file.name)
+        stderr_path = Path(stderr_file.name)
+        process = subprocess.Popen(
+            cmd,
+            stdout=stdout_file,
+            stderr=stderr_file,
+            text=True,
+            cwd=workspace.root,
+        )
+        try:
+            terminated_after_output = _wait_for_codex_process(
+                process,
+                last_message_file=last_message_file,
+                timeout=600,
+            )
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+            raise
+
+    stdout_text = stdout_path.read_text()
+    stderr_text = stderr_path.read_text()
+    stdout_path.unlink(missing_ok=True)
+    stderr_path.unlink(missing_ok=True)
     duration_ms = int((time.time() - start) * 1000)
 
     events: list[dict] = []
@@ -2139,7 +2161,7 @@ def _run_codex_prompt_eval(
     unexpected_accesses: list[str] = []
     error = None
 
-    for line in (result.stdout + result.stderr).splitlines():
+    for line in (stdout_text + stderr_text).splitlines():
         stripped = line.strip()
         if not stripped:
             continue
@@ -2176,14 +2198,16 @@ def _run_codex_prompt_eval(
             ),
         )
 
-    if result.returncode != 0 and not error:
-        error = (result.stdout + result.stderr).strip() or "Codex eval failed"
-
     final_text = "\n".join(assistant_messages).strip()
     if last_message_file.exists():
         file_text = last_message_file.read_text().strip()
         if file_text:
             final_text = file_text
+
+    if process.returncode != 0 and not error and not (
+        terminated_after_output and final_text
+    ):
+        error = (stdout_text + stderr_text).strip() or "Codex eval failed"
 
     return EvalPromptResponse(
         text=final_text,
@@ -2199,6 +2223,53 @@ def _run_codex_prompt_eval(
         unexpected_accesses=unexpected_accesses,
         error=error,
     )
+
+
+def _wait_for_codex_process(
+    process: subprocess.Popen[str],
+    last_message_file: Path,
+    timeout: int,
+    *,
+    settle_seconds: float = 5.0,
+    poll_interval: float = 0.5,
+) -> bool:
+    """Wait for Codex CLI, terminating it once the last message file is stable."""
+    start = time.time()
+    last_snapshot: tuple[int, int] | None = None
+    stable_since: float | None = None
+
+    while True:
+        if process.poll() is not None:
+            return False
+
+        if time.time() - start > timeout:
+            raise subprocess.TimeoutExpired(process.args, timeout)
+
+        if last_message_file.exists():
+            try:
+                text = last_message_file.read_text().strip()
+                stat = last_message_file.stat()
+            except OSError:
+                text = ""
+                stat = None
+
+            if text and stat is not None:
+                snapshot = (stat.st_size, stat.st_mtime_ns)
+                if snapshot == last_snapshot:
+                    stable_since = stable_since or time.time()
+                    if time.time() - stable_since >= settle_seconds:
+                        process.terminate()
+                        try:
+                            process.wait(timeout=5)
+                        except subprocess.TimeoutExpired:
+                            process.kill()
+                            process.wait()
+                        return True
+                else:
+                    last_snapshot = snapshot
+                    stable_since = None
+
+        time.sleep(poll_interval)
 
 
 def _extract_openai_response_text(payload: dict) -> str:

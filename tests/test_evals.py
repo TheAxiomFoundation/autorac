@@ -20,6 +20,8 @@ from autorac.harness.evals import (
     _normalize_legislation_gov_uk_source_ref,
     _post_openai_eval_request,
     _resolve_akn_section_eid,
+    _run_codex_prompt_eval,
+    _wait_for_codex_process,
     evaluate_artifact,
     extract_akn_section_text,
     load_eval_suite_manifest,
@@ -53,6 +55,117 @@ class TestParseRunnerSpec:
         assert runner.name == "openai-gpt-5.4"
         assert runner.backend == "openai"
         assert runner.model == "gpt-5.4"
+
+
+class TestCodexPromptEval:
+    def test_wait_for_codex_process_terminates_after_stable_last_message(self, tmp_path):
+        last_message = tmp_path / ".codex-last-message.txt"
+        last_message.write_text("ready\n")
+
+        class FakeProcess:
+            def __init__(self):
+                self.args = ["codex", "exec"]
+                self.returncode = None
+                self.terminated = False
+
+            def poll(self):
+                return self.returncode
+
+            def terminate(self):
+                self.terminated = True
+                self.returncode = -15
+
+            def wait(self, timeout=None):
+                return self.returncode
+
+            def kill(self):
+                self.returncode = -9
+
+        process = FakeProcess()
+        terminated = _wait_for_codex_process(
+            process,
+            last_message,
+            timeout=1,
+            settle_seconds=0,
+            poll_interval=0,
+        )
+
+        assert terminated is True
+        assert process.terminated is True
+
+    def test_run_codex_prompt_eval_accepts_stable_last_message_on_termination(self, tmp_path):
+        runner = parse_runner_spec("codex:gpt-5.4")
+        workspace = prepare_eval_workspace(
+            citation="uksi/2002/1792/regulation/6/3/a",
+            runner=runner,
+            output_root=tmp_path / "out",
+            source_text="nil amount",
+            rac_path=tmp_path / "rac",
+            mode="cold",
+            extra_context_paths=[],
+        )
+
+        bundle = (
+            "=== FILE: example.rac ===\n"
+            "status: encoded\n"
+        )
+        event_lines = "\n".join(
+            [
+                json.dumps(
+                    {
+                        "type": "item.completed",
+                        "item": {"type": "agent_message", "text": "fallback"},
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "turn.completed",
+                        "usage": {
+                            "input_tokens": 10,
+                            "output_tokens": 4,
+                            "cached_input_tokens": 0,
+                        },
+                    }
+                ),
+            ]
+        )
+
+        class FakePopen:
+            def __init__(self, cmd, stdout, stderr, text, cwd):
+                self.args = cmd
+                self.returncode = None
+                Path(cwd, ".codex-last-message.txt").write_text(bundle)
+                stdout.write(event_lines + "\n")
+                stdout.flush()
+
+            def poll(self):
+                return self.returncode
+
+            def terminate(self):
+                self.returncode = -15
+
+            def wait(self, timeout=None):
+                return self.returncode
+
+            def kill(self):
+                self.returncode = -9
+
+        def fake_wait(process, last_message_file, timeout, settle_seconds=5.0, poll_interval=0.5):
+            process.terminate()
+            process.wait()
+            return True
+
+        with patch("autorac.harness.evals.subprocess.Popen", FakePopen), patch(
+            "autorac.harness.evals._wait_for_codex_process",
+            side_effect=fake_wait,
+        ):
+            response = _run_codex_prompt_eval(runner, workspace, "prompt")
+
+        assert response.error is None
+        assert response.text == bundle.strip()
+        assert response.tokens is not None
+        assert response.tokens.input_tokens == 10
+        assert response.tokens.output_tokens == 4
 
 
 class TestEvaluateArtifact:
