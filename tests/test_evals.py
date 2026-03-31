@@ -1,6 +1,7 @@
 """Tests for model comparison eval helpers."""
 
 import json
+import subprocess
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -167,6 +168,50 @@ class TestCodexPromptEval:
         assert response.tokens.input_tokens == 10
         assert response.tokens.output_tokens == 4
 
+    def test_run_codex_prompt_eval_salvages_last_message_on_timeout(self, tmp_path):
+        runner = parse_runner_spec("codex:gpt-5.4")
+        workspace = prepare_eval_workspace(
+            citation="uksi/2002/1792/schedule/VI/paragraph/4A/1",
+            runner=runner,
+            output_root=tmp_path / "out",
+            source_text="maximum disregard",
+            rac_path=tmp_path / "rac",
+            mode="cold",
+            extra_context_paths=[],
+        )
+
+        bundle = (
+            "=== FILE: example.rac ===\n"
+            "status: encoded\n"
+        )
+
+        class FakePopen:
+            def __init__(self, cmd, stdout, stderr, text, cwd):
+                self.args = cmd
+                self.returncode = None
+                Path(cwd, ".codex-last-message.txt").write_text(bundle)
+
+            def poll(self):
+                return self.returncode
+
+            def terminate(self):
+                self.returncode = -15
+
+            def wait(self, timeout=None):
+                return self.returncode
+
+            def kill(self):
+                self.returncode = -9
+
+        with patch("autorac.harness.evals.subprocess.Popen", FakePopen), patch(
+            "autorac.harness.evals._wait_for_codex_process",
+            side_effect=subprocess.TimeoutExpired(cmd=["codex", "exec"], timeout=600),
+        ):
+            response = _run_codex_prompt_eval(runner, workspace, "prompt")
+
+        assert response.error is None
+        assert response.text == bundle.strip()
+
 
 class TestEvaluateArtifact:
     def test_uses_fallback_source_text_for_grounding(self, tmp_path):
@@ -238,6 +283,44 @@ class TestGeneratedBundleCleaning:
 
         assert "26.05 GBP" not in cleaned
         assert "26.05" in cleaned
+
+    def test_materialize_eval_artifact_normalizes_arithmetic_single_amount_rows(
+        self, tmp_path
+    ):
+        response = (
+            "=== FILE: example.rac ===\n"
+            '"""\n£22,020 for joint claimants not resident in Greater London.\n"""\n\n'
+            "benefit_cap_amount:\n"
+            "    entity: Family\n"
+            "    period: Day\n"
+            "    dtype: Money\n"
+            "    unit: GBP\n"
+            "    from 2025-03-21:\n"
+            "        if is_joint_claimant and not resident_in_greater_london: 2025 * (7 + 3 + 1) - 21 * (7 + 3 + 2) - 3 else: 0\n"
+            "=== FILE: example.rac.test ===\n"
+            "- name: base\n"
+            "  period: 2025-03-21\n"
+            "  input:\n"
+            "    is_joint_claimant: true\n"
+            "    resident_in_greater_london: false\n"
+            "  output:\n"
+            "    benefit_cap_amount: 22020\n"
+        )
+        expected = tmp_path / "source" / "example.rac"
+
+        wrote = _materialize_eval_artifact(
+            response,
+            expected,
+            source_text=(
+                "Editorial note: current text valid from 2025-03-21.\n\n"
+                "£22,020 for joint claimants not resident in Greater London.\n"
+            ),
+        )
+
+        assert wrote is True
+        content = expected.read_text()
+        assert "2025 * (7 + 3 + 1)" not in content
+        assert "from 2025-03-21: 22020" in content
 
     def test_materialize_eval_artifact_cleans_bundled_fences(self, tmp_path):
         output_file = tmp_path / "source" / "uksi-2006-965-regulation-2.rac"

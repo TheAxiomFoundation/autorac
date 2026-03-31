@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import json
 import os
 import re
@@ -1774,6 +1775,7 @@ Available precedent files:
 - For a one-row fixed-amount slice, Do not emit stray blocks like `from 0:`.
 - For a one-row fixed-amount slice, use exactly one grounded `from YYYY-MM-DD:` clause unless `./source.txt` itself states multiple grounded dates or amounts.
 - For a one-row fixed-amount slice, the principal amount variable should usually be a grounded constant under `from YYYY-MM-DD:`; do not wrap it in a conditional formula unless `./source.txt` itself states a second grounded amount or branch inside the same row.
+- For a one-row fixed-amount slice, do not disguise the grounded amount as arithmetic like `2025 * 11 - 255`; emit the grounded constant directly.
 - In `.rac.test` for a one-row fixed-amount slice, use boolean or fact-shaped helper inputs that mirror the row text.
 - Do not invent sample ages like `2`, `3`, `24`, or `25` just to witness a row condition; if the row says "aged under 25", prefer a helper like `claimant_aged_under_25`.
 - For a one-row fixed-amount slice with a single canonical subject, keep `.rac.test` outputs scalar instead of nested wrappers like `{person: 1, value: ...}`.
@@ -1832,12 +1834,23 @@ Rules:
 def _is_single_amount_table_slice(source_text: str) -> bool:
     """Return True when source text is a single amount-bearing table row slice."""
     marker = "Structured table:"
-    if marker not in source_text:
+    if marker in source_text:
+        table_section = source_text.split(marker, 1)[1]
+        lines = [line.strip() for line in table_section.splitlines() if line.strip()]
+        amount_rows = [line for line in lines if "|" in line and re.search(r"\d", line)]
+        if len(amount_rows) == 1:
+            return True
+
+    money_matches = re.findall(r"[£$€]\s*\d[\d,]*(?:\.\d+)?", source_text)
+    if len(money_matches) != 1:
         return False
-    table_section = source_text.split(marker, 1)[1]
-    lines = [line.strip() for line in table_section.splitlines() if line.strip()]
-    amount_rows = [line for line in lines if "|" in line and re.search(r"\d", line)]
-    return len(amount_rows) == 1
+
+    money_lines = [
+        line.strip()
+        for line in source_text.splitlines()
+        if re.search(r"[£$€]\s*\d[\d,]*(?:\.\d+)?", line)
+    ]
+    return len(money_lines) == 1
 
 
 def _format_inline_context_snippets(
@@ -2126,6 +2139,7 @@ def _run_codex_prompt_eval(
 
     start = time.time()
     terminated_after_output = False
+    timed_out = False
     with tempfile.NamedTemporaryFile(mode="w+", delete=False) as stdout_file, tempfile.NamedTemporaryFile(
         mode="w+", delete=False
     ) as stderr_file:
@@ -2145,9 +2159,9 @@ def _run_codex_prompt_eval(
                 timeout=600,
             )
         except subprocess.TimeoutExpired:
+            timed_out = True
             process.kill()
             process.wait()
-            raise
 
     stdout_text = stdout_path.read_text()
     stderr_text = stderr_path.read_text()
@@ -2204,8 +2218,11 @@ def _run_codex_prompt_eval(
         if file_text:
             final_text = file_text
 
+    if timed_out and not error and not final_text:
+        error = "Codex eval timed out"
+
     if process.returncode != 0 and not error and not (
-        terminated_after_output and final_text
+        (terminated_after_output and final_text) or (timed_out and final_text)
     ):
         error = (stdout_text + stderr_text).strip() or "Codex eval failed"
 
@@ -2553,8 +2570,12 @@ def _normalize_single_amount_row_rac_content(content: str) -> str:
     """Collapse one-row conditional encodings into grounded constants."""
     normalized = _normalize_rac_code_numeric_literals(content)
     normalized = re.sub(
-        r"(^\s*from\s+\d{4}-\d{2}-\d{2}:\s*)if\b.+?:\s*(-?\d+(?:\.\d+)?)\s*(?:else:\s*0(?:\.0+)?)?\s*$",
-        lambda match: f"{match.group(1)}{match.group(2)}",
+        r"(^\s*from\s+\d{4}-\d{2}-\d{2}:\s*)if\b.+?:\s*(.+?)\s*(?:else:\s*0(?:\.0+)?)?\s*$",
+        lambda match: (
+            f"{match.group(1)}{formatted}"
+            if (formatted := _format_safe_numeric_expression(match.group(2))) is not None
+            else match.group(0)
+        ),
         normalized,
         flags=re.MULTILINE,
     )
@@ -2570,17 +2591,63 @@ def _normalize_single_amount_row_rac_content(content: str) -> str:
             and index + 1 < len(lines)
             and (
                 cond_match := re.match(
-                    r"^\s*(?:if\b.+?:\s*)?(-?\d+(?:\.\d+)?)\s*(?:else:\s*0(?:\.0+)?)?\s*$",
+                    r"^\s*(?:if\b.+?:\s*)?(.+?)\s*(?:else:\s*0(?:\.0+)?)?\s*$",
                     lines[index + 1],
                 )
             )
         ):
-            rewritten.append(f"{from_match.group(1)} {cond_match.group(1)}")
-            index += 2
-            continue
+            if (
+                formatted := _format_safe_numeric_expression(cond_match.group(1))
+            ) is not None:
+                rewritten.append(f"{from_match.group(1)} {formatted}")
+                index += 2
+                continue
         rewritten.append(line)
         index += 1
     return "\n".join(rewritten) + ("\n" if normalized.endswith("\n") else "")
+
+
+def _format_safe_numeric_expression(expression: str) -> str | None:
+    """Evaluate a numeric literal or simple arithmetic expression safely."""
+    try:
+        value = _evaluate_safe_numeric_expression(expression.strip())
+    except ValueError:
+        return None
+
+    if float(value).is_integer():
+        return str(int(value))
+    return format(value, "g")
+
+
+def _evaluate_safe_numeric_expression(expression: str) -> float:
+    """Return the numeric value of a simple arithmetic expression."""
+    node = ast.parse(expression, mode="eval")
+
+    def visit(current: ast.AST) -> float:
+        if isinstance(current, ast.Expression):
+            return visit(current.body)
+        if isinstance(current, ast.Constant) and isinstance(current.value, (int, float)):
+            return float(current.value)
+        if isinstance(current, ast.UnaryOp) and isinstance(
+            current.op, (ast.UAdd, ast.USub)
+        ):
+            operand = visit(current.operand)
+            return operand if isinstance(current.op, ast.UAdd) else -operand
+        if isinstance(current, ast.BinOp) and isinstance(
+            current.op, (ast.Add, ast.Sub, ast.Mult, ast.Div)
+        ):
+            left = visit(current.left)
+            right = visit(current.right)
+            if isinstance(current.op, ast.Add):
+                return left + right
+            if isinstance(current.op, ast.Sub):
+                return left - right
+            if isinstance(current.op, ast.Mult):
+                return left * right
+            return left / right
+        raise ValueError(f"Unsupported numeric expression: {expression}")
+
+    return visit(node)
 
 
 def _normalize_single_amount_row_test_content(
