@@ -1730,8 +1730,9 @@ Available precedent files:
 <raw .rac content>
 === FILE: {test_file_name} ===
 <raw .rac.test YAML>
-- The `.rac.test` file must contain 2-4 cases.
-- For a single fixed-amount source slice, a base case plus an effective-date boundary is sufficient.
+- The `.rac.test` file must contain 1-4 cases.
+- For a single fixed-amount source slice, a base case is sufficient.
+- Add an effective-date boundary only when the period supports a meaningful point-in-time boundary.
 - Add an alternate branch only when `./source.txt` states another grounded branch condition or amount.
 - Test inputs must contain factual predicates or quantities, not the output variable being asserted.
 - Use `output:` mappings in `.rac.test` cases, not `expect:` blocks.
@@ -1766,7 +1767,7 @@ Available precedent files:
 - `./source.txt` is already a single table row or atomic branch with one grounded amount. Encode that branch-specific amount directly.
 - Use a descriptive legal variable name, not a path- or source-id-derived placeholder like `uksi_2013_...`.
 - For a one-row fixed-amount slice, do not invent a fresh `*_applies` helper or unrelated eligibility booleans unless the source text itself states them.
-- For a one-row fixed-amount slice, do not invent alternate zero-amount tests; prefer a base case and an effective-date boundary using the same grounded amount.
+- For a one-row fixed-amount slice, do not invent alternate zero-amount tests.
 - For a one-row fixed-amount slice, Do not emit `otherwise:`.
 - For a one-row fixed-amount slice, Do not emit `before YYYY-MM-DD: 0`.
 - For a one-row fixed-amount slice, Do not emit stray blocks like `from 0:`.
@@ -1776,7 +1777,8 @@ Available precedent files:
 - Do not invent sample ages like `2`, `3`, `24`, or `25` just to witness a row condition; if the row says "aged under 25", prefer a helper like `claimant_aged_under_25`.
 - For a one-row fixed-amount slice with a single canonical subject, keep `.rac.test` outputs scalar instead of nested wrappers like `{person: 1, value: ...}`.
 - For a one-row fixed-amount slice, every `.rac.test` case should keep the row-defining conditions satisfied; do not negate them in alternate tests unless `./source.txt` states another grounded amount for that alternate branch.
-- For a one-row fixed-amount slice, the allowed `.rac.test` shapes are base case and effective-date boundary.
+- For a one-row fixed-amount slice with `period: Year`, a base case is sufficient; do not synthesize an `effective_date_boundary` test.
+- For a one-row fixed-amount slice with non-annual periods, the allowed `.rac.test` shapes are base case and effective-date boundary.
 - Add a later same-amount case only when `./source.txt` explicitly says the amount remains unchanged through that later date.
 - Do not include `alternate_branch_*` tests unless `./source.txt` states a second grounded amount.
 - Do not use thousands separators in RAC numeric literals or `.rac.test` outputs; write `2500`, not `2,500`.
@@ -2494,7 +2496,10 @@ def _normalize_single_amount_row_rac_content(content: str) -> str:
     return "\n".join(rewritten) + ("\n" if normalized.endswith("\n") else "")
 
 
-def _normalize_single_amount_row_test_content(content: str) -> str:
+def _normalize_single_amount_row_test_content(
+    content: str,
+    rac_content: str | None = None,
+) -> str:
     """Drop alternate-branch tests for one-row fixed-amount slices."""
     normalized = _normalize_comma_numeric_literals(content)
     try:
@@ -2505,10 +2510,19 @@ def _normalize_single_amount_row_test_content(content: str) -> str:
     if payload is None:
         return normalized
 
+    annual_period = bool(
+        rac_content and re.search(r"^\s*period:\s*Year\s*$", rac_content, flags=re.MULTILINE)
+    )
+
     def should_keep(case_name: str | None) -> bool:
         if not case_name:
             return True
-        return "alternate" not in case_name.lower()
+        lowered = case_name.lower()
+        if "alternate" in lowered:
+            return False
+        if annual_period and "effective_date_boundary" in lowered:
+            return False
+        return True
 
     def normalize_case(case: object) -> object:
         if not isinstance(case, dict):
@@ -2577,7 +2591,10 @@ def _materialize_eval_artifact(
                 if target_path == expected_path:
                     content = _normalize_single_amount_row_rac_content(content)
                 elif target_path == expected_test_path:
-                    content = _normalize_single_amount_row_test_content(content)
+                    content = _normalize_single_amount_row_test_content(
+                        content,
+                        rac_content=bundle.get(expected_path.name),
+                    )
             target_path.parent.mkdir(parents=True, exist_ok=True)
             target_path.write_text(content)
             if target_path == expected_path:

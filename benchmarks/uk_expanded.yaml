@@ -3,7 +3,7 @@ runners:
   - openai:gpt-5.4
 mode: cold
 gates:
-  min_cases: 22
+  min_cases: 25
   min_success_rate: 0.9
   min_compile_pass_rate: 0.9
   min_ci_pass_rate: 0.9
@@ -164,3 +164,27 @@ cases:
     oracle: policyengine
     policyengine_country: uk
     policyengine_rac_var_hint: wtc_lone_parent_element_amount
+
+  - kind: source
+    name: wtc-worker-element
+    source_id: uksi-2002-2005-schedule-2-worker-element
+    source_file: ./sources/uk/wtc_worker_element_2021.txt
+    oracle: policyengine
+    policyengine_country: uk
+    policyengine_rac_var_hint: wtc_worker_element_amount
+
+  - kind: source
+    name: wtc-disabled-element
+    source_id: uksi-2002-2005-schedule-2-disabled-element
+    source_file: ./sources/uk/wtc_disabled_element_2025.txt
+    oracle: policyengine
+    policyengine_country: uk
+    policyengine_rac_var_hint: wtc_disabled_element_amount
+
+  - kind: source
+    name: wtc-severely-disabled-element
+    source_id: uksi-2002-2005-schedule-2-severely-disabled-element
+    source_file: ./sources/uk/wtc_severely_disabled_element_2025.txt
+    oracle: policyengine
+    policyengine_country: uk
+    policyengine_rac_var_hint: wtc_severely_disabled_element_amount

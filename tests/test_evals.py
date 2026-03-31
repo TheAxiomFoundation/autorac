@@ -212,6 +212,46 @@ class TestGeneratedBundleCleaning:
         assert "alternate_branch" not in test_text
         assert "2500" in test_text
 
+    def test_materialize_eval_artifact_drops_annual_effective_date_boundary_for_single_row(
+        self, tmp_path
+    ):
+        output_file = tmp_path / "source" / "uksi-2002-2005-schedule-2-worker-element.rac"
+        source_text = (
+            "Editorial note: text valid from 2021-04-06.\n\n"
+            "Structured table:\n"
+            "Relevant element of working tax credit | Maximum annual rate\n"
+            "30 hour element | £830"
+        )
+        llm_response = (
+            "=== FILE: uksi-2002-2005-schedule-2-worker-element.rac ===\n"
+            "wtc_worker_element_amount:\n"
+            "    entity: TaxUnit\n"
+            "    period: Year\n"
+            "    dtype: Money\n"
+            "    unit: GBP\n"
+            "    from 2021-04-06: 830\n"
+            "=== FILE: uksi-2002-2005-schedule-2-worker-element.rac.test ===\n"
+            "- name: base_case\n"
+            "  period: 2021\n"
+            "  output:\n"
+            "    wtc_worker_element_amount: 830\n"
+            "- name: effective_date_boundary\n"
+            "  period: 2022\n"
+            "  output:\n"
+            "    wtc_worker_element_amount: 830\n"
+        )
+
+        wrote = _materialize_eval_artifact(
+            llm_response,
+            output_file,
+            source_text=source_text,
+        )
+
+        assert wrote is True
+        test_text = output_file.with_suffix(".rac.test").read_text()
+        assert "base_case" in test_text
+        assert "effective_date_boundary" not in test_text
+
     def test_materialize_eval_artifact_normalizes_single_row_inline_conditional_without_else(
         self, tmp_path
     ):
@@ -2050,7 +2090,11 @@ class TestSourceEval:
             runner_backend="openai",
         )
 
-        assert "base case plus an effective-date boundary is sufficient" in prompt
+        assert "For a single fixed-amount source slice, a base case is sufficient." in prompt
+        assert (
+            "For a one-row fixed-amount slice with `period: Year`, a base case is sufficient; do not synthesize an `effective_date_boundary` test."
+            in prompt
+        )
         assert (
             "Add a later same-amount case only when `./source.txt` explicitly says the amount remains unchanged through that later date."
             in prompt
