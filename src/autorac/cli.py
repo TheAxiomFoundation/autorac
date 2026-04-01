@@ -12,6 +12,7 @@ Self-contained -- no external plugin dependencies.
 """
 
 import argparse
+import csv
 import json
 import sys
 from dataclasses import asdict
@@ -539,6 +540,43 @@ def main():
         help="Emit machine-readable JSON summary",
     )
 
+    eval_suite_report_parser = subparsers.add_parser(
+        "eval-suite-report",
+        help="Render a paper-ready comparison report from eval-suite JSON output",
+    )
+    eval_suite_report_parser.add_argument(
+        "result_json",
+        type=Path,
+        help="Path to JSON emitted by `autorac eval-suite --json`",
+    )
+    eval_suite_report_parser.add_argument(
+        "--left-runner",
+        default=None,
+        help="Runner name to treat as the left column (defaults to first runner in the payload)",
+    )
+    eval_suite_report_parser.add_argument(
+        "--right-runner",
+        default=None,
+        help="Runner name to treat as the right column (defaults to second runner in the payload)",
+    )
+    eval_suite_report_parser.add_argument(
+        "--markdown-out",
+        type=Path,
+        default=None,
+        help="Optional path to write the rendered Markdown report",
+    )
+    eval_suite_report_parser.add_argument(
+        "--csv-out",
+        type=Path,
+        default=None,
+        help="Optional path to write a case-level comparison CSV",
+    )
+    eval_suite_report_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit machine-readable JSON summary instead of Markdown",
+    )
+
     # =========================================================================
     # Session logging commands (for hooks)
     # =========================================================================
@@ -651,6 +689,8 @@ def main():
         cmd_eval_uk_legislation_section(args)
     elif args.command == "eval-suite":
         cmd_eval_suite(args)
+    elif args.command == "eval-suite-report":
+        cmd_eval_suite_report(args)
     elif args.command == "session-start":
         cmd_session_start(args)
     elif args.command == "session-end":
@@ -2142,6 +2182,325 @@ def cmd_eval_suite(args):
         print()
 
     sys.exit(0 if all_ready else 1)
+
+
+def _ordered_runner_names(payload: dict) -> list[str]:
+    """Preserve runner order from results/readiness payloads."""
+    ordered: list[str] = []
+    for result in payload.get("results", []) or []:
+        runner = result.get("runner")
+        if runner and runner not in ordered:
+            ordered.append(runner)
+    for runner in (payload.get("readiness") or {}).keys():
+        if runner not in ordered:
+            ordered.append(runner)
+    return ordered
+
+
+def _mean_numeric(values: list[float | int | None]) -> float | None:
+    """Return the arithmetic mean for present numeric values."""
+    filtered = [float(value) for value in values if value is not None]
+    if not filtered:
+        return None
+    return round(sum(filtered) / len(filtered), 6)
+
+
+def _format_percent(value: float | None) -> str:
+    """Format optional fractions as percentages."""
+    if value is None:
+        return "n/a"
+    return f"{value:.1%}"
+
+
+def _format_money(value: float | None) -> str:
+    """Format optional dollar values for reports."""
+    if value is None:
+        return "n/a"
+    return f"${value:.4f}"
+
+
+def _build_eval_suite_report(payload: dict, left_runner: str, right_runner: str) -> dict:
+    """Build a structured pairwise report from eval-suite JSON output."""
+    results = payload.get("results", []) or []
+    readiness = payload.get("readiness", {}) or {}
+
+    by_case: dict[str, dict[str, dict]] = {}
+    for result in results:
+        citation = result.get("citation")
+        runner = result.get("runner")
+        if not citation or not runner:
+            continue
+        by_case.setdefault(str(citation), {})[str(runner)] = result
+
+    case_rows: list[dict] = []
+    both_present = 0
+    left_success_only = 0
+    right_success_only = 0
+    left_compile_only = 0
+    right_compile_only = 0
+    left_ci_only = 0
+    right_ci_only = 0
+    left_zero_ungrounded_only = 0
+    right_zero_ungrounded_only = 0
+    left_lower_cost = 0
+    right_lower_cost = 0
+    tied_cost = 0
+    left_higher_pe = 0
+    right_higher_pe = 0
+    tied_pe = 0
+
+    for citation in sorted(by_case):
+        left = by_case[citation].get(left_runner)
+        right = by_case[citation].get(right_runner)
+        left_metrics = (left or {}).get("metrics") or {}
+        right_metrics = (right or {}).get("metrics") or {}
+
+        row = {
+            "case": citation,
+            "left_runner": left_runner,
+            "right_runner": right_runner,
+            "left_success": left.get("success") if left else None,
+            "right_success": right.get("success") if right else None,
+            "left_compile_pass": left_metrics.get("compile_pass"),
+            "right_compile_pass": right_metrics.get("compile_pass"),
+            "left_ci_pass": left_metrics.get("ci_pass"),
+            "right_ci_pass": right_metrics.get("ci_pass"),
+            "left_zero_ungrounded": (
+                left_metrics.get("ungrounded_numeric_count") == 0
+                if left is not None and left_metrics
+                else None
+            ),
+            "right_zero_ungrounded": (
+                right_metrics.get("ungrounded_numeric_count") == 0
+                if right is not None and right_metrics
+                else None
+            ),
+            "left_policyengine_score": left_metrics.get("policyengine_score"),
+            "right_policyengine_score": right_metrics.get("policyengine_score"),
+            "left_estimated_cost_usd": left.get("estimated_cost_usd") if left else None,
+            "right_estimated_cost_usd": right.get("estimated_cost_usd") if right else None,
+            "left_duration_ms": left.get("duration_ms") if left else None,
+            "right_duration_ms": right.get("duration_ms") if right else None,
+            "left_output_file": left.get("output_file") if left else None,
+            "right_output_file": right.get("output_file") if right else None,
+        }
+        case_rows.append(row)
+
+        if left is not None and right is not None:
+            both_present += 1
+            if row["left_success"] and not row["right_success"]:
+                left_success_only += 1
+            elif row["right_success"] and not row["left_success"]:
+                right_success_only += 1
+
+            if row["left_compile_pass"] and not row["right_compile_pass"]:
+                left_compile_only += 1
+            elif row["right_compile_pass"] and not row["left_compile_pass"]:
+                right_compile_only += 1
+
+            if row["left_ci_pass"] and not row["right_ci_pass"]:
+                left_ci_only += 1
+            elif row["right_ci_pass"] and not row["left_ci_pass"]:
+                right_ci_only += 1
+
+            if row["left_zero_ungrounded"] and not row["right_zero_ungrounded"]:
+                left_zero_ungrounded_only += 1
+            elif row["right_zero_ungrounded"] and not row["left_zero_ungrounded"]:
+                right_zero_ungrounded_only += 1
+
+            left_cost = row["left_estimated_cost_usd"]
+            right_cost = row["right_estimated_cost_usd"]
+            if left_cost is not None and right_cost is not None:
+                if left_cost < right_cost:
+                    left_lower_cost += 1
+                elif right_cost < left_cost:
+                    right_lower_cost += 1
+                else:
+                    tied_cost += 1
+
+            left_pe = row["left_policyengine_score"]
+            right_pe = row["right_policyengine_score"]
+            if left_pe is not None and right_pe is not None:
+                if left_pe > right_pe:
+                    left_higher_pe += 1
+                elif right_pe > left_pe:
+                    right_higher_pe += 1
+                else:
+                    tied_pe += 1
+
+    runner_summaries: dict[str, dict] = {}
+    for runner in [left_runner, right_runner]:
+        runner_results = [result for result in results if result.get("runner") == runner]
+        summary = dict(readiness.get(runner) or {})
+        summary["mean_duration_ms"] = _mean_numeric(
+            [result.get("duration_ms") for result in runner_results]
+        )
+        summary["case_count"] = len(runner_results)
+        runner_summaries[runner] = summary
+
+    return {
+        "manifest": payload.get("manifest") or {},
+        "left_runner": left_runner,
+        "right_runner": right_runner,
+        "runner_summaries": runner_summaries,
+        "pairwise": {
+            "paired_case_count": both_present,
+            "left_success_only_count": left_success_only,
+            "right_success_only_count": right_success_only,
+            "left_compile_only_count": left_compile_only,
+            "right_compile_only_count": right_compile_only,
+            "left_ci_only_count": left_ci_only,
+            "right_ci_only_count": right_ci_only,
+            "left_zero_ungrounded_only_count": left_zero_ungrounded_only,
+            "right_zero_ungrounded_only_count": right_zero_ungrounded_only,
+            "left_lower_cost_count": left_lower_cost,
+            "right_lower_cost_count": right_lower_cost,
+            "tied_cost_count": tied_cost,
+            "left_higher_policyengine_score_count": left_higher_pe,
+            "right_higher_policyengine_score_count": right_higher_pe,
+            "tied_policyengine_score_count": tied_pe,
+        },
+        "case_rows": case_rows,
+    }
+
+
+def _render_eval_suite_report_markdown(report: dict) -> str:
+    """Render a human-readable pairwise report suitable for a paper appendix."""
+    manifest = report.get("manifest") or {}
+    left_runner = report["left_runner"]
+    right_runner = report["right_runner"]
+    left_summary = report["runner_summaries"].get(left_runner) or {}
+    right_summary = report["runner_summaries"].get(right_runner) or {}
+    pairwise = report.get("pairwise") or {}
+    case_rows = report.get("case_rows") or []
+
+    lines = [
+        f"# {manifest.get('name', 'Eval suite')} model comparison",
+        "",
+        f"- Manifest: `{manifest.get('path', 'n/a')}`",
+        f"- Left runner: `{left_runner}`",
+        f"- Right runner: `{right_runner}`",
+        "",
+        "| Metric | "
+        + left_runner
+        + " | "
+        + right_runner
+        + " |",
+        "| --- | ---: | ---: |",
+        f"| Cases | {left_summary.get('total_cases', left_summary.get('case_count', 'n/a'))} | {right_summary.get('total_cases', right_summary.get('case_count', 'n/a'))} |",
+        f"| Success rate | {_format_percent(left_summary.get('success_rate'))} | {_format_percent(right_summary.get('success_rate'))} |",
+        f"| Compile pass rate | {_format_percent(left_summary.get('compile_pass_rate'))} | {_format_percent(right_summary.get('compile_pass_rate'))} |",
+        f"| CI pass rate | {_format_percent(left_summary.get('ci_pass_rate'))} | {_format_percent(right_summary.get('ci_pass_rate'))} |",
+        f"| Zero-ungrounded rate | {_format_percent(left_summary.get('zero_ungrounded_rate'))} | {_format_percent(right_summary.get('zero_ungrounded_rate'))} |",
+        f"| PolicyEngine pass rate | {_format_percent(left_summary.get('policyengine_pass_rate'))} | {_format_percent(right_summary.get('policyengine_pass_rate'))} |",
+        f"| Mean PolicyEngine score | {_format_percent(left_summary.get('mean_policyengine_score'))} | {_format_percent(right_summary.get('mean_policyengine_score'))} |",
+        f"| Mean estimated cost | {_format_money(left_summary.get('mean_estimated_cost_usd'))} | {_format_money(right_summary.get('mean_estimated_cost_usd'))} |",
+        f"| Mean duration (s) | {((left_summary.get('mean_duration_ms') or 0) / 1000):.1f if left_summary.get('mean_duration_ms') is not None else 'n/a'} | {((right_summary.get('mean_duration_ms') or 0) / 1000):.1f if right_summary.get('mean_duration_ms') is not None else 'n/a'} |",
+        "",
+        "## Pairwise counts",
+        "",
+        "| Outcome | Count |",
+        "| --- | ---: |",
+        f"| Paired cases | {pairwise.get('paired_case_count', 0)} |",
+        f"| {left_runner} success-only advantages | {pairwise.get('left_success_only_count', 0)} |",
+        f"| {right_runner} success-only advantages | {pairwise.get('right_success_only_count', 0)} |",
+        f"| {left_runner} compile-only advantages | {pairwise.get('left_compile_only_count', 0)} |",
+        f"| {right_runner} compile-only advantages | {pairwise.get('right_compile_only_count', 0)} |",
+        f"| {left_runner} CI-only advantages | {pairwise.get('left_ci_only_count', 0)} |",
+        f"| {right_runner} CI-only advantages | {pairwise.get('right_ci_only_count', 0)} |",
+        f"| {left_runner} lower-cost cases | {pairwise.get('left_lower_cost_count', 0)} |",
+        f"| {right_runner} lower-cost cases | {pairwise.get('right_lower_cost_count', 0)} |",
+        f"| Tied-cost cases | {pairwise.get('tied_cost_count', 0)} |",
+        f"| {left_runner} higher-PE-score cases | {pairwise.get('left_higher_policyengine_score_count', 0)} |",
+        f"| {right_runner} higher-PE-score cases | {pairwise.get('right_higher_policyengine_score_count', 0)} |",
+        f"| Tied-PE-score cases | {pairwise.get('tied_policyengine_score_count', 0)} |",
+        "",
+        "## Case-level appendix",
+        "",
+        "| Case | "
+        + left_runner
+        + " compile | "
+        + right_runner
+        + " compile | "
+        + left_runner
+        + " PE | "
+        + right_runner
+        + " PE | "
+        + left_runner
+        + " cost | "
+        + right_runner
+        + " cost |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+    ]
+
+    for row in case_rows:
+        left_pe = row["left_policyengine_score"]
+        right_pe = row["right_policyengine_score"]
+        lines.append(
+            "| "
+            + row["case"]
+            + " | "
+            + ("pass" if row["left_compile_pass"] else "fail" if row["left_compile_pass"] is not None else "n/a")
+            + " | "
+            + ("pass" if row["right_compile_pass"] else "fail" if row["right_compile_pass"] is not None else "n/a")
+            + " | "
+            + (_format_percent(left_pe) if left_pe is not None else "n/a")
+            + " | "
+            + (_format_percent(right_pe) if right_pe is not None else "n/a")
+            + " | "
+            + _format_money(row["left_estimated_cost_usd"])
+            + " | "
+            + _format_money(row["right_estimated_cost_usd"])
+            + " |"
+        )
+
+    return "\n".join(lines) + "\n"
+
+
+def cmd_eval_suite_report(args):
+    """Render a pairwise comparison report from eval-suite JSON output."""
+    payload = json.loads(args.result_json.read_text())
+    available_runners = _ordered_runner_names(payload)
+    if not available_runners:
+        print(f"No runner results found in {args.result_json}")
+        sys.exit(1)
+
+    left_runner = args.left_runner or (available_runners[0] if available_runners else None)
+    right_runner = args.right_runner or (
+        available_runners[1] if len(available_runners) > 1 else None
+    )
+    if not left_runner or not right_runner:
+        print(
+            "Need two runners to compare. Pass --left-runner and --right-runner or provide a two-runner suite JSON."
+        )
+        sys.exit(1)
+    if left_runner not in available_runners or right_runner not in available_runners:
+        print(
+            f"Requested runners must exist in the suite JSON. Available: {', '.join(available_runners)}"
+        )
+        sys.exit(1)
+
+    report = _build_eval_suite_report(payload, left_runner, right_runner)
+
+    if args.csv_out:
+        args.csv_out.parent.mkdir(parents=True, exist_ok=True)
+        with args.csv_out.open("w", newline="") as fh:
+            fieldnames = list(report["case_rows"][0].keys()) if report["case_rows"] else []
+            writer = csv.DictWriter(fh, fieldnames=fieldnames)
+            if fieldnames:
+                writer.writeheader()
+                writer.writerows(report["case_rows"])
+
+    if args.json:
+        rendered = json.dumps(report, indent=2)
+    else:
+        rendered = _render_eval_suite_report_markdown(report)
+
+    if args.markdown_out and not args.json:
+        args.markdown_out.parent.mkdir(parents=True, exist_ok=True)
+        args.markdown_out.write_text(rendered)
+
+    print(rendered)
 
 
 # =========================================================================

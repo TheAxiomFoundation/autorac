@@ -21,6 +21,7 @@ from autorac.cli import (
     cmd_coverage,
     cmd_encode,
     cmd_eval_suite,
+    cmd_eval_suite_report,
     cmd_init,
     cmd_log,
     cmd_log_event,
@@ -213,6 +214,13 @@ class TestMain:
                     main()
                     mock_cmd.assert_called_once()
 
+    def test_eval_suite_report_command_dispatches(self):
+        with tempfile.NamedTemporaryFile(suffix=".json") as f:
+            with patch("sys.argv", ["autorac", "eval-suite-report", f.name]):
+                with patch("autorac.cli.cmd_eval_suite_report") as mock_cmd:
+                    main()
+                    mock_cmd.assert_called_once()
+
     def test_compile_command_dispatches(self):
         with tempfile.NamedTemporaryFile(suffix=".rac") as f:
             with patch("sys.argv", ["autorac", "compile", f.name]):
@@ -334,6 +342,86 @@ class TestCmdEvalSuite:
         assert mock_run.called
         captured = capsys.readouterr()
         assert "NOT READY" in captured.out
+
+
+class TestCmdEvalSuiteReport:
+    def test_renders_markdown_and_writes_csv(self, tmp_path, capsys):
+        payload = {
+            "manifest": {"name": "UK paper", "path": "/tmp/suite.yaml"},
+            "results": [
+                {
+                    "citation": "case-a",
+                    "runner": "gpt-5.4",
+                    "success": True,
+                    "duration_ms": 1000,
+                    "estimated_cost_usd": 0.1,
+                    "output_file": "/tmp/gpt.rac",
+                    "metrics": {
+                        "compile_pass": True,
+                        "ci_pass": True,
+                        "ungrounded_numeric_count": 0,
+                        "policyengine_score": 1.0,
+                    },
+                },
+                {
+                    "citation": "case-a",
+                    "runner": "claude-opus",
+                    "success": True,
+                    "duration_ms": 2000,
+                    "estimated_cost_usd": 0.2,
+                    "output_file": "/tmp/claude.rac",
+                    "metrics": {
+                        "compile_pass": True,
+                        "ci_pass": True,
+                        "ungrounded_numeric_count": 0,
+                        "policyengine_score": 0.5,
+                    },
+                },
+            ],
+            "readiness": {
+                "gpt-5.4": {
+                    "total_cases": 1,
+                    "success_rate": 1.0,
+                    "compile_pass_rate": 1.0,
+                    "ci_pass_rate": 1.0,
+                    "zero_ungrounded_rate": 1.0,
+                    "policyengine_pass_rate": 1.0,
+                    "mean_policyengine_score": 1.0,
+                    "mean_estimated_cost_usd": 0.1,
+                },
+                "claude-opus": {
+                    "total_cases": 1,
+                    "success_rate": 1.0,
+                    "compile_pass_rate": 1.0,
+                    "ci_pass_rate": 1.0,
+                    "zero_ungrounded_rate": 1.0,
+                    "policyengine_pass_rate": 1.0,
+                    "mean_policyengine_score": 0.5,
+                    "mean_estimated_cost_usd": 0.2,
+                },
+            },
+        }
+        result_json = tmp_path / "results.json"
+        result_json.write_text(json.dumps(payload))
+        csv_out = tmp_path / "cases.csv"
+        md_out = tmp_path / "report.md"
+        args = SimpleNamespace(
+            result_json=result_json,
+            left_runner=None,
+            right_runner=None,
+            markdown_out=md_out,
+            csv_out=csv_out,
+            json=False,
+        )
+
+        cmd_eval_suite_report(args)
+
+        captured = capsys.readouterr()
+        assert "# UK paper model comparison" in captured.out
+        assert "gpt-5.4" in captured.out
+        assert csv_out.exists()
+        assert md_out.exists()
+        assert "case-a" in csv_out.read_text()
 
     def test_sync_sdk_sessions_dispatches(self):
         with patch("sys.argv", ["autorac", "sync-sdk-sessions"]):

@@ -49,3 +49,24 @@ Each suite reports:
 - mean estimated cost
 
 The command exits `0` only when all readiness gates pass.
+
+## Paper-ready model comparison
+
+Use a fixed multi-runner manifest plus the report exporter when you want a
+reproducible GPT-vs-Claude experiment you can cite in a paper.
+
+```bash
+autorac eval-suite benchmarks/uk_paper_head_to_head.yaml \
+  --output /tmp/autorac-uk-paper-head-to-head \
+  --json > /tmp/autorac-uk-paper-head-to-head/results.json
+
+autorac eval-suite-report /tmp/autorac-uk-paper-head-to-head/results.json \
+  --markdown-out /tmp/autorac-uk-paper-head-to-head/report.md \
+  --csv-out /tmp/autorac-uk-paper-head-to-head/cases.csv
+```
+
+`benchmarks/uk_paper_head_to_head.yaml` freezes the case set and runner aliases,
+while `eval-suite-report` emits:
+- a Markdown summary table suitable for a paper appendix
+- a case-level CSV for downstream analysis
+- a JSON comparison object when run with `--json`
