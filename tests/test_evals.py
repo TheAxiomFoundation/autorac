@@ -1649,6 +1649,40 @@ class TestEvalPrompt:
         assert "Do not include `alternate_branch_*` tests" in prompt
         assert "write `2500`, not `2,500`" in prompt
 
+    def test_build_eval_prompt_requires_named_scalars_for_repeated_and_threshold_numbers(
+        self, tmp_path
+    ):
+        workspace = prepare_eval_workspace(
+            citation="uksi/2002/1792/schedule/VI/2A",
+            runner=parse_runner_spec("openai:gpt-5.4"),
+            output_root=tmp_path / "out",
+            source_text=(
+                "Where a person is engaged in employments specified in paragraph 2 but "
+                "his earnings are less than £20 and he is also engaged in other employment, "
+                "so much of his other earnings as would not exceed £20. "
+                "A non-dependant aged 18 or over is treated differently. "
+                "See section 3(4)."
+            ),
+            rac_path=tmp_path / "rac",
+            mode="cold",
+            extra_context_paths=[],
+        )
+
+        prompt = _build_eval_prompt(
+            "uksi/2002/1792/schedule/VI/2A",
+            "cold",
+            workspace,
+            [],
+            target_file_name="example.rac",
+            include_tests=True,
+            runner_backend="openai",
+        )
+
+        assert "Every substantive numeric occurrence in `./source.txt` must be represented by a named scalar definition in RAC" in prompt
+        assert "If the same numeric value appears twice in materially different legal roles" in prompt
+        assert 'If `./source.txt` says someone is "aged 18 or over", "under 25"' in prompt
+        assert "Do not create scalar variables for citation numbers" in prompt
+
     def test_build_eval_prompt_includes_import_vs_local_helper_protocol(
         self, tmp_path
     ):

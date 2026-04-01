@@ -183,10 +183,17 @@ _STRUCTURAL_SOURCE_HEADING_PATTERN = re.compile(
 _STRUCTURAL_SOURCE_PREFIX_PATTERN = re.compile(
     r"^\s*(?:\d+[A-Za-z]?\.\s+|\([0-9A-Za-zivxlcdm]+\)\s+)", re.IGNORECASE
 )
+_SOURCE_REFERENCE_TARGET_PATTERN = (
+    r"(?:\([^)]+\)|\d+[A-Za-z./-]*(?:\([^)]+\))*(?=$|[\s,.;:])|[ivxlcdm]+\b|[A-Z]{1,4}\b|[a-z]\b)"
+)
+_SOURCE_REFERENCE_SEQUENCE_PATTERN = (
+    rf"{_SOURCE_REFERENCE_TARGET_PATTERN}"
+    rf"(?:\s*(?:,|or|and)\s*{_SOURCE_REFERENCE_TARGET_PATTERN})*"
+)
 _SOURCE_REFERENCE_PATTERNS = (
     re.compile(
         r"\b(?:section|sections|paragraph|paragraphs|regulation|regulations|part|parts|chapter|chapters|schedule|schedules|article|articles|subparagraph|subparagraphs|sub-paragraph|sub-paragraphs|subsection|subsections)\s+"
-        r"(?:\([^)]+\)|[0-9A-Za-z./-]+)(?:\s+to\s+(?:\([^)]+\)|[0-9A-Za-z./-]+))?",
+        rf"{_SOURCE_REFERENCE_SEQUENCE_PATTERN}(?:\s+to\s+{_SOURCE_REFERENCE_SEQUENCE_PATTERN})?",
         re.IGNORECASE,
     ),
     re.compile(r"\b(?:Act|Order|Regulations?)\s+\d{4}\b"),

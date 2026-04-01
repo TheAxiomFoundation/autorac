@@ -202,15 +202,22 @@ Editorial note: current text valid from 2025-03-31.
 (5) The additional amount applicable is—
 (a) except where paragraph (b) applies, £20 per week if paragraph 2 is satisfied,
 and so much of the other amount as would not exceed £20.
+See section 3(4) and regulation 17(9).
+£20 is the maximum amount under paragraphs 1, 2, 3 or 4.
 The taper is 55%.
 """
         )
 
-        assert occurrences.count(20.0) == 2
+        assert occurrences.count(20.0) == 3
         assert occurrences.count(0.55) == 1
         assert 6.0 not in occurrences
         assert 5.0 not in occurrences
         assert 2.0 not in occurrences
+        assert 4.0 not in occurrences
+        assert 17.0 not in occurrences
+        assert 9.0 not in occurrences
+        assert 1.0 not in occurrences
+        assert 3.0 not in occurrences
         assert 2025.0 not in occurrences
 
 

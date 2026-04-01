@@ -3,7 +3,7 @@ runners:
   - openai:gpt-5.4
 mode: cold
 gates:
-  min_cases: 13
+  min_cases: 14
   min_success_rate: 0.9
   min_compile_pass_rate: 0.9
   min_ci_pass_rate: 0.9
@@ -67,7 +67,13 @@ cases:
   - kind: uk_legislation
     name: pension-credit-earnings-disregard-special-employment-amount-a
     source_ref: /uksi/2002/1792/2025-03-31
-    section_eid: schedule-VI-paragraph-4A-1
+    section_eid: schedule-VI-paragraph-4A-1-a
+    oracle: none
+
+  - kind: uk_legislation
+    name: pension-credit-earnings-disregard-special-employment-amount-b
+    source_ref: /uksi/2002/1792/2025-03-31
+    section_eid: schedule-VI-paragraph-4A-1-b
     oracle: none
 
   - kind: uk_legislation

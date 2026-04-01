@@ -1953,7 +1953,11 @@ Rules:
 - Do not inspect or rely on any path outside this workspace.
 - Treat `./source.txt` as the only legal source.
 - Any numeric literal in your output must appear in `./source.txt`, unless it is -1, 0, 1, 2, or 3.
+- Every substantive numeric occurrence in `./source.txt` must be represented by a named scalar definition in RAC, even when the same numeric value repeats.
+- If the same numeric value appears twice in materially different legal roles, declare separate named scalar variables for those separate occurrences instead of reusing a single scalar everywhere.
 - If a legal scalar amount, threshold, cap, or limit appears in a formula or conditional branch, first declare it as its own named variable and then reference that variable from the formula.
+- If `./source.txt` says someone is "aged 18 or over", "under 25", or gives another numeric eligibility threshold, model that threshold as a named scalar variable rather than only burying the number inside a helper name.
+- Do not create scalar variables for citation numbers that only appear inside section, paragraph, regulation, schedule, or similar legal cross-references.
 - Include the source text in a triple-quoted docstring.
 - Use RAC DSL conventions.
 - If `./source.txt` explicitly cites another section or source for a definition, emit the upstream import instead of restating the concept locally.
