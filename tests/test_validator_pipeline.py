@@ -31,7 +31,9 @@ from autorac.harness.validator_pipeline import (
     RAC_REVIEWER_PROMPT,
     OracleSubprocessResult,
     extract_grounding_values,
+    extract_named_scalar_occurrences,
     extract_numbers_from_text,
+    extract_numeric_occurrences_from_text,
     run_claude_code,
 )
 
@@ -187,6 +189,61 @@ class TestExtractNumbersFromText:
 
         assert 0.55 in numbers
         assert 0.85 in numbers
+
+
+class TestExtractNumericOccurrencesFromText:
+    def test_ignores_structural_references_and_counts_repeated_scalars(self):
+        occurrences = extract_numeric_occurrences_from_text(
+            """
+6. Amount of the guarantee credit
+
+Editorial note: current text valid from 2025-03-31.
+
+(5) The additional amount applicable is—
+(a) except where paragraph (b) applies, £20 per week if paragraph 2 is satisfied,
+and so much of the other amount as would not exceed £20.
+The taper is 55%.
+"""
+        )
+
+        assert occurrences.count(20.0) == 2
+        assert occurrences.count(0.55) == 1
+        assert 6.0 not in occurrences
+        assert 5.0 not in occurrences
+        assert 2.0 not in occurrences
+        assert 2025.0 not in occurrences
+
+
+class TestExtractNamedScalarOccurrences:
+    def test_extracts_direct_and_multiline_temporal_scalars(self):
+        occurrences = extract_named_scalar_occurrences(
+            """
+foo_amount:
+    entity: TaxUnit
+    period: Month
+    dtype: Money
+    from 2025-04-01:
+        20
+
+bar_amount:
+    entity: TaxUnit
+    period: Month
+    dtype: Money
+    from 2025-04-01: 20
+
+baz_amount:
+    entity: TaxUnit
+    period: Month
+    dtype: Money
+    from 2025-04-01:
+        if flag: foo_amount else: 0
+"""
+        )
+
+        assert [(item.name, item.value) for item in occurrences] == [
+            ("foo_amount", 20.0),
+            ("bar_amount", 20.0),
+        ]
 
 
 class TestExtractTestsFromRacV2ListFormat:

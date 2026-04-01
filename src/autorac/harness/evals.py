@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import tempfile
 import time
+from collections import Counter
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from statistics import mean
@@ -35,7 +36,9 @@ from .validator_pipeline import (
     ValidatorPipeline,
     extract_embedded_source_text,
     extract_grounding_values,
+    extract_named_scalar_occurrences,
     extract_numbers_from_text,
+    extract_numeric_occurrences_from_text,
 )
 
 EvalMode = Literal["cold", "repo-augmented"]
@@ -111,6 +114,10 @@ class EvalArtifactMetrics:
     grounded_numeric_count: int
     ungrounded_numeric_count: int
     grounding: list[GroundingMetric]
+    source_numeric_occurrence_count: int = 0
+    covered_source_numeric_occurrence_count: int = 0
+    missing_source_numeric_occurrence_count: int = 0
+    numeric_occurrence_issues: list[str] = field(default_factory=list)
     policyengine_pass: bool | None = None
     policyengine_score: float | None = None
     policyengine_issues: list[str] = field(default_factory=list)
@@ -1537,6 +1544,12 @@ def evaluate_artifact(
     content = rac_file.read_text()
     embedded_source = extract_embedded_source_text(content)
     source_numbers = extract_numbers_from_text(embedded_source or source_text)
+    source_numeric_occurrences = Counter(
+        extract_numeric_occurrences_from_text(embedded_source or source_text)
+    )
+    named_scalar_occurrences = Counter(
+        item.value for item in extract_named_scalar_occurrences(content)
+    )
 
     grounding_metrics: list[GroundingMetric] = []
     for line, raw, value in extract_grounding_values(content):
@@ -1549,17 +1562,38 @@ def evaluate_artifact(
             )
         )
 
+    numeric_occurrence_issues: list[str] = []
+    covered_source_numeric_occurrence_count = 0
+    missing_source_numeric_occurrence_count = 0
+    for value, expected_count in sorted(source_numeric_occurrences.items()):
+        covered_count = min(expected_count, named_scalar_occurrences.get(value, 0))
+        covered_source_numeric_occurrence_count += covered_count
+        if covered_count < expected_count:
+            missing_count = expected_count - covered_count
+            missing_source_numeric_occurrence_count += missing_count
+            numeric_occurrence_issues.append(
+                f"Source numeric value {value:g} appears {expected_count} time(s), "
+                f"but only {covered_count} named scalar definition(s) with that value were found."
+            )
+
+    ci_issues = list(ci_result.issues) + numeric_occurrence_issues
+    ci_pass = ci_result.passed and not numeric_occurrence_issues
+
     return EvalArtifactMetrics(
         compile_pass=compile_result.passed,
         compile_issues=compile_result.issues,
-        ci_pass=ci_result.passed,
-        ci_issues=ci_result.issues,
+        ci_pass=ci_pass,
+        ci_issues=ci_issues,
         embedded_source_present=bool(embedded_source),
         grounded_numeric_count=sum(1 for item in grounding_metrics if item.grounded),
         ungrounded_numeric_count=sum(
             1 for item in grounding_metrics if not item.grounded
         ),
         grounding=grounding_metrics,
+        source_numeric_occurrence_count=sum(source_numeric_occurrences.values()),
+        covered_source_numeric_occurrence_count=covered_source_numeric_occurrence_count,
+        missing_source_numeric_occurrence_count=missing_source_numeric_occurrence_count,
+        numeric_occurrence_issues=numeric_occurrence_issues,
         policyengine_pass=(
             policyengine_result.passed if policyengine_result is not None else None
         ),

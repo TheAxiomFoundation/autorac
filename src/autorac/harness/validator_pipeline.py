@@ -23,6 +23,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -146,6 +147,9 @@ GROUNDING_DATE_PATTERN = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
 GROUNDING_FORMULA_NUMBER_PATTERN = re.compile(
     r"(?<![\w./])(-?[\d,]+(?:\.\d+)?)(?![\w./])"
 )
+SOURCE_TEXT_NUMBER_PATTERN = re.compile(
+    r"(?:^|(?<=[\s$£€(\[,]))(-?[\d,]+(?:\.\d+)?)\b"
+)
 GROUNDING_METADATA_KEYS = {
     "entity",
     "period",
@@ -170,6 +174,33 @@ _EMBEDDED_SCALAR_FORMULA_HEADER = re.compile(r"^(\s*)formula:\s*\|\s*$")
 _EMBEDDED_SCALAR_DIRECT_VALUE = re.compile(r"-?[\d,]+(?:\.\d+)?")
 _EMBEDDED_SCALAR_NUMBER = re.compile(r"-?\d+(?:\.\d+)?")
 _EMBEDDED_SCALAR_ALLOWED_VALUES = {"-1", "0", "1", "2", "3"}
+_STRUCTURAL_SOURCE_LINE_PATTERN = re.compile(
+    r"^[\(\[]?(?:\d+[A-Za-z]?|[ivxlcdm]+|[a-z])[\)\].]?$", re.IGNORECASE
+)
+_STRUCTURAL_SOURCE_HEADING_PATTERN = re.compile(
+    r"^(PART|CHAPTER|SCHEDULE|REGULATION|ARTICLE)\b", re.IGNORECASE
+)
+_STRUCTURAL_SOURCE_PREFIX_PATTERN = re.compile(
+    r"^\s*(?:\d+[A-Za-z]?\.\s+|\([0-9A-Za-zivxlcdm]+\)\s+)", re.IGNORECASE
+)
+_SOURCE_REFERENCE_PATTERNS = (
+    re.compile(
+        r"\b(?:section|sections|paragraph|paragraphs|regulation|regulations|part|parts|chapter|chapters|schedule|schedules|article|articles|subparagraph|subparagraphs|sub-paragraph|sub-paragraphs|subsection|subsections)\s+"
+        r"(?:\([^)]+\)|[0-9A-Za-z./-]+)(?:\s+to\s+(?:\([^)]+\)|[0-9A-Za-z./-]+))?",
+        re.IGNORECASE,
+    ),
+    re.compile(r"\b(?:Act|Order|Regulations?)\s+\d{4}\b"),
+)
+_DIRECT_SCALAR_VALUE_PATTERN = re.compile(r"-?[\d,]+(?:\.\d+)?")
+
+
+@dataclass(frozen=True)
+class NamedScalarOccurrence:
+    """One direct named scalar definition found in a RAC file."""
+
+    line: int
+    name: str
+    value: float
 _PE_UNSUPPORTED_ERROR_PATTERNS = (
     re.compile(r"ParameterNotFoundError"),
     re.compile(r"VariableNotFoundError"),
@@ -331,6 +362,123 @@ def extract_numbers_from_text(text: str) -> set[float]:
             numbers.add(value)
 
     return numbers
+
+
+def extract_numeric_occurrences_from_text(text: str) -> list[float]:
+    """Extract substantive numeric occurrences from source text, preserving repeats."""
+    cleaned_lines: list[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if _STRUCTURAL_SOURCE_LINE_PATTERN.match(stripped):
+            continue
+        if _STRUCTURAL_SOURCE_HEADING_PATTERN.match(stripped):
+            continue
+        cleaned_lines.append(_STRUCTURAL_SOURCE_PREFIX_PATTERN.sub("", line))
+
+    cleaned = "\n".join(cleaned_lines)
+    cleaned = GROUNDING_DATE_PATTERN.sub(" ", cleaned)
+    for pattern in _SOURCE_REFERENCE_PATTERNS:
+        cleaned = pattern.sub(" ", cleaned)
+
+    occurrences: list[float] = []
+    spans: list[tuple[int, int]] = []
+
+    for pattern in (
+        re.compile(r"(\d+(?:\.\d+)?)\s+(?:percent|per\s*cent(?:um)?)", re.IGNORECASE),
+        re.compile(r"(\d+(?:\.\d+)?)\s*%"),
+    ):
+        for match in pattern.finditer(cleaned):
+            with contextlib.suppress(ValueError):
+                occurrences.append(float(match.group(1).replace(",", "")) / 100)
+                spans.append(match.span())
+
+    def overlaps_percent(span: tuple[int, int]) -> bool:
+        return any(not (span[1] <= start or span[0] >= end) for start, end in spans)
+
+    for match in SOURCE_TEXT_NUMBER_PATTERN.finditer(cleaned):
+        span = match.span(1)
+        if overlaps_percent(span):
+            continue
+        with contextlib.suppress(ValueError):
+            value = float(match.group(1).replace(",", ""))
+            if value.is_integer() and 1900 <= value <= 2100:
+                continue
+            occurrences.append(value)
+
+    occurrence_counts = Counter(occurrences)
+    normalized: list[float] = []
+    for value in occurrences:
+        scaled = round(value * 100, 9)
+        if value <= 1 and scaled in occurrence_counts:
+            continue
+        normalized.append(value)
+    return normalized
+
+
+def extract_named_scalar_occurrences(content: str) -> list[NamedScalarOccurrence]:
+    """Extract direct named scalar definitions from a RAC file, preserving repeats."""
+    occurrences: list[NamedScalarOccurrence] = []
+    current_variable: str | None = None
+    temporal_block = False
+    temporal_indent = 0
+
+    for line_number, line in enumerate(content.splitlines(), 1):
+        stripped = line.strip()
+        indent = len(line) - len(line.lstrip())
+
+        header_match = _EMBEDDED_SCALAR_BLOCK_HEADER.match(line)
+        if header_match and indent == 0:
+            current_variable = header_match.group(1)
+
+        if temporal_block and stripped and indent <= temporal_indent:
+            temporal_block = False
+
+        scalar_match = GROUNDING_SCALAR_PATTERN.match(stripped)
+        if scalar_match:
+            name = scalar_match.group(1)
+            if name.lower() not in GROUNDING_METADATA_KEYS:
+                raw = scalar_match.group(2).replace(",", "")
+                with contextlib.suppress(ValueError):
+                    occurrences.append(
+                        NamedScalarOccurrence(
+                            line=line_number,
+                            name=name,
+                            value=float(raw),
+                        )
+                    )
+            continue
+
+        temporal_match = GROUNDING_INLINE_TEMPORAL_PATTERN.match(line)
+        if temporal_match:
+            tail = temporal_match.group(1).strip().replace(",", "")
+            temporal_indent = indent
+            if tail and _DIRECT_SCALAR_VALUE_PATTERN.fullmatch(tail):
+                with contextlib.suppress(ValueError):
+                    occurrences.append(
+                        NamedScalarOccurrence(
+                            line=line_number,
+                            name=current_variable or "<unknown>",
+                            value=float(tail),
+                        )
+                    )
+                temporal_block = False
+            else:
+                temporal_block = True
+            continue
+
+        if temporal_block and stripped:
+            normalized = stripped.replace(",", "")
+            if _DIRECT_SCALAR_VALUE_PATTERN.fullmatch(normalized):
+                with contextlib.suppress(ValueError):
+                    occurrences.append(
+                        NamedScalarOccurrence(
+                            line=line_number,
+                            name=current_variable or "<unknown>",
+                            value=float(normalized),
+                        )
+                    )
+
+    return occurrences
 
 
 def extract_embedded_source_text(content: str) -> str:

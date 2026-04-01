@@ -37,7 +37,7 @@ from autorac.harness.evals import (
     select_context_files,
     summarize_readiness,
 )
-from autorac.harness.validator_pipeline import ValidationResult
+from autorac.harness.validator_pipeline import ValidationResult, ValidatorPipeline
 
 
 class TestParseRunnerSpec:
@@ -251,6 +251,50 @@ class TestEvaluateArtifact:
         assert metrics.grounded_numeric_count == 1
         assert metrics.ungrounded_numeric_count == 1
         assert [item.raw for item in metrics.grounding if not item.grounded] == ["2200"]
+
+    def test_fails_ci_when_repeated_source_scalar_has_only_one_named_definition(
+        self, tmp_path
+    ):
+        rac_file = tmp_path / "example.rac"
+        rac_file.write_text(
+            '''"""
+2A. Where earnings are less than £20 in any week and would not exceed £20.
+"""
+
+pc_special_employment_maximum_weekly_amount:
+    entity: Person
+    period: Week
+    dtype: Money
+    from 2025-03-31:
+        20
+'''
+        )
+
+        compile_result = ValidationResult("compile", True, issues=[])
+        ci_result = ValidationResult("ci", True, issues=[])
+
+        with (
+            patch.object(
+                ValidatorPipeline, "_run_compile_check", return_value=compile_result
+            ),
+            patch.object(ValidatorPipeline, "_run_ci", return_value=ci_result),
+        ):
+            metrics = evaluate_artifact(
+                rac_file=rac_file,
+                rac_root=tmp_path,
+                rac_path=Path("/tmp/rac"),
+                source_text=(
+                    "2A. Where earnings are less than £20 in any week and "
+                    "would not exceed £20."
+                ),
+            )
+
+        assert metrics.compile_pass
+        assert not metrics.ci_pass
+        assert any(
+            "appears 2 time(s), but only 1 named scalar definition(s)" in issue
+            for issue in metrics.ci_issues
+        )
 
 
 class TestGeneratedBundleCleaning:
