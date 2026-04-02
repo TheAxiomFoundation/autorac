@@ -395,6 +395,7 @@ example_amount:
         assert "avoid standalone normative names like `..._must_...`" in prompt
         assert "do not make the principal output a bare input stub" in prompt
         assert "feed the asserted output back into `input:`" in prompt
+        assert "treat the carve-out as displacing this slice" in prompt
 
 
 class TestGeneratedBundleCleaning:
@@ -782,6 +783,33 @@ class TestGeneratedBundleCleaning:
         assert test_text.lstrip().startswith("- ")
         assert "name: case_branch_ii_applies" in test_text
         assert "case_branch_ii_applies:" not in test_text
+
+    def test_materialize_eval_artifact_rewrites_source_text_wrapper_to_docstring(
+        self, tmp_path
+    ):
+        output_file = tmp_path / "source" / "uksi-2002-1792-regulation-10-6-a.rac"
+        llm_response = (
+            "=== FILE: uksi-2002-1792-regulation-10-6-a.rac ===\n"
+            "source_text:\n"
+            "    entity: Person\n"
+            "    period: Day\n"
+            "    dtype: String\n"
+            "    from 2025-03-21:\n"
+            "        \"\"\"\n"
+            "        Example source line.\n"
+            "        \"\"\"\n\n"
+            "example_fact:\n"
+            "    entity: Person\n"
+            "    period: Day\n"
+            "    dtype: Boolean\n"
+        )
+
+        wrote = _materialize_eval_artifact(llm_response, output_file, source_text=None)
+
+        assert wrote is True
+        rac_text = output_file.read_text()
+        assert rac_text.startswith('"""\nExample source line.\n"""')
+        assert "source_text:" not in rac_text
 
     def test_materialize_eval_artifact_fills_missing_period_and_flattens_wrappers(
         self, tmp_path

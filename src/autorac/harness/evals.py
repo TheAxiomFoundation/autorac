@@ -2070,6 +2070,7 @@ Available precedent files:
 - For atomic conjunctive branch slices that read like a lone limb ending in `and` or `or`, encode the limb-specific fact or limb-satisfaction condition itself; do not pretend to encode the whole parent consequence or all sibling limbs.
 - For those atomic conjunctive branch slices, prefer neutral factual names like `arrangements_contain_provision_for_date_on_which_increase_is_to_be_paid_10_4_b` or `..._10_4_b_satisfied`; avoid standalone normative names like `..._must_...` unless the source text itself uses `must`.
 - For those atomic conjunctive branch slices, do not make the principal output a bare input stub with no formula. Expose the raw fact as a `*_fact` input if needed, and make the principal branch-specific output a derived `*_satisfied` or equivalent variable so `.rac.test` does not need to feed the asserted output back into `input:`.
+- For carve-outs phrased like `except where paragraph (b) applies`, treat the carve-out as displacing this slice. When the carve-out condition is true, this slice should evaluate false or be otherwise inoperative; do not treat the slice as automatically satisfied just because the exception applies.
 - For exclusion-list leaves phrased like `all income is qualifying income except ... which is not to be treated as qualifying income`, do not collapse the principal output to an unconditional `true` or `false`. Encode either the excluded amount itself or a fact-sensitive classification that changes with the source-stated subject/input.
 - In `.rac.test`, use helper/input names that expose the actual legal facts from the source text. Prefer names like `child_benefit_is_only_person`, `child_benefit_is_elder_or_eldest_person`, `claimant_has_partner`, `is_single_claimant`, `is_joint_claimant`, `resident_in_greater_london`, or `responsible_for_child_or_qualifying_young_person`.
 - In `.rac.test`, avoid opaque placeholders like `*_condition`, `*_eligibility_flag`, or `family_has_partner` when a more direct legal-fact name is available from the source text.
@@ -2914,6 +2915,7 @@ def _normalize_comma_numeric_literals(content: str) -> str:
 
 def _normalize_rac_code_numeric_literals(content: str) -> str:
     """Strip thousands separators from executable RAC code, preserving docstring prose."""
+    content = _normalize_source_text_wrapper_rac_content(content)
     if content.startswith('"""'):
         closing_index = content.find('"""', 3)
         if closing_index != -1:
@@ -2923,6 +2925,31 @@ def _normalize_rac_code_numeric_literals(content: str) -> str:
                 + _normalize_comma_numeric_literals(content[code_start:])
             )
     return _normalize_comma_numeric_literals(content)
+
+
+_SOURCE_TEXT_WRAPPER_PATTERN = re.compile(
+    r"^source_text:\s*\n"
+    r"(?:^[ \t]+(?:entity|period|dtype):.*\n)+"
+    r"^[ \t]+from\s+\d{4}-\d{2}-\d{2}:\s*\n"
+    r"^[ \t]+\"\"\"\n"
+    r"(?P<doc>.*?)"
+    r"^[ \t]+\"\"\"\s*\n?",
+    re.MULTILINE | re.DOTALL,
+)
+
+
+def _normalize_source_text_wrapper_rac_content(content: str) -> str:
+    """Rewrite mistaken `source_text` string wrappers into leading docstrings."""
+    match = _SOURCE_TEXT_WRAPPER_PATTERN.match(content)
+    if not match:
+        return content
+
+    doc_lines = [line[8:] if line.startswith("        ") else line for line in match.group("doc").splitlines()]
+    docstring = '"""\n' + "\n".join(doc_lines).strip("\n") + '\n"""\n'
+    remainder = content[match.end() :].lstrip("\n")
+    if remainder:
+        return docstring + "\n" + remainder
+    return docstring
 
 
 def _normalize_single_amount_row_rac_content(content: str) -> str:

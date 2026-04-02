@@ -1639,6 +1639,34 @@ class TestRunReviewer:
             assert "Companion Test File" in call_prompt
             assert "- name: base" in call_prompt
 
+    def test_ci_flags_except_where_carve_outs_treated_as_satisfied(self, pipeline, temp_rac_file):
+        temp_rac_file.write_text(
+            '''"""
+10. The circumstances prescribed are that except where sub-paragraph (b) applies,
+the arrangements contain no provision for periodic increases.
+"""
+
+sub_paragraph_b_applies_10_2_a:
+    entity: Person
+    period: Day
+    dtype: Boolean
+
+assessed_income_period_10_2_a_satisfied:
+    entity: Person
+    period: Day
+    dtype: Boolean
+    from 2025-03-21:
+        if sub_paragraph_b_applies_10_2_a:
+            true
+        else:
+            false
+'''
+        )
+
+        issues = pipeline._check_except_where_carve_out_logic(temp_rac_file)
+
+        assert any("Carve-out logic inverted" in issue for issue in issues)
+
     def test_reviewer_no_json_in_output(self, pipeline, temp_rac_file):
         """Reviewer handles response without JSON."""
         with patch("autorac.harness.validator_pipeline.run_claude_code") as mock_claude:

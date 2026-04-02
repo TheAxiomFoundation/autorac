@@ -988,6 +988,8 @@ class ValidatorPipeline:
             issues.extend(self._check_exclusion_list_principal_outputs(rac_file))
         with contextlib.suppress(Exception):
             issues.extend(self._check_placeholder_fact_variables(rac_file))
+        with contextlib.suppress(Exception):
+            issues.extend(self._check_except_where_carve_out_logic(rac_file))
 
         advisories: list[str] = []
         with contextlib.suppress(Exception):
@@ -1188,6 +1190,27 @@ class ValidatorPipeline:
             )
         return issues
 
+    def _check_except_where_carve_out_logic(self, rac_file: Path) -> list[str]:
+        """Flag carve-out branches that incorrectly treat the exception as satisfaction."""
+        content = rac_file.read_text()
+        source_text = extract_embedded_source_text(content)
+        if not source_text:
+            return []
+        if not re.search(r"\bexcept where\b.+\bapplies\b", source_text, flags=re.IGNORECASE | re.DOTALL):
+            return []
+
+        issues: list[str] = []
+        for block in self._extract_definition_blocks(content):
+            if block["dtype"] != "Boolean":
+                continue
+            for line_number, expression in self._iter_true_on_applies_patterns(block["body_lines"]):
+                issues.append(
+                    "Carve-out logic inverted: "
+                    f"{block['name']} line {line_number} treats `{expression}` as automatically satisfied "
+                    "when an `except where ... applies` carve-out should displace this slice"
+                )
+        return issues
+
     def _check_embedded_scalar_literals(self, rac_file: Path) -> list[str]:
         """Flag substantive scalar literals embedded inside formulas."""
         issues: list[str] = []
@@ -1310,6 +1333,7 @@ class ValidatorPipeline:
             nonlocal current, current_lines
             if current is None:
                 return
+            current["body_lines"] = list(current_lines)
             current["imports"] = self._extract_import_paths("\n".join(current_lines))
             current["dtype"] = self._extract_block_metadata(current_lines, "dtype")
             current["status"] = self._extract_block_metadata(current_lines, "status")
@@ -1331,6 +1355,35 @@ class ValidatorPipeline:
 
         flush()
         return blocks
+
+    def _iter_true_on_applies_patterns(
+        self, body_lines: list[str]
+    ) -> list[tuple[int, str]]:
+        """Return `(line_number_offset, condition)` pairs for `if <applies>: true` branches."""
+        findings: list[tuple[int, str]] = []
+        for index, line in enumerate(body_lines):
+            inline_match = re.search(
+                r"\bif\s+([A-Za-z_]\w*applies[A-Za-z_0-9]*)\b[^:\n]*:\s*true\b",
+                line,
+                flags=re.IGNORECASE,
+            )
+            if inline_match:
+                findings.append((index + 1, inline_match.group(1)))
+                continue
+
+            branch_match = re.match(
+                r"^\s*if\s+([A-Za-z_]\w*applies[A-Za-z_0-9]*)\b[^:\n]*:\s*$",
+                line,
+                flags=re.IGNORECASE,
+            )
+            if not branch_match:
+                continue
+            if index + 1 >= len(body_lines):
+                continue
+            next_line = body_lines[index + 1].strip().lower()
+            if next_line == "true":
+                findings.append((index + 1, branch_match.group(1)))
+        return findings
 
     def _extract_expected_branch_token(self, source_text: str) -> str | None:
         """Return the deepest non-numeric structural branch token from source text."""
