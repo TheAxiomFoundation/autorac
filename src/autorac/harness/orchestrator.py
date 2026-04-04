@@ -43,7 +43,11 @@ from autorac.prompts.validator import VALIDATOR_PROMPT
 from autorac.statute import find_citation_text, parse_usc_citation
 
 from .backends import parse_claude_cli_json_output
-from .dependency_stubs import build_registered_stub_content, find_registered_stub_specs
+from .dependency_stubs import (
+    build_registered_stub_content,
+    find_ingested_source_artifacts,
+    find_registered_stub_specs,
+)
 from .encoding_db import EncodingDB, TokenUsage
 from .observability import emit_agent_run, extract_reasoning_entries
 from .pricing import estimate_usage_cost_usd
@@ -2053,10 +2057,17 @@ Read any .rac file for reference on style and patterns."""
     _IMPORT_RE = re.compile(r"^\s*-\s+(\S+)#(\S+)", re.MULTILINE)
 
     def _find_statute_root(self, output_path: Path) -> Path:
-        """Find the statute/ root directory by walking up from output_path."""
+        """Find the corpus root used for import resolution."""
         current = output_path
         while current != current.parent:
+            if (current / "sources").exists():
+                return current
             if current.name == "statute":
+                return current
+            if current.name in {"regulation", "legislation"}:
+                parent = current.parent
+                if (parent / "sources").exists():
+                    return parent
                 return current
             current = current.parent
         parts = list(output_path.parts)
@@ -2218,6 +2229,43 @@ Read any .rac file for reference on style and patterns."""
                         },
                     )
                 continue
+
+            ingested_source_artifacts = find_ingested_source_artifacts(
+                import_path, self._find_statute_root(output_path)
+            )
+            if ingested_source_artifacts:
+                source_examples = ", ".join(
+                    str(path) for path in ingested_source_artifacts[:3]
+                )
+                message = (
+                    "Refusing RAC stub creation because official source is already ingested: "
+                    f"{citation} -> {source_examples}"
+                )
+                print(f"  {message}", flush=True)
+                if session_id:
+                    self._log_provenance_decision(
+                        session_id,
+                        "Blocked external stub generation because official source already exists",
+                        [
+                            f"Citation: {citation}",
+                            f"Import path: {import_path}",
+                            f"Requested variables: {', '.join(var_names)}",
+                            f"Source artifacts: {source_examples}",
+                        ],
+                        Phase.RESOLVE_EXTERNALS,
+                        metadata={
+                            "citation": citation,
+                            "import_path": import_path,
+                            "variable_names": var_names,
+                            "source_artifacts": [
+                                str(path) for path in ingested_source_artifacts
+                            ],
+                        },
+                    )
+                raise RuntimeError(
+                    "Official source already ingested for "
+                    f"{import_path}; encode the upstream RAC file instead of creating a stub"
+                )
 
             print(f"  Creating stub for {citation}: {', '.join(var_names)}", flush=True)
 

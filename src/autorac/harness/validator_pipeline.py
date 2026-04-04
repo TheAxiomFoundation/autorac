@@ -34,6 +34,9 @@ import yaml
 from autorac.constants import REVIEWER_CLI_MODEL
 
 from .dependency_stubs import (
+    has_ingested_source_for_import_target,
+    rac_content_has_stub_status,
+    rac_file_has_stub_status,
     resolve_canonical_concepts_from_text,
     resolve_defined_terms_from_text,
 )
@@ -1016,6 +1019,10 @@ class ValidatorPipeline:
             issues.extend(self._check_resolved_defined_term_imports(rac_file))
         with contextlib.suppress(Exception):
             issues.extend(self._check_resolved_canonical_concept_imports(rac_file))
+        with contextlib.suppress(Exception):
+            issues.extend(self._check_promoted_stub_file(rac_file))
+        with contextlib.suppress(Exception):
+            issues.extend(self._check_imported_stub_dependencies(rac_file))
 
         with contextlib.suppress(Exception):
             issues.extend(self._check_embedded_scalar_literals(rac_file))
@@ -1230,6 +1237,44 @@ class ValidatorPipeline:
                 f'`{concept.term}` resolves to {concept.citation} via '
                 f"{concept.import_target} but file does not import from {import_base}"
             )
+        return issues
+
+    def _check_promoted_stub_file(self, rac_file: Path) -> list[str]:
+        """Flag committed RAC stubs when their official source is already ingested."""
+        source_root = self._validation_source_root(rac_file)
+        try:
+            relative = rac_file.resolve().relative_to(source_root.resolve())
+        except ValueError:
+            return []
+
+        if not rac_content_has_stub_status(rac_file.read_text()):
+            return []
+        if not has_ingested_source_for_import_target(relative.with_suffix("").as_posix(), source_root):
+            return []
+
+        return [
+            "Promoted RAC stub with ingested source: "
+            f"{relative.as_posix()} still declares `status: stub` even though the official source is present locally; "
+            "replace the stub with a real encoding before promotion"
+        ]
+
+    def _check_imported_stub_dependencies(self, rac_file: Path) -> list[str]:
+        """Flag imports that still point at stubs even though source is already ingested."""
+        source_root = self._validation_source_root(rac_file)
+        issues: list[str] = []
+
+        for import_path in self._extract_import_paths(rac_file.read_text()):
+            target = source_root / self._import_to_relative_rac_path(import_path)
+            if not rac_file_has_stub_status(target):
+                continue
+            if not has_ingested_source_for_import_target(import_path, source_root):
+                continue
+            issues.append(
+                "Imported stub dependency with ingested source: "
+                f"{rac_file.name} imports `{import_path}` but `{target.relative_to(source_root).as_posix()}` "
+                "is still a stub while the official source is already present locally; encode the upstream file instead"
+            )
+
         return issues
 
     def _check_placeholder_fact_variables(self, rac_file: Path) -> list[str]:

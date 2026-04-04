@@ -1521,6 +1521,137 @@ individual_responsibility_contract_requirement_satisfied:
 
         assert not any("Canonical concept import missing" in issue for issue in result.issues)
 
+    def test_ci_rejects_promoted_stub_when_source_is_ingested(self, pipeline):
+        """CI should reject a committed stub once the official source snapshot exists."""
+        rac_file = pipeline.rac_us_path / "statute" / "crs" / "26-2-703" / "2.5.rac"
+        rac_file.parent.mkdir(parents=True, exist_ok=True)
+        rac_file.write_text(
+            '''
+"""
+C.R.S. § 26-2-703(2.5)
+Definitions
+"""
+
+status: stub
+
+is_assistance_unit:
+    stub_for: statute/crs/26-2-703/2.5#is_assistance_unit
+    entity: TanfUnit
+    period: Month
+    dtype: Boolean
+'''
+        )
+
+        source_file = (
+            pipeline.rac_us_path
+            / "sources"
+            / "official"
+            / "statute"
+            / "crs"
+            / "26-2-703"
+            / "2026-04-03"
+            / "source.html"
+        )
+        source_file.parent.mkdir(parents=True, exist_ok=True)
+        source_file.write_text("<html>official statute source</html>")
+
+        with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run:
+            mock_run.side_effect = [
+                Mock(
+                    stdout="============================================================\nTests: 1  Passed: 1  Failed: 0\nAll tests passed.\n",
+                    stderr="",
+                    returncode=0,
+                ),
+                Mock(
+                    stdout="Checked 1 .rac files\n\nAll files pass validation\n",
+                    stderr="",
+                    returncode=0,
+                ),
+            ]
+            result = pipeline._run_ci(rac_file)
+
+        assert result.passed is False
+        assert any(
+            "Promoted RAC stub with ingested source" in issue
+            for issue in result.issues
+        )
+
+    def test_ci_rejects_imported_stub_dependency_when_source_is_ingested(self, pipeline):
+        """CI should reject downstream imports that still point at a promoted stub."""
+        target = pipeline.rac_us_path / "statute" / "crs" / "26-2-703" / "2.5.rac"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(
+            '''
+"""
+C.R.S. § 26-2-703(2.5)
+Definitions
+"""
+
+status: stub
+
+is_assistance_unit:
+    stub_for: statute/crs/26-2-703/2.5#is_assistance_unit
+    entity: TanfUnit
+    period: Month
+    dtype: Boolean
+'''
+        )
+
+        source_file = (
+            pipeline.rac_us_path
+            / "sources"
+            / "official"
+            / "statute"
+            / "crs"
+            / "26-2-703"
+            / "2026-04-03"
+            / "source.html"
+        )
+        source_file.parent.mkdir(parents=True, exist_ok=True)
+        source_file.write_text("<html>official statute source</html>")
+
+        rac_file = pipeline.rac_us_path / "regulation" / "9-CCR-2503-6" / "3.606.1" / "J.rac"
+        rac_file.parent.mkdir(parents=True, exist_ok=True)
+        rac_file.write_text(
+            '''
+"""
+The grant amount is determined for the assistance unit.
+"""
+
+status: encoded
+
+grant_amount_for_assistance_unit:
+    imports:
+        - statute/crs/26-2-703/2.5#is_assistance_unit
+    entity: TanfUnit
+    period: Month
+    dtype: Money
+    from 2026-04-02:
+        if is_assistance_unit: 1 else: 0
+'''
+        )
+
+        with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run:
+            mock_run.side_effect = [
+                Mock(
+                    stdout="============================================================\nTests: 1  Passed: 1  Failed: 0\nAll tests passed.\n",
+                    stderr="",
+                    returncode=0,
+                ),
+                Mock(
+                    stdout="Checked 1 .rac files\n\nAll files pass validation\n",
+                    stderr="",
+                    returncode=0,
+                ),
+            ]
+            result = pipeline._run_ci(rac_file)
+
+        assert result.passed is False
+        assert any(
+            "Imported stub dependency with ingested source" in issue
+            for issue in result.issues
+        )
+
     def test_ci_does_not_force_import_for_low_confidence_one_word_concept(self, pipeline):
         """Generic one-word concepts like `income` should not become required imports."""
         concept_file = pipeline.rac_us_path / "statute" / "crs" / "26-2-703" / "10.5.rac"

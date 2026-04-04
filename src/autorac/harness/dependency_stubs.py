@@ -62,6 +62,7 @@ _REGISTERED_STUBS_BY_KEY = {
     for _, term in _REGISTERED_DEFINED_TERM_PATTERNS
 }
 _EMBEDDED_SOURCE_PATTERN = re.compile(r'\s*"""(.*?)"""\s*', re.DOTALL)
+_FILE_LEVEL_STUB_STATUS_PATTERN = re.compile(r"(?m)^status:\s*stub\s*$")
 _TOP_LEVEL_SYMBOL_PATTERN = re.compile(r"^([A-Za-z_]\w*):\s*$")
 _METADATA_PATTERN = re.compile(r"^\s+(entity|period|dtype):\s*(.+?)\s*$")
 _QUOTED_DEFINITION_PATTERN = re.compile(
@@ -69,6 +70,7 @@ _QUOTED_DEFINITION_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _SOURCE_ROOT_SEGMENTS = {"legislation", "statute", "regulation"}
+_SOURCE_SLICE_EXTENSIONS = (".txt", ".xml", ".akn", ".html", ".json", ".md")
 
 
 def resolve_defined_terms_from_text(text: str) -> list[ResolvedDefinedTerm]:
@@ -203,9 +205,87 @@ def materialize_registered_stub(
     return target
 
 
+def rac_content_has_stub_status(content: str) -> bool:
+    """Return whether a RAC file declares file-level `status: stub`."""
+    return bool(_FILE_LEVEL_STUB_STATUS_PATTERN.search(content))
+
+
+def rac_file_has_stub_status(rac_file: Path) -> bool:
+    """Return whether a RAC file exists and declares file-level `status: stub`."""
+    try:
+        return rac_file.exists() and rac_content_has_stub_status(rac_file.read_text())
+    except OSError:
+        return False
+
+
+def has_ingested_source_for_import_target(import_target: str, corpus_root: Path) -> bool:
+    """Return whether the import target's official source is present locally."""
+    return bool(find_ingested_source_artifacts(import_target, corpus_root))
+
+
+def find_ingested_source_artifacts(import_target: str, corpus_root: Path) -> list[Path]:
+    """Locate source files proving the import target has been ingested locally."""
+    corpus_root = corpus_root.resolve()
+    sources_root = corpus_root / "sources"
+    if not sources_root.exists():
+        return []
+
+    relative = import_target_to_relative_rac_path(import_target).with_suffix("")
+    artifacts: list[Path] = []
+    seen: set[Path] = set()
+
+    for candidate in _iter_source_slice_candidates(sources_root, relative):
+        resolved = candidate.resolve()
+        if resolved not in seen:
+            seen.add(resolved)
+            artifacts.append(resolved)
+
+    for root in _iter_official_source_roots(sources_root, relative):
+        if not root.exists():
+            continue
+        for candidate in sorted(root.rglob("*")):
+            if not candidate.is_file():
+                continue
+            resolved = candidate.resolve()
+            if resolved not in seen:
+                seen.add(resolved)
+                artifacts.append(resolved)
+
+    return artifacts
+
+
 def _extract_embedded_source_text(content: str) -> str:
     match = _EMBEDDED_SOURCE_PATTERN.match(content)
     return match.group(1).strip() if match else ""
+
+
+def _iter_source_slice_candidates(sources_root: Path, relative: Path) -> list[Path]:
+    base = sources_root / "slices" / relative
+    candidates: list[Path] = []
+    if base.exists() and base.is_file():
+        candidates.append(base)
+    for extension in _SOURCE_SLICE_EXTENSIONS:
+        candidate = base.with_suffix(extension)
+        if candidate.exists():
+            candidates.append(candidate)
+    return candidates
+
+
+def _iter_official_source_roots(sources_root: Path, relative: Path) -> list[Path]:
+    parts = relative.parts
+    if not parts:
+        return []
+
+    if parts[0] == "statute" and len(parts) >= 3:
+        return [sources_root / "official" / parts[0] / parts[1] / parts[2]]
+
+    if parts[0] == "legislation" and len(parts) >= 4:
+        return [sources_root / "official" / parts[1] / parts[2] / parts[3]]
+
+    if parts[0] == "regulation" and len(parts) >= 2:
+        return [sources_root / "official" / parts[1]]
+
+    return []
 
 
 def _extract_defined_concept_terms_from_source(source_text: str) -> list[str]:

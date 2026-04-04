@@ -251,6 +251,42 @@ class TestResolveExternalDependencies:
         mock_run.assert_not_called()
         mock_fetch.assert_not_called()
 
+    def test_refuses_stub_creation_when_official_source_is_already_ingested(
+        self, orchestrator, tmp_path
+    ):
+        """If the official source exists locally, the resolver should block stub creation."""
+        repo_root = tmp_path / "rac-us-co"
+        regulation_dir = repo_root / "regulation" / "9-CCR-2503-6" / "3.606.1"
+        regulation_dir.mkdir(parents=True)
+        (regulation_dir / "J.rac").write_text(
+            "grant_rule:\n"
+            "    imports:\n"
+            "        - statute/crs/26-2-703/2.5#is_assistance_unit\n"
+        )
+
+        source_file = (
+            repo_root
+            / "sources"
+            / "official"
+            / "statute"
+            / "crs"
+            / "26-2-703"
+            / "2026-04-03"
+            / "source.html"
+        )
+        source_file.parent.mkdir(parents=True)
+        source_file.write_text("<html>official statute source</html>")
+
+        with patch.object(
+            orchestrator,
+            "_run_agent",
+            new_callable=AsyncMock,
+        ) as mock_run:
+            with pytest.raises(RuntimeError, match="Official source already ingested"):
+                asyncio.run(orchestrator._resolve_external_dependencies(regulation_dir))
+
+        mock_run.assert_not_called()
+
 
 class TestPhaseEnum:
     def test_resolve_externals_phase_exists(self):
