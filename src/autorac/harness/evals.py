@@ -90,6 +90,12 @@ SUPPORTED_EVAL_DTYPES = (
     "Decimal",
     "Float",
 )
+_PURE_NUMERIC_EXPRESSION_PATTERN = re.compile(r"^[\d\s()+\-*/.,]+$")
+_ISO_WEEK_PERIOD_PATTERN = re.compile(r"^\d{4}-W\d{2}(?:-\d)?$")
+_CONDITIONAL_AMOUNT_SLICE_PATTERN = re.compile(
+    r"\b(?:if|where|unless|except|subject to|treated as paid)\b",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -2243,6 +2249,8 @@ Available precedent files:
 === FILE: {test_file_name} ===
 <raw .rac.test YAML>
 - The `.rac.test` file must contain 1-4 cases.
+- For ordinary source slices, the `.rac.test` file should usually contain 3-4 cases covering true/applicable, false/inapplicable, and boundary or alternate factual branches.
+- Only a single fixed-amount source slice may use 1-2 cases.
 - The `.rac.test` file must be a YAML list of cases beginning with `- name:` entries, not a top-level mapping keyed by case names.
 - For a single fixed-amount source slice, a base case is sufficient.
 - Add an effective-date boundary only when the period supports a meaningful point-in-time boundary.
@@ -2250,6 +2258,7 @@ Available precedent files:
 - Test inputs must contain factual predicates or quantities, not the output variable being asserted.
 - In `.rac.test`, input and output values must be plain scalars or simple mappings, not inline variable declarations with keys like `entity`, `period`, `dtype`, `values`, or `from ...`.
 - Use `output:` mappings in `.rac.test` cases, not `expect:` blocks.
+- Use concrete ISO calendar dates like `2025-03-21` in `.rac.test` `period:` fields; do not use ISO week strings like `2025-W13`.
 - The `.rac.test` file must contain YAML only, with no trailing notes or prose.
 - Do not include markdown fences or explanation.
 """
@@ -2271,6 +2280,7 @@ Available precedent files:
 - For UK rate leaves with one grounded monetary amount, encode the directly payable person-level or unit-level amount described by the text; do not collapse it into an unconditional family-level constant.
 - For UK `dtype: Money` variables derived from sterling amounts, include `unit: GBP`.
 - If the source states a sterling amount in pence, encode it in pounds sterling as a decimal with `unit: GBP`; for example, `10 pence` should become `0.10`, not `10`.
+- For those pence-derived UK money scalars, emit the decimal literal directly; do not disguise it as arithmetic like `1 / 10` or `10 / 100`.
 - If the source states that a monetary amount or threshold is payable `per week`, `per month`, or `per year`, prefer a money variable with matching `period:` cadence rather than a day-level money variable, unless the principal output is instead a day-level boolean rule that merely depends on that money threshold.
 - For UK branch leaves like `(a)`, `(b)`, or `80A(2)(c)`, encode the branch identity in the output variable name. Do not reuse generic parent variable names like `child_benefit_weekly_rate`, `standard_minimum_guarantee`, or `benefit_cap` for a branch-specific leaf.
 - If the target text includes a deepest nested branch token like `(i)`, `(ii)`, `(iii)`, `(a)`, or `(b)`, the principal output variable must encode that deepest token, e.g. `qualifying_young_person_4A_1_b_i`, not just the parent branch like `qualifying_young_person_4A_1_b`.
@@ -2286,6 +2296,8 @@ Available precedent files:
 - Do not convert relative temporal phrases like `the day following`, `the next following day`, `the first day of the next benefit week`, or `beginning with the day following ...` into invented numeric offset or ordinal scalars like `1`, `first_*_ordinal`, or `*_offset = 1` unless the source text itself states that number explicitly.
 - For carve-outs phrased like `except where paragraph (b) applies`, treat the carve-out as displacing this slice. When the carve-out condition is true, this slice should evaluate false or be otherwise inoperative; do not treat the slice as automatically satisfied just because the exception applies.
 - For exclusion-list leaves phrased like `all income is qualifying income except ... which is not to be treated as qualifying income`, do not collapse the principal output to an unconditional `true` or `false`. Encode either the excluded amount itself or a fact-sensitive classification that changes with the source-stated subject/input.
+- For positive conditional leaves phrased like `£20 is disregarded if ...`, `X is payable if ...`, or `benefit shall be treated as paid ...`, make the principal output explicitly depend on the source-stated condition.
+- For those positive conditional leaves, the inapplicable case should usually be `0` for `dtype: Money` or `false` for `dtype: Boolean`; do not use an unconditional amount or `else: true` unless `./source.txt` expressly states that inapplicable cases count as satisfied.
 - In `.rac.test`, use helper/input names that expose the actual legal facts from the source text. Prefer names like `child_benefit_is_only_person`, `child_benefit_is_elder_or_eldest_person`, `claimant_has_partner`, `is_single_claimant`, `is_joint_claimant`, `resident_in_greater_london`, or `responsible_for_child_or_qualifying_young_person`.
 - In `.rac.test`, avoid opaque placeholders like `*_condition`, `*_eligibility_flag`, or `family_has_partner` when a more direct legal-fact name is available from the source text.
 - For whole-provision slices phrased like `Where X, Y must ...`, encode the triggered requirement itself. Include a `.rac.test` case where `X` is false; unless `./source.txt` expressly says otherwise, the requirement should evaluate as satisfied or inapplicable rather than false in that case.
@@ -2421,6 +2433,8 @@ def _is_single_amount_table_slice(source_text: str) -> bool:
 
     money_matches = re.findall(r"[£$€]\s*\d[\d,]*(?:\.\d+)?", source_text)
     if len(money_matches) != 1:
+        return False
+    if _CONDITIONAL_AMOUNT_SLICE_PATTERN.search(source_text):
         return False
 
     money_lines = [
@@ -3140,9 +3154,53 @@ def _normalize_rac_code_numeric_literals(content: str) -> str:
             code_start = closing_index + 3
             return (
                 content[:code_start]
-                + _normalize_comma_numeric_literals(content[code_start:])
+                + _normalize_direct_scalar_numeric_expressions(
+                    _normalize_comma_numeric_literals(content[code_start:])
+                )
             )
-    return _normalize_comma_numeric_literals(content)
+    return _normalize_direct_scalar_numeric_expressions(
+        _normalize_comma_numeric_literals(content)
+    )
+
+
+def _normalize_direct_scalar_numeric_expressions(content: str) -> str:
+    """Collapse direct scalar arithmetic like `1 / 10` into decimal literals."""
+    lines = content.splitlines()
+    rewritten: list[str] = []
+    index = 0
+
+    while index < len(lines):
+        line = lines[index]
+        inline_match = re.match(r"^(\s*from\s+\d{4}-\d{2}-\d{2}:\s*)(.+?)\s*$", line)
+        if inline_match:
+            expression = inline_match.group(2).strip()
+            if _PURE_NUMERIC_EXPRESSION_PATTERN.fullmatch(expression):
+                if (formatted := _format_safe_numeric_expression(expression)) is not None:
+                    rewritten.append(f"{inline_match.group(1)}{formatted}")
+                    index += 1
+                    continue
+
+        block_match = re.match(r"^(\s*from\s+\d{4}-\d{2}-\d{2}:)\s*$", line)
+        if block_match and index + 1 < len(lines):
+            next_line = lines[index + 1]
+            expression = next_line.strip()
+            if (
+                expression
+                and _PURE_NUMERIC_EXPRESSION_PATTERN.fullmatch(expression)
+                and (
+                    len(next_line) - len(next_line.lstrip())
+                    > len(line) - len(line.lstrip())
+                )
+            ):
+                if (formatted := _format_safe_numeric_expression(expression)) is not None:
+                    rewritten.append(f"{block_match.group(1)} {formatted}")
+                    index += 2
+                    continue
+
+        rewritten.append(line)
+        index += 1
+
+    return "\n".join(rewritten) + ("\n" if content.endswith("\n") else "")
 
 
 _SOURCE_TEXT_WRAPPER_PATTERN = re.compile(
@@ -3215,7 +3273,7 @@ def _format_safe_numeric_expression(expression: str) -> str | None:
     """Evaluate a numeric literal or simple arithmetic expression safely."""
     try:
         value = _evaluate_safe_numeric_expression(expression.strip())
-    except ValueError:
+    except (ValueError, SyntaxError, ZeroDivisionError):
         return None
 
     if float(value).is_integer():
@@ -3401,6 +3459,13 @@ def _normalize_nonannual_test_period_value(
                 return effective_date.isoformat()
             if year > effective_date.year:
                 return f"{year}-01-01"
+            return period
+        if _ISO_WEEK_PERIOD_PATTERN.fullmatch(period):
+            week_year = int(period[:4])
+            if week_year == effective_date.year:
+                return effective_date.isoformat()
+            if week_year > effective_date.year:
+                return f"{week_year}-01-01"
             return period
         if re.fullmatch(r"\d{4}-\d{2}", period):
             if period == effective_date.strftime("%Y-%m"):

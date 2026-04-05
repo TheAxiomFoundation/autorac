@@ -2,6 +2,7 @@
 
 import json
 import subprocess
+from datetime import date
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -19,8 +20,10 @@ from autorac.harness.evals import (
     _command_looks_out_of_bounds,
     _fetch_legislation_gov_uk_document,
     _hydrate_eval_root,
+    _is_single_amount_table_slice,
     _materialize_eval_artifact,
     _normalize_legislation_gov_uk_source_ref,
+    _normalize_nonannual_test_period_value,
     _post_openai_eval_request,
     _resolve_akn_section_eid,
     _run_codex_prompt_eval,
@@ -638,6 +641,85 @@ class TestGeneratedBundleCleaning:
         content = expected.read_text()
         assert "2025 * (7 + 3 + 1)" not in content
         assert "from 2025-03-21: 22020" in content
+
+    def test_materialize_eval_artifact_normalizes_direct_scalar_expression(
+        self, tmp_path
+    ):
+        response = (
+            "=== FILE: example.rac ===\n"
+            '"""\nWhere the amount payable is less than 10 pence per week.\n"""\n\n'
+            "small_amount_threshold:\n"
+            "    entity: Person\n"
+            "    period: Week\n"
+            "    dtype: Money\n"
+            "    unit: GBP\n"
+            "    from 2025-03-21:\n"
+            "        1 / 10\n"
+            "=== FILE: example.rac.test ===\n"
+            "- name: base\n"
+            "  period: 2025-03-21\n"
+            "  output:\n"
+            "    small_amount_threshold: 0.1\n"
+        )
+        expected = tmp_path / "source" / "example.rac"
+
+        wrote = _materialize_eval_artifact(
+            response,
+            expected,
+            source_text=(
+                "Editorial note: current text valid from 2025-03-21.\n\n"
+                "Where the amount payable is less than 10 pence per week.\n"
+            ),
+        )
+
+        assert wrote is True
+        assert "1 / 10" not in expected.read_text()
+        assert "from 2025-03-21: 0.1" in expected.read_text()
+
+    def test_materialize_eval_artifact_does_not_crash_for_conditional_money_leaf(
+        self, tmp_path
+    ):
+        response = (
+            "=== FILE: example.rac ===\n"
+            '"""\n£20 is disregarded if the claimant is in receipt of Scottish adult disability living allowance.\n"""\n\n'
+            "claimant_receives_benefit:\n"
+            "    entity: Person\n"
+            "    period: Week\n"
+            "    dtype: Boolean\n\n"
+            "earnings_disregard_amount:\n"
+            "    entity: Person\n"
+            "    period: Week\n"
+            "    dtype: Money\n"
+            "    unit: GBP\n"
+            "    from 2025-03-21: 20\n\n"
+            "sum_disregarded:\n"
+            "    entity: Person\n"
+            "    period: Week\n"
+            "    dtype: Money\n"
+            "    unit: GBP\n"
+            "    from 2025-03-21:\n"
+            "        if claimant_receives_benefit: earnings_disregard_amount else: 0\n"
+            "=== FILE: example.rac.test ===\n"
+            "- name: base\n"
+            "  period: 2025-03-21\n"
+            "  input:\n"
+            "    claimant_receives_benefit: true\n"
+            "  output:\n"
+            "    sum_disregarded: 20\n"
+        )
+        expected = tmp_path / "source" / "example.rac"
+
+        wrote = _materialize_eval_artifact(
+            response,
+            expected,
+            source_text=(
+                "Editorial note: current text valid from 2025-03-21.\n\n"
+                "£20 is disregarded if the claimant is in receipt of Scottish adult disability living allowance.\n"
+            ),
+        )
+
+        assert wrote is True
+        assert "if claimant_receives_benefit" in expected.read_text()
 
     def test_materialize_eval_artifact_cleans_bundled_fences(self, tmp_path):
         output_file = tmp_path / "source" / "uksi-2006-965-regulation-2.rac"
@@ -1977,7 +2059,70 @@ class TestEvalPrompt:
 
         assert "include `unit: GBP`" in prompt
         assert "`10 pence` should become `0.10`, not `10`" in prompt
+        assert "do not disguise it as arithmetic like `1 / 10`" in prompt
         assert "prefer a money variable with matching `period:` cadence" in prompt
+
+    def test_build_eval_prompt_for_positive_conditional_uk_leaf_requires_zero_or_false_else_case(
+        self, tmp_path
+    ):
+        workspace = prepare_eval_workspace(
+            citation="uksi/2002/1792/schedule/VI/paragraph/4/1/a/iva",
+            runner=parse_runner_spec("openai:gpt-5.4"),
+            output_root=tmp_path / "out",
+            source_text=(
+                "Editorial note: current text valid from 2025-03-21.\n\n"
+                "£20 is disregarded if the claimant or, if he has a partner, his partner "
+                "is in receipt of Scottish adult disability living allowance."
+            ),
+            rac_path=tmp_path / "rac",
+            mode="cold",
+            extra_context_paths=[],
+        )
+
+        prompt = _build_eval_prompt(
+            "uksi/2002/1792/schedule/VI/paragraph/4/1/a/iva",
+            "cold",
+            workspace,
+            [],
+            target_file_name="uksi-2002-1792-schedule-vi-paragraph-4-1-a-iva.rac",
+            include_tests=True,
+            runner_backend="openai",
+        )
+
+        assert "positive conditional leaves" in prompt
+        assert "the inapplicable case should usually be `0` for `dtype: Money` or `false` for `dtype: Boolean`" in prompt
+        assert "do not use an unconditional amount or `else: true`" in prompt
+
+    def test_build_eval_prompt_requires_calendar_date_test_periods(
+        self, tmp_path
+    ):
+        workspace = prepare_eval_workspace(
+            citation="uksi/2002/1792/regulation/13A/3/b",
+            runner=parse_runner_spec("openai:gpt-5.4"),
+            output_root=tmp_path / "out",
+            source_text=(
+                "Editorial note: current text valid from 2025-03-21.\n\n"
+                "The amount of the guarantee credit payable in respect of the part-week "
+                "shall be determined by multiplying the resulting figure by the number "
+                "of days in the part-week."
+            ),
+            rac_path=tmp_path / "rac",
+            mode="cold",
+            extra_context_paths=[],
+        )
+
+        prompt = _build_eval_prompt(
+            "uksi/2002/1792/regulation/13A/3/b",
+            "cold",
+            workspace,
+            [],
+            target_file_name="uksi-2002-1792-regulation-13A-3-b.rac",
+            include_tests=True,
+            runner_backend="openai",
+        )
+
+        assert "Use concrete ISO calendar dates like `2025-03-21`" in prompt
+        assert "do not use ISO week strings like `2025-W13`" in prompt
 
     def test_build_eval_prompt_for_uk_leaf_forbids_speculative_future_period_tests(
         self, tmp_path
@@ -3597,6 +3742,20 @@ class TestSourceEval:
             in prompt
         )
         assert "Do not add speculative future-period tests" in prompt
+
+    def test_single_amount_slice_detection_excludes_conditional_money_leaf(self):
+        assert (
+            _is_single_amount_table_slice(
+                "£20 is disregarded if the claimant is in receipt of Scottish adult disability living allowance."
+            )
+            is False
+        )
+
+    def test_normalize_nonannual_test_period_value_converts_iso_week_to_effective_date(self):
+        assert (
+            _normalize_nonannual_test_period_value("2025-W13", date(2025, 3, 21))
+            == "2025-03-21"
+        )
 
     def test_allows_relative_workspace_reads(self, tmp_path):
         (tmp_path / "source.txt").write_text("text\n")
