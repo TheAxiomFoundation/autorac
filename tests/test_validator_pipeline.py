@@ -10,6 +10,7 @@ Tests cover:
 6. Convenience function
 """
 
+import json
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
@@ -118,10 +119,34 @@ class TestRunClaudeCode:
 
     def test_handles_missing_cli(self):
         with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run:
-            mock_run.side_effect = FileNotFoundError()
+            mock_run.side_effect = [FileNotFoundError(), FileNotFoundError()]
             output, code = run_claude_code("test")
             assert "not found" in output
             assert code == 1
+
+    def test_falls_back_to_codex_when_claude_missing(self):
+        codex_jsonl = "\n".join(
+            [
+                json.dumps(
+                    {
+                        "type": "item.completed",
+                        "item": {
+                            "type": "agent_message",
+                            "text": '{"score": 8.0, "passed": true, "issues": [], "reasoning": "ok"}',
+                        },
+                    }
+                ),
+                json.dumps({"type": "turn.completed"}),
+            ]
+        )
+        with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run:
+            mock_run.side_effect = [
+                FileNotFoundError(),
+                Mock(stdout=codex_jsonl, stderr="", returncode=0),
+            ]
+            output, code = run_claude_code("test prompt", cwd=Path("/tmp"))
+            assert '"score": 8.0' in output
+            assert code == 0
 
 
 class TestExtractGroundingValues:
@@ -2051,6 +2076,19 @@ assessed_income_period_10_2_a_satisfied:
             assert result.passed is False
             assert result.score is None
             assert any("error" in issue.lower() for issue in result.issues)
+
+    def test_reviewer_parses_fenced_generalist_json(self, pipeline, temp_rac_file):
+        with patch("autorac.harness.validator_pipeline.run_claude_code") as mock_claude:
+            mock_claude.return_value = (
+                '```json\n{"score": 8.0, "passed": true, "blocking_issues": [], '
+                '"non_blocking_issues": ["minor naming cleanup"], '
+                '"reasoning": "ok with {braces} in explanation"}\n```',
+                0,
+            )
+            result = pipeline._run_reviewer("generalist-reviewer", temp_rac_file)
+            assert result.passed is True
+            assert result.score == 8.0
+            assert result.issues == ["[non-blocking] minor naming cleanup"]
 
     def test_reviewer_cli_error(self, pipeline, temp_rac_file):
         """Reviewer handles CLI error."""

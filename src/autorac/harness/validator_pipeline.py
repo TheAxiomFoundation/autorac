@@ -31,7 +31,7 @@ from typing import Any, Optional
 
 import yaml
 
-from autorac.constants import REVIEWER_CLI_MODEL
+from autorac.constants import DEFAULT_OPENAI_MODEL, REVIEWER_CLI_MODEL
 
 from .dependency_stubs import (
     has_ingested_source_for_import_target,
@@ -50,7 +50,11 @@ def run_claude_code(
     cwd: Optional[Path] = None,
 ) -> tuple[str, int]:
     """
-    Run Claude Code CLI as subprocess.
+    Run reviewer CLI as subprocess.
+
+    Prefer Claude Code CLI when available, but fall back to Codex CLI on
+    machines where Claude is not installed. This keeps reviewer-based evals
+    working in local Codex-only environments.
 
     Returns:
         Tuple of (output text, return code)
@@ -69,9 +73,98 @@ def run_claude_code(
     except subprocess.TimeoutExpired:
         return f"Timeout after {timeout}s", 1
     except FileNotFoundError:
-        return "Claude CLI not found", 1
+        return _run_codex_reviewer_cli(prompt, timeout=timeout, cwd=cwd)
     except Exception as e:
         return f"Error: {e}", 1
+
+
+def _run_codex_reviewer_cli(
+    prompt: str,
+    timeout: int = 120,
+    cwd: Optional[Path] = None,
+) -> tuple[str, int]:
+    """Run reviewer prompts through Codex CLI and return assistant text."""
+    cmd = [
+        "codex",
+        "exec",
+        "--json",
+        "--skip-git-repo-check",
+        "--sandbox",
+        "read-only",
+        "--model",
+        os.environ.get("AUTORAC_REVIEWER_CODEX_MODEL", DEFAULT_OPENAI_MODEL),
+    ]
+    if cwd is not None:
+        cmd.extend(["-C", str(cwd)])
+    cmd.append(prompt)
+
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            cwd=cwd,
+        )
+        output = result.stdout + result.stderr
+        return _extract_codex_text_output(output), result.returncode
+    except subprocess.TimeoutExpired:
+        return f"Timeout after {timeout}s", 1
+    except FileNotFoundError:
+        return "Reviewer CLIs not found (missing claude and codex)", 1
+    except Exception as e:
+        return f"Error: {e}", 1
+
+
+def _extract_codex_text_output(output: str) -> str:
+    """Return the concatenated assistant text from a Codex JSONL stream."""
+    assistant_messages: list[str] = []
+    last_error: str | None = None
+
+    for line in output.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            payload = json.loads(stripped)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(payload, dict):
+            continue
+        payload_type = payload.get("type")
+        if payload_type == "item.completed":
+            item = payload.get("item") or {}
+            if item.get("type") == "agent_message" and item.get("text"):
+                assistant_messages.append(item["text"])
+        elif payload_type == "error":
+            last_error = payload.get("message") or "codex exec error"
+
+    return "\n".join(assistant_messages).strip() or last_error or output
+
+
+def _extract_json_object(output: str) -> dict[str, Any]:
+    """Extract the first full JSON object from reviewer output."""
+    fenced_blocks = re.findall(
+        r"```(?:json)?\s*(.*?)```",
+        output,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
+    for block in fenced_blocks:
+        with contextlib.suppress(json.JSONDecodeError):
+            data = json.loads(block.strip())
+            if isinstance(data, dict):
+                return data
+
+    decoder = json.JSONDecoder()
+    for index, char in enumerate(output):
+        if char != "{":
+            continue
+        with contextlib.suppress(json.JSONDecodeError):
+            data, _ = decoder.raw_decode(output[index:])
+            if isinstance(data, dict):
+                return data
+
+    raise ValueError("No JSON found in output")
 
 
 _REVIEW_JSON_FORMAT = """
@@ -1904,11 +1997,7 @@ Output ONLY valid JSON:
             )
 
             # Parse JSON from output
-            json_match = re.search(r"\{[^{}]*\}", output, re.DOTALL)
-            if json_match:
-                data = json.loads(json_match.group())
-            else:
-                raise ValueError("No JSON found in output")
+            data = _extract_json_object(output)
 
             score = float(data.get("score", 5.0))
             if reviewer_type == "generalist-reviewer":
