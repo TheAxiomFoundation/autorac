@@ -12,27 +12,9 @@ gates:
   max_mean_estimated_cost_usd: 0.5
 cases:
   - kind: uk_legislation
-    name: regulation-17
-    source_ref: /uksi/2002/1792/2025-03-31
-    section_eid: regulation-17
-    oracle: none
-
-  - kind: uk_legislation
-    name: regulation-17-1
-    source_ref: /uksi/2002/1792/2025-03-31
-    section_eid: regulation-17-1
-    oracle: none
-
-  - kind: uk_legislation
     name: regulation-17-1-a
     source_ref: /uksi/2002/1792/2025-03-31
     section_eid: regulation-17-1-a
-    oracle: none
-
-  - kind: uk_legislation
-    name: regulation-17-1-b
-    source_ref: /uksi/2002/1792/2025-03-31
-    section_eid: regulation-17-1-b
     oracle: none
 
   - kind: uk_legislation
@@ -60,12 +42,6 @@ cases:
     oracle: none
 
   - kind: uk_legislation
-    name: regulation-17-2
-    source_ref: /uksi/2002/1792/2025-03-31
-    section_eid: regulation-17-2
-    oracle: none
-
-  - kind: uk_legislation
     name: regulation-17-2-a
     source_ref: /uksi/2002/1792/2025-03-31
     section_eid: regulation-17-2-a
@@ -81,12 +57,6 @@ cases:
     name: regulation-17-2-i
     source_ref: /uksi/2002/1792/2025-03-31
     section_eid: regulation-17-2-i
-    oracle: none
-
-  - kind: uk_legislation
-    name: regulation-17-2-ii
-    source_ref: /uksi/2002/1792/2025-03-31
-    section_eid: regulation-17-2-ii
     oracle: none
 
   - kind: uk_legislation
@@ -120,21 +90,9 @@ cases:
     oracle: none
 
   - kind: uk_legislation
-    name: regulation-17-5
-    source_ref: /uksi/2002/1792/2025-03-31
-    section_eid: regulation-17-5
-    oracle: none
-
-  - kind: uk_legislation
     name: regulation-17-5-a
     source_ref: /uksi/2002/1792/2025-03-31
     section_eid: regulation-17-5-a
-    oracle: none
-
-  - kind: uk_legislation
-    name: regulation-17-5-b
-    source_ref: /uksi/2002/1792/2025-03-31
-    section_eid: regulation-17-5-b
     oracle: none
 
   - kind: uk_legislation
@@ -168,12 +126,6 @@ cases:
     oracle: none
 
   - kind: uk_legislation
-    name: regulation-17-8
-    source_ref: /uksi/2002/1792/2025-03-31
-    section_eid: regulation-17-8
-    oracle: none
-
-  - kind: uk_legislation
     name: regulation-17-8-a
     source_ref: /uksi/2002/1792/2025-03-31
     section_eid: regulation-17-8-a
@@ -183,12 +135,6 @@ cases:
     name: regulation-17-8-b
     source_ref: /uksi/2002/1792/2025-03-31
     section_eid: regulation-17-8-b
-    oracle: none
-
-  - kind: uk_legislation
-    name: regulation-17-9
-    source_ref: /uksi/2002/1792/2025-03-31
-    section_eid: regulation-17-9
     oracle: none
 
   - kind: uk_legislation
@@ -207,12 +153,6 @@ cases:
     name: regulation-17-9A
     source_ref: /uksi/2002/1792/2025-03-31
     section_eid: regulation-17-9A
-    oracle: none
-
-  - kind: uk_legislation
-    name: regulation-17-10
-    source_ref: /uksi/2002/1792/2025-03-31
-    section_eid: regulation-17-10
     oracle: none
 
   - kind: uk_legislation
@@ -240,21 +180,9 @@ cases:
     oracle: none
 
   - kind: uk_legislation
-    name: regulation-17A
-    source_ref: /uksi/2002/1792/2025-03-31
-    section_eid: regulation-17A
-    oracle: none
-
-  - kind: uk_legislation
     name: regulation-17A-1
     source_ref: /uksi/2002/1792/2025-03-31
     section_eid: regulation-17A-1
-    oracle: none
-
-  - kind: uk_legislation
-    name: regulation-17A-2
-    source_ref: /uksi/2002/1792/2025-03-31
-    section_eid: regulation-17A-2
     oracle: none
 
   - kind: uk_legislation
@@ -285,12 +213,6 @@ cases:
     name: regulation-17A-2-e
     source_ref: /uksi/2002/1792/2025-03-31
     section_eid: regulation-17A-2-e
-    oracle: none
-
-  - kind: uk_legislation
-    name: regulation-17A-2-f
-    source_ref: /uksi/2002/1792/2025-03-31
-    section_eid: regulation-17A-2-f
     oracle: none
 
   - kind: uk_legislation
@@ -345,4 +267,76 @@ cases:
     name: regulation-17A-2-j
     source_ref: /uksi/2002/1792/2025-03-31
     section_eid: regulation-17A-2-j
+    oracle: none
+
+  - kind: uk_legislation
+    name: regulation-17A-2-k-i
+    source_ref: /uksi/2002/1792/2025-03-31
+    section_eid: regulation-17A-2-k-i
+    oracle: none
+
+  - kind: uk_legislation
+    name: regulation-17A-2-k-ii
+    source_ref: /uksi/2002/1792/2025-03-31
+    section_eid: regulation-17A-2-k-ii
+    oracle: none
+
+  - kind: uk_legislation
+    name: regulation-17A-3-a
+    source_ref: /uksi/2002/1792/2025-03-31
+    section_eid: regulation-17A-3-a
+    oracle: none
+
+  - kind: uk_legislation
+    name: regulation-17A-3-b
+    source_ref: /uksi/2002/1792/2025-03-31
+    section_eid: regulation-17A-3-b
+    oracle: none
+
+  - kind: uk_legislation
+    name: regulation-17A-3-c
+    source_ref: /uksi/2002/1792/2025-03-31
+    section_eid: regulation-17A-3-c
+    oracle: none
+
+  - kind: uk_legislation
+    name: regulation-17A-3-d
+    source_ref: /uksi/2002/1792/2025-03-31
+    section_eid: regulation-17A-3-d
+    oracle: none
+
+  - kind: uk_legislation
+    name: regulation-17A-3-e
+    source_ref: /uksi/2002/1792/2025-03-31
+    section_eid: regulation-17A-3-e
+    oracle: none
+
+  - kind: uk_legislation
+    name: regulation-17A-3-f
+    source_ref: /uksi/2002/1792/2025-03-31
+    section_eid: regulation-17A-3-f
+    oracle: none
+
+  - kind: uk_legislation
+    name: regulation-17A-4
+    source_ref: /uksi/2002/1792/2025-03-31
+    section_eid: regulation-17A-4
+    oracle: none
+
+  - kind: uk_legislation
+    name: regulation-17A-4A
+    source_ref: /uksi/2002/1792/2025-03-31
+    section_eid: regulation-17A-4A
+    oracle: none
+
+  - kind: uk_legislation
+    name: regulation-17A-5
+    source_ref: /uksi/2002/1792/2025-03-31
+    section_eid: regulation-17A-5
+    oracle: none
+
+  - kind: uk_legislation
+    name: regulation-17B-1-a
+    source_ref: /uksi/2002/1792/2025-03-31
+    section_eid: regulation-17B-1-a
     oracle: none
