@@ -640,6 +640,39 @@ example_timing_rule:
         assert "do not narrow the first `where ...` clause to only the later-mentioned category" in prompt
         assert "preserve the paragraph-(a) path for retired pay and pension" in prompt
 
+    def test_build_eval_prompt_for_complete_capital_bands_discourages_fractional_division(
+        self, tmp_path
+    ):
+        workspace = prepare_eval_workspace(
+            citation="uksi/2002/1792/regulation/15",
+            runner=parse_runner_spec("openai:gpt-5.4"),
+            output_root=tmp_path / "out",
+            source_text=(
+                "For the purposes of section 15(2) (deemed income from capital) and subject to "
+                "regulation 17(8) (capital to be disregarded), a claimant’s capital shall be "
+                "deemed to yield a weekly income of—\n\n"
+                "(a)\n\n"
+                "£1 for each £500 in excess of £10,000; and"
+            ),
+            rac_path=tmp_path / "rac",
+            mode="cold",
+            extra_context_paths=[],
+        )
+
+        prompt = _build_eval_prompt(
+            "uksi/2002/1792/regulation/15",
+            "cold",
+            workspace,
+            [],
+            target_file_name="uksi-2002-1792-regulation-15.rac",
+            include_tests=True,
+            runner_backend="openai",
+        )
+
+        assert "treat `for each £500` as counting complete bands, not proportional fractions" in prompt
+        assert "derive the band count with `floor(excess / band_size)`" in prompt
+        assert "include a non-exact-multiple excess case like `£750` above threshold" in prompt
+
 
 class TestGeneratedBundleCleaning:
     def test_clean_generated_file_content_strips_fence_and_trailing_prose(self):
