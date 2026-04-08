@@ -567,6 +567,133 @@ example_timing_rule:
         assert "one_month_threshold = 1" in prompt
         assert "trigger decomposed-date CI failures" in prompt
 
+    def test_build_eval_prompt_for_subject_to_includes_leaf_discourages_blanket_negation(
+        self, tmp_path
+    ):
+        workspace = prepare_eval_workspace(
+            citation="uksi/2002/1792/regulation/17A",
+            runner=parse_runner_spec("openai:gpt-5.4"),
+            output_root=tmp_path / "out",
+            source_text=(
+                "Subject to paragraphs (3), (4) and (4A), \"earnings\" in the case "
+                "of employment as an employed earner, means any remuneration or "
+                "profit derived from that employment and includes—\n\n"
+                "(a)\n\n"
+                "any bonus or commission;"
+            ),
+            rac_path=tmp_path / "rac",
+            mode="cold",
+            extra_context_paths=[],
+        )
+
+        prompt = _build_eval_prompt(
+            "uksi/2002/1792/regulation/17A",
+            "cold",
+            workspace,
+            [],
+            target_file_name="uksi-2002-1792-regulation-17A.rac",
+            include_tests=True,
+            runner_backend="openai",
+        )
+
+        assert "Subject to paragraphs (3), (4) and (4A), ... includes—" in prompt
+        assert "blanket negating gate" in prompt
+        assert "Do not make a composite `subject_to_*_satisfied`" in prompt
+        assert "branch-specific fact gate" in prompt
+        assert "permits this branch to count" in prompt
+        assert "do not collapse all cited qualifications into one opaque helper" in prompt
+        assert "one paragraph-specific qualification input or import per cited paragraph" in prompt
+
+    def test_build_eval_prompt_for_payable_phrase_preserves_payability_fact(
+        self, tmp_path
+    ):
+        workspace = prepare_eval_workspace(
+            citation="uksi/2002/1792/regulation/17A",
+            runner=parse_runner_spec("openai:gpt-5.4"),
+            output_root=tmp_path / "out",
+            source_text=(
+                "statutory sick pay and statutory maternity pay payable by the "
+                "employer under the 1992 Act;"
+            ),
+            rac_path=tmp_path / "rac",
+            mode="cold",
+            extra_context_paths=[],
+        )
+
+        prompt = _build_eval_prompt(
+            "uksi/2002/1792/regulation/17A",
+            "cold",
+            workspace,
+            [],
+            target_file_name="uksi-2002-1792-regulation-17A.rac",
+            include_tests=True,
+            runner_backend="openai",
+        )
+
+        assert "model payability as the legal fact" in prompt
+        assert "Do not replace `payable` with `receives` or `received`" in prompt
+
+    def test_build_eval_prompt_for_regular_pattern_clause_preserves_full_qualifier(
+        self, tmp_path
+    ):
+        workspace = prepare_eval_workspace(
+            citation="uksi/2002/1792/regulation/17",
+            runner=parse_runner_spec("openai:gpt-5.4"),
+            output_root=tmp_path / "out",
+            source_text=(
+                "the claimant's regular pattern of work is such that he does not "
+                "work the same hours every week;"
+            ),
+            rac_path=tmp_path / "rac",
+            mode="cold",
+            extra_context_paths=[],
+        )
+
+        prompt = _build_eval_prompt(
+            "uksi/2002/1792/regulation/17",
+            "cold",
+            workspace,
+            [],
+            target_file_name="uksi-2002-1792-regulation-17.rac",
+            include_tests=True,
+            runner_backend="openai",
+        )
+
+        assert "regular pattern of work is such that" in prompt
+        assert (
+            "Do not shorten the branch to only `does not work the same hours every week`"
+            in prompt
+        )
+
+    def test_build_eval_prompt_for_enumerated_payments_discourages_or_collapse(
+        self, tmp_path
+    ):
+        workspace = prepare_eval_workspace(
+            citation="uksi/2002/1792/regulation/17A",
+            runner=parse_runner_spec("openai:gpt-5.4"),
+            output_root=tmp_path / "out",
+            source_text=(
+                "statutory sick pay and statutory maternity pay payable by the "
+                "employer under the 1992 Act;"
+            ),
+            rac_path=tmp_path / "rac",
+            mode="cold",
+            extra_context_paths=[],
+        )
+
+        prompt = _build_eval_prompt(
+            "uksi/2002/1792/regulation/17A",
+            "cold",
+            workspace,
+            [],
+            target_file_name="uksi-2002-1792-regulation-17A.rac",
+            include_tests=True,
+            runner_backend="openai",
+        )
+
+        assert "do not collapse them into a single `x_or_y` principal output" in prompt
+        assert "statutory_sick_pay_or_statutory_maternity_pay_*" in prompt
+
     def test_build_eval_prompt_for_branch_slice_preserves_binding_lead_in_conjuncts(
         self, tmp_path
     ):
@@ -2105,6 +2232,9 @@ class TestEvalPrompt:
         assert "If the source cannot be represented faithfully with the supported schema" in prompt
         assert "`status: entity_not_supported`" in prompt
         assert "`status: deferred`" in prompt
+        assert "leave `.rac.test` empty" in prompt
+        assert "assertions against deferred symbols" in prompt
+        assert "emit only a top-level `status: deferred`" in prompt
 
     def test_build_eval_prompt_forbids_python_inline_ternaries(self, tmp_path):
         workspace = prepare_eval_workspace(

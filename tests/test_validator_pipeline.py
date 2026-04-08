@@ -385,6 +385,37 @@ dummy_output:
         assert result.passed is False
         assert "Test runner failed: No tests found." in result.issues
 
+    def test_ci_allows_no_tests_for_fully_deferred_status_only_artifact(self, pipeline):
+        rac_file = pipeline.rac_us_path / "uk" / "leaf.rac"
+        rac_file.parent.mkdir(parents=True, exist_ok=True)
+        rac_file.write_text(
+            '''
+"""
+Omitted provision.
+"""
+
+status: deferred
+'''
+        )
+
+        with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run:
+            mock_run.side_effect = [
+                Mock(
+                    stdout="============================================================\nTests: 0  Passed: 0  Failed: 0\nNo tests found.\n",
+                    stderr="",
+                    returncode=0,
+                ),
+                Mock(
+                    stdout="Checked 1 .rac files\n\nAll files pass validation\n",
+                    stderr="",
+                    returncode=0,
+                ),
+            ]
+            result = pipeline._run_ci(rac_file)
+
+        assert result.passed is True
+        assert result.issues == []
+
     def test_ci_rejects_constant_exclusion_list_outputs(self, pipeline):
         rac_file = pipeline.rac_us_path / "uk" / "leaf.rac"
         rac_file.parent.mkdir(parents=True, exist_ok=True)

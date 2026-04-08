@@ -1068,7 +1068,8 @@ class ValidatorPipeline:
                 env=env,
             )
             if "No tests found." in result.stdout:
-                issues.append("Test runner failed: No tests found.")
+                if not self._is_nonassertable_status_only_artifact(rac_file):
+                    issues.append("Test runner failed: No tests found.")
             elif result.returncode != 0:
                 summary = next(
                     (
@@ -1167,6 +1168,42 @@ class ValidatorPipeline:
             error=issues[0] if issues else None,
             raw_output="\n".join(advisories) if advisories else None,
         )
+
+    def _is_nonassertable_status_only_artifact(self, rac_file: Path) -> bool:
+        """Return true when every declared variable is a non-assertable status-only stub."""
+        content = rac_file.read_text()
+        if "status: deferred" not in content and "status: entity_not_supported" not in content:
+            return False
+
+        variable_blocks = re.findall(
+            r"(?ms)^([A-Za-z_][A-Za-z0-9_./-]*):\n((?: {4}.*\n?)*)",
+            content,
+        )
+        allowed_statuses = {"deferred", "entity_not_supported"}
+        if not variable_blocks:
+            top_level_statuses = {
+                match.group(1).strip()
+                for match in re.finditer(
+                    r"(?m)^status:\s*([A-Za-z_][A-Za-z0-9_]*)\s*$",
+                    content,
+                )
+            }
+            return bool(top_level_statuses) and top_level_statuses.issubset(allowed_statuses)
+
+        for _, body in variable_blocks:
+            statuses = {
+                match.group(1).strip()
+                for match in re.finditer(
+                    r"(?m)^ {4}status:\s*([A-Za-z_][A-Za-z0-9_]*)\s*$",
+                    body,
+                )
+            }
+            if not statuses or not statuses.issubset(allowed_statuses):
+                return False
+            if re.search(r"(?m)^ {4}from \d{4}-\d{2}-\d{2}:", body):
+                return False
+
+        return True
 
     def _copy_validation_import_closure(
         self,
