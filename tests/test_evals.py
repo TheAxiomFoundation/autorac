@@ -2638,6 +2638,70 @@ class TestEvalPrompt:
         assert "do not encode separate `day_is_date_claim_was_made` and `day_is_date_claim_was_treated_as_made` facts and then combine them with `or`" in prompt
         assert "include one no-supersession case for the operative claim date and one supersession case for the supersession date" in prompt
 
+    def test_build_eval_prompt_for_subject_to_override_discourages_permission_gate(
+        self, tmp_path
+    ):
+        workspace = prepare_eval_workspace(
+            citation="uksi/2002/1792/regulation/17",
+            runner=parse_runner_spec("openai:gpt-5.4"),
+            output_root=tmp_path / "out",
+            source_text=(
+                "Subject to regulation 17B(6), in the case of any income taken into "
+                "account for the purpose of calculating a person's income, there shall "
+                "be disregarded any amount payable by way of tax."
+            ),
+            rac_path=tmp_path / "rac",
+            mode="cold",
+            extra_context_paths=[],
+        )
+
+        prompt = _build_eval_prompt(
+            "uksi/2002/1792/regulation/17",
+            "cold",
+            workspace,
+            [],
+            target_file_name="uksi-2002-1792-regulation-17.rac",
+            include_tests=True,
+            runner_backend="openai",
+        )
+
+        assert "treat the cited provision as a possible override or displacement" in prompt
+        assert "model a local override/displacement boolean" in prompt
+        assert "Do not encode those `Subject to ...` qualifiers as helper names like `*_permits_*`" in prompt
+
+    def test_build_eval_prompt_for_pure_cross_reference_computation_prefers_deferred_without_import(
+        self, tmp_path
+    ):
+        workspace = prepare_eval_workspace(
+            citation="uksi/2002/1792/regulation/17",
+            runner=parse_runner_spec("openai:gpt-5.4"),
+            output_root=tmp_path / "out",
+            source_text=(
+                "In the case of the earnings of self-employed earners, the amounts "
+                "specified in paragraph (10) shall be taken into account in accordance "
+                "with paragraph (4) or, as the case may be, paragraph (10) of regulation "
+                "13 of the Computation of Earnings Regulations, as having effect in the "
+                "case of state pension credit."
+            ),
+            rac_path=tmp_path / "rac",
+            mode="cold",
+            extra_context_paths=[],
+        )
+
+        prompt = _build_eval_prompt(
+            "uksi/2002/1792/regulation/17",
+            "cold",
+            workspace,
+            [],
+            target_file_name="uksi-2002-1792-regulation-17.rac",
+            include_tests=True,
+            runner_backend="openai",
+        )
+
+        assert "do not replace the cited computation with local boolean `*_route_is_satisfied` or `*_fact` placeholders" in prompt
+        assert "prefer a compileable top-level `status: deferred` fallback" in prompt
+        assert "leave the `.rac.test` file empty" in prompt
+
     def test_build_eval_prompt_requires_calendar_date_test_periods(
         self, tmp_path
     ):
