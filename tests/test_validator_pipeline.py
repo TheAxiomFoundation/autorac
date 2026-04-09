@@ -320,6 +320,25 @@ the credit shall not be payable. A deduction of 10 pence per week is ignored.
         assert occurrences.count(0.1) == 2
         assert 10.0 not in occurrences
 
+    def test_ignores_quoted_structural_paragraph_markers(self):
+        occurrences = extract_numeric_occurrences_from_text(
+            """
+17B. Earnings of self-employed earners
+
+“(1)
+
+For the purposes of regulation 11, the earnings of a claimant to be taken into
+account shall be—
+
+(a)
+
+the net profit derived from that employment;
+"""
+        )
+
+        assert 1.0 not in occurrences
+        assert 11.0 not in occurrences
+
 
 class TestExtractNamedScalarOccurrences:
     def test_extracts_direct_and_multiline_temporal_scalars(self):

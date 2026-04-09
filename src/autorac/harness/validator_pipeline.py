@@ -327,6 +327,7 @@ _STRUCTURAL_SOURCE_HEADING_PATTERN = re.compile(
 _STRUCTURAL_SOURCE_PREFIX_PATTERN = re.compile(
     r"^\s*(?:\d+[A-Za-z]?\.\s+|\([0-9A-Za-zivxlcdm]+\)\s+)", re.IGNORECASE
 )
+_STRUCTURAL_SOURCE_QUOTE_CHARS = "\"'`“”‘’"
 _SOURCE_REFERENCE_TARGET_PATTERN = (
     r"(?:\([^)]+\)|\d+[A-Za-z./-]*(?:\([^)]+\))*(?=$|[\s,.;:])|[ivxlcdm]+\b|[A-Z]{1,4}\b|[a-z]\b)"
 )
@@ -578,11 +579,13 @@ def extract_numeric_occurrences_from_text(text: str) -> list[float]:
     cleaned_lines: list[str] = []
     for line in text.splitlines():
         stripped = line.strip()
-        if _STRUCTURAL_SOURCE_LINE_PATTERN.match(stripped):
+        structural_stripped = stripped.strip(_STRUCTURAL_SOURCE_QUOTE_CHARS)
+        if _STRUCTURAL_SOURCE_LINE_PATTERN.match(structural_stripped):
             continue
-        if _STRUCTURAL_SOURCE_HEADING_PATTERN.match(stripped):
+        if _STRUCTURAL_SOURCE_HEADING_PATTERN.match(structural_stripped):
             continue
-        cleaned_lines.append(_STRUCTURAL_SOURCE_PREFIX_PATTERN.sub("", line))
+        normalized_line = line.lstrip(_STRUCTURAL_SOURCE_QUOTE_CHARS)
+        cleaned_lines.append(_STRUCTURAL_SOURCE_PREFIX_PATTERN.sub("", normalized_line))
 
     cleaned = "\n".join(cleaned_lines)
     cleaned = GROUNDING_DATE_PATTERN.sub(" ", cleaned)
