@@ -27,6 +27,7 @@ from autorac.harness.encoding_db import ReviewResults
 from autorac.harness.validator_pipeline import (
     _REVIEW_JSON_FORMAT,
     FORMULA_REVIEWER_PROMPT,
+    GENERALIST_REVIEWER_PROMPT,
     INTEGRATION_REVIEWER_PROMPT,
     PARAMETER_REVIEWER_PROMPT,
     RAC_REVIEWER_PROMPT,
@@ -91,6 +92,12 @@ def pipeline_no_oracles(temp_dirs):
         enable_oracles=False,
         max_workers=4,
     )
+
+
+def test_generalist_reviewer_prompt_allows_justified_entity_not_supported_fallback():
+    assert "status: entity_not_supported" in GENERALIST_REVIEWER_PROMPT
+    assert "not automatically a blocking failure" in GENERALIST_REVIEWER_PROMPT
+    assert "unsupported ontology or granularity" in GENERALIST_REVIEWER_PROMPT
 
 
 # =========================================================================

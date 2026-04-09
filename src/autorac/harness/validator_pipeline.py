@@ -266,6 +266,7 @@ Review the file holistically for:
 6. **Entity / period / dtype plausibility**: Core variables use a coherent ontology for the rule being encoded.
 7. **Tests reflect applicability**: Tests cover both applicable and inapplicable branches when the source text makes them meaningful.
 8. **Blocking threshold**: Fail only for substantive fidelity defects that would make promotion unsafe. Minor cleanup notes, naming issues, dead code, or arguably missing-but-uncertain imports are non-blocking.
+9. **Unsupported ontology fallback**: A file that honestly declares `status: entity_not_supported` is not automatically a blocking failure. If the source slice genuinely depends on an unsupported ontology or granularity, treat that explicit fallback as acceptable so long as the file does not pretend to compute the rule and the unsupported reason is plausible from the source text.
 
 Scoring rubric:
 - 9-10: strong, promotion-ready

@@ -604,6 +604,69 @@ example_timing_rule:
         assert "do not collapse all cited qualifications into one opaque helper" in prompt
         assert "one paragraph-specific qualification input or import per cited paragraph" in prompt
 
+    def test_build_eval_prompt_for_payment_level_slice_discourages_blind_unsupported_fallback(
+        self, tmp_path
+    ):
+        workspace = prepare_eval_workspace(
+            citation="uksi/2002/1792/regulation/17",
+            runner=parse_runner_spec("openai:gpt-5.4"),
+            output_root=tmp_path / "out",
+            source_text=(
+                "Except where paragraph (2) and (4) apply, where the period in respect "
+                "of which a payment is made does not exceed a week, the whole of that "
+                "payment shall be included in the claimant's weekly income."
+            ),
+            rac_path=tmp_path / "rac",
+            mode="cold",
+            extra_context_paths=[],
+        )
+
+        prompt = _build_eval_prompt(
+            "uksi/2002/1792/regulation/17",
+            "cold",
+            workspace,
+            [],
+            target_file_name="uksi-2002-1792-regulation-17.rac",
+            include_tests=True,
+            runner_backend="openai",
+        )
+
+        assert "individual payment or `that payment`" in prompt
+        assert "preserve that payment-scoped subject" in prompt
+        assert "Use `status: entity_not_supported`" in prompt
+        assert "only as a last resort" in prompt
+        assert "Do not prefer that fallback" in prompt
+
+    def test_build_eval_prompt_for_except_where_and_citations_discourages_joint_exception(
+        self, tmp_path
+    ):
+        workspace = prepare_eval_workspace(
+            citation="uksi/2002/1792/regulation/17",
+            runner=parse_runner_spec("openai:gpt-5.4"),
+            output_root=tmp_path / "out",
+            source_text=(
+                "Except where paragraph (2) and (4) apply, the amount to be included "
+                "shall be determined—"
+            ),
+            rac_path=tmp_path / "rac",
+            mode="cold",
+            extra_context_paths=[],
+        )
+
+        prompt = _build_eval_prompt(
+            "uksi/2002/1792/regulation/17",
+            "cold",
+            workspace,
+            [],
+            target_file_name="uksi-2002-1792-regulation-17.rac",
+            include_tests=True,
+            runner_backend="openai",
+        )
+
+        assert "Except where paragraph (2) and (4) apply" in prompt
+        assert "do not assume the exception is displaced only when both cited paragraphs apply simultaneously" in prompt
+        assert "treat the slice as inoperative when any cited paragraph applies" in prompt
+
     def test_build_eval_prompt_for_payable_phrase_preserves_payability_fact(
         self, tmp_path
     ):
@@ -2401,6 +2464,74 @@ class TestEvalPrompt:
         assert "positive conditional leaves" in prompt
         assert "the inapplicable case should usually be `0` for `dtype: Money` or `false` for `dtype: Boolean`" in prompt
         assert "do not use an unconditional amount or `else: true`" in prompt
+
+    def test_build_eval_prompt_for_determination_limb_discourages_invented_fallback(
+        self, tmp_path
+    ):
+        workspace = prepare_eval_workspace(
+            citation="uksi/2002/1792/regulation/17",
+            runner=parse_runner_spec("openai:gpt-5.4"),
+            output_root=tmp_path / "out",
+            source_text=(
+                "the weekly amount of that claimant's income shall be determined—\n\n"
+                "(i)\n\n"
+                "if there is a recognised cycle of work, by reference to his average "
+                "weekly income over the period of the complete cycle; or"
+            ),
+            rac_path=tmp_path / "rac",
+            mode="cold",
+            extra_context_paths=[],
+        )
+
+        prompt = _build_eval_prompt(
+            "uksi/2002/1792/regulation/17",
+            "cold",
+            workspace,
+            [],
+            target_file_name="uksi-2002-1792-regulation-17.rac",
+            include_tests=True,
+            runner_backend="openai",
+        )
+
+        assert "do not invent sibling outcomes for non-applicable cases with `else: 0`" in prompt
+        assert "leave other cases to sibling limbs" in prompt
+        assert "do not leave the principal money or rate output unconditional" in prompt
+        assert "A limb-local `else: 0` is acceptable" in prompt
+        assert "do not reuse the parent provision's generic final-amount phrase" in prompt
+        assert "name the principal money or rate output after this limb's own basis or method" in prompt
+
+    def test_build_eval_prompt_for_shall_be_treated_discourages_fact_input_and_vacuous_true(
+        self, tmp_path
+    ):
+        workspace = prepare_eval_workspace(
+            citation="uksi/2002/1792/regulation/17",
+            runner=parse_runner_spec("openai:gpt-5.4"),
+            output_root=tmp_path / "out",
+            source_text=(
+                "If a claimant is entitled to receive a payment to which paragraph (5) "
+                "applies, the amount of that payment shall be treated as if made in "
+                "respect of a period of a year."
+            ),
+            rac_path=tmp_path / "rac",
+            mode="cold",
+            extra_context_paths=[],
+        )
+
+        prompt = _build_eval_prompt(
+            "uksi/2002/1792/regulation/17",
+            "cold",
+            workspace,
+            [],
+            target_file_name="uksi-2002-1792-regulation-17.rac",
+            include_tests=True,
+            runner_backend="openai",
+        )
+
+        assert "do not introduce a `*_fact` input" in prompt
+        assert "do not use vacuous `else: true`" in prompt
+        assert "do not replace the amount-level legal effect with a `Person`/`Day` boolean stand-in" in prompt
+        assert "prefer `status: entity_not_supported` over a pseudo-boolean approximation" in prompt
+        assert "If the current ontology cannot faithfully tie the deeming effect to the same payment amount" in prompt
 
     def test_build_eval_prompt_requires_calendar_date_test_periods(
         self, tmp_path
