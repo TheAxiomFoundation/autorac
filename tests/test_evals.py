@@ -2535,8 +2535,10 @@ class TestEvalPrompt:
 
         assert "do not invent sibling outcomes for non-applicable cases with `else: 0`" in prompt
         assert "leave other cases to sibling limbs" in prompt
-        assert "do not leave the principal money or rate output unconditional" in prompt
-        assert "A limb-local `else: 0` is acceptable" in prompt
+        assert "keep a branch-specific money or rate output for that basis" in prompt
+        assert "do not invent sibling outcomes for inapplicable cases with `else: 0`" in prompt
+        assert "pair the branch-specific money or rate output with a separate applicability boolean" in prompt
+        assert "omit assertions about the branch-specific money or rate output" in prompt
         assert "do not reuse the parent provision's generic final-amount phrase" in prompt
         assert "name the principal money or rate output after this limb's own basis or method" in prompt
 
