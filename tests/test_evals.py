@@ -2605,6 +2605,39 @@ class TestEvalPrompt:
         assert "prefer `status: entity_not_supported` over a pseudo-boolean approximation" in prompt
         assert "If the current ontology cannot faithfully tie the deeming effect to the same payment amount" in prompt
 
+    def test_build_eval_prompt_for_claim_date_reference_day_uses_single_operative_date(
+        self, tmp_path
+    ):
+        workspace = prepare_eval_workspace(
+            citation="uksi/2002/1792/regulation/17",
+            runner=parse_runner_spec("openai:gpt-5.4"),
+            output_root=tmp_path / "out",
+            source_text=(
+                "For the purposes of paragraph (2)(b) the last payments are the last payments "
+                "before the date the claim was made or treated as made or, if there is a "
+                "subsequent supersession under section 10 of the Social Security Act 1998, "
+                "the last payments before the date of the supersession."
+            ),
+            rac_path=tmp_path / "rac",
+            mode="cold",
+            extra_context_paths=[],
+        )
+
+        prompt = _build_eval_prompt(
+            "uksi/2002/1792/regulation/17",
+            "cold",
+            workspace,
+            [],
+            target_file_name="uksi-2002-1792-regulation-17.rac",
+            include_tests=True,
+            runner_backend="openai",
+        )
+
+        assert "preserve a single legally operative reference day" in prompt
+        assert "model one canonical operative claim-date fact" in prompt
+        assert "do not encode separate `day_is_date_claim_was_made` and `day_is_date_claim_was_treated_as_made` facts and then combine them with `or`" in prompt
+        assert "include one no-supersession case for the operative claim date and one supersession case for the supersession date" in prompt
+
     def test_build_eval_prompt_requires_calendar_date_test_periods(
         self, tmp_path
     ):
