@@ -2531,6 +2531,40 @@ class TestEvalPrompt:
         assert "do not reuse the parent provision's generic final-amount phrase" in prompt
         assert "name the principal money or rate output after this limb's own basis or method" in prompt
 
+    def test_build_eval_prompt_for_uk_residual_determination_limb_requires_other_case_condition(
+        self, tmp_path
+    ):
+        workspace = prepare_eval_workspace(
+            citation="uksi/2002/1792/regulation/17",
+            runner=parse_runner_spec("openai:gpt-5.4"),
+            output_root=tmp_path / "out",
+            source_text=(
+                "the amount to be included in the claimant's weekly income shall be determined—\n\n"
+                "(iv)\n\n"
+                "in any other case, by multiplying the amount of the payment by 7 and dividing "
+                "the product by the number of days in the period in respect of which it is made."
+            ),
+            rac_path=tmp_path / "rac",
+            mode="cold",
+            extra_context_paths=[],
+        )
+
+        prompt = _build_eval_prompt(
+            "uksi/2002/1792/regulation/17",
+            "cold",
+            workspace,
+            [],
+            target_file_name="uksi-2002-1792-regulation-17.rac",
+            include_tests=True,
+            runner_backend="openai",
+        )
+
+        assert "For residual sibling limbs phrased like `in any other case`" in prompt
+        assert "Do not treat the shared parent triggers alone as sufficient" in prompt
+        assert "model a local residual-case fact or applicability helper" in prompt
+        assert "no more specific sibling case applies" in prompt
+        assert "include a case where the parent conditions hold but the residual `other case` condition is false" in prompt
+
     def test_build_eval_prompt_for_shall_be_treated_discourages_fact_input_and_vacuous_true(
         self, tmp_path
     ):

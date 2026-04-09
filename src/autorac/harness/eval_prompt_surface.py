@@ -69,6 +69,9 @@ def render_uk_legislation_guidance() -> str:
 - In those `... shall be determined — (i) ... ; or` limbs, encode only this limb's own applicability and branch-specific determination; leave other cases to sibling limbs instead of forcing a complete fallback result in this file.
 - In those `... shall be determined — (i) ... ; or` limbs, do not leave the principal money or rate output unconditional while only a separate applicability boolean carries the branch conditions.
 - A limb-local `else: 0` is acceptable when it only marks this limb inoperative and does not pretend to encode a sibling limb's different consequence.
+- For residual sibling limbs phrased like `in any other case`, preserve that residual condition explicitly. Do not treat the shared parent triggers alone as sufficient for this limb.
+- In those `in any other case` limbs, model a local residual-case fact or applicability helper showing that no more specific sibling case applies, and make this limb depend on it.
+- In `.rac.test` for those residual limbs, include a case where the parent conditions hold but the residual `other case` condition is false, so the branch remains inoperative.
 - In those determination limbs, do not reuse the parent provision's generic final-amount phrase as the principal money or rate output name when this file encodes only one basis for the determination.
 - Instead, name the principal money or rate output after this limb's own basis or method, such as determination by reference to average weekly income over a complete cycle, so the file does not claim to encode the whole parent calculation outside this limb.
 - For branch-specific `_satisfied` outputs tied to one sibling limb, if the branch-triggering condition itself is false, the branch-specific output should usually be `false`, not vacuously `true`; sibling limbs or parent rules handle the other cases.
