@@ -567,6 +567,37 @@ example_timing_rule:
         assert "one_month_threshold = 1" in prompt
         assert "trigger decomposed-date CI failures" in prompt
 
+    def test_build_eval_prompt_for_single_payment_period_discourages_parallel_units(
+        self, tmp_path
+    ):
+        workspace = prepare_eval_workspace(
+            citation="uksi/2002/1792/regulation/17",
+            runner=parse_runner_spec("openai:gpt-5.4"),
+            output_root=tmp_path / "out",
+            source_text=(
+                "where the period in respect of which a payment is made exceeds a week, "
+                "and in a case where that period is three months, the amount is calculated ..."
+            ),
+            rac_path=tmp_path / "rac",
+            mode="cold",
+            extra_context_paths=[],
+        )
+
+        prompt = _build_eval_prompt(
+            "uksi/2002/1792/regulation/17",
+            "cold",
+            workspace,
+            [],
+            target_file_name="uksi-2002-1792-regulation-17.rac",
+            include_tests=True,
+            runner_backend="openai",
+        )
+
+        assert "keep one canonical fact or classification for that single period" in prompt
+        assert "parallel free inputs like `*_in_weeks` and `*_in_months`" in prompt
+        assert "do not require a second independent duration input" in prompt
+        assert "do not feed the same legal period through contradictory units or categories" in prompt
+
     def test_build_eval_prompt_for_subject_to_includes_leaf_discourages_blanket_negation(
         self, tmp_path
     ):
