@@ -602,6 +602,37 @@ example_timing_rule:
         assert "do not require a second independent duration input" in prompt
         assert "do not feed the same legal period through contradictory units or categories" in prompt
 
+    def test_build_eval_prompt_for_amount_included_determination_requires_applicability_bound_money_output(
+        self, tmp_path
+    ):
+        workspace = prepare_eval_workspace(
+            citation="uksi/2002/1792/regulation/17",
+            runner=parse_runner_spec("openai:gpt-5.4"),
+            output_root=tmp_path / "out",
+            source_text=(
+                "the amount to be included in the claimant's weekly income shall be determined—\n\n"
+                "(ii)\n\n"
+                "in a case where that period is three months, by multiplying the amount of the payment by 4 and dividing the product by 52;"
+            ),
+            rac_path=tmp_path / "rac",
+            mode="cold",
+            extra_context_paths=[],
+        )
+
+        prompt = _build_eval_prompt(
+            "uksi/2002/1792/regulation/17",
+            "cold",
+            workspace,
+            [],
+            target_file_name="uksi-2002-1792-regulation-17.rac",
+            include_tests=True,
+            runner_backend="openai",
+        )
+
+        assert "do not leave that money output unconditional" in prompt
+        assert "typically with an explicit `else: 0`" in prompt
+        assert "paragraph-level exceptions or a different payment period displace the limb" in prompt
+
     def test_build_eval_prompt_for_subject_to_includes_leaf_discourages_blanket_negation(
         self, tmp_path
     ):
