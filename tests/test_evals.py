@@ -151,6 +151,43 @@ class TestCodexPromptEval:
         assert terminated is True
         assert process.terminated is True
 
+    def test_wait_for_codex_process_times_out_when_heartbeat_stalls(self, tmp_path):
+        last_message = tmp_path / ".codex-last-message.txt"
+        stdout_path = tmp_path / "stdout.log"
+        stdout_path.write_text("")
+
+        class FakeProcess:
+            def __init__(self):
+                self.args = ["codex", "exec"]
+                self.returncode = None
+                self.terminated = False
+
+            def poll(self):
+                return self.returncode
+
+            def terminate(self):
+                self.terminated = True
+                self.returncode = -15
+
+            def wait(self, timeout=None):
+                return self.returncode
+
+            def kill(self):
+                self.returncode = -9
+
+        process = FakeProcess()
+        with pytest.raises(subprocess.TimeoutExpired):
+            _wait_for_codex_process(
+                process,
+                last_message,
+                timeout=1,
+                heartbeat_paths=[stdout_path],
+                max_idle_seconds=0,
+                poll_interval=0,
+            )
+
+        assert process.terminated is True
+
     def test_run_codex_prompt_eval_accepts_stable_last_message_on_termination(self, tmp_path):
         runner = parse_runner_spec("codex:gpt-5.4")
         workspace = prepare_eval_workspace(
@@ -208,7 +245,16 @@ class TestCodexPromptEval:
             def kill(self):
                 self.returncode = -9
 
-        def fake_wait(process, last_message_file, timeout, settle_seconds=5.0, poll_interval=0.5):
+        def fake_wait(
+            process,
+            last_message_file,
+            timeout,
+            heartbeat_paths=None,
+            settle_seconds=5.0,
+            max_output_wait_seconds=30.0,
+            max_idle_seconds=120.0,
+            poll_interval=0.5,
+        ):
             process.terminate()
             process.wait()
             return True
@@ -4283,6 +4329,48 @@ cases:
         assert state["completed_cases"] == 1
         lines = (output_root / "suite-results.jsonl").read_text().strip().splitlines()
         assert len(lines) == 1
+
+    def test_run_eval_suite_retries_reviewer_timeout(self, tmp_path):
+        manifest_file = tmp_path / "suite.yaml"
+        manifest_file.write_text(
+            """
+name: Timeout retry suite
+runners:
+  - openai:gpt-5.4
+cases:
+  - kind: source
+    name: case-one
+    source_id: case-one
+    source_file: ./source.txt
+            """.strip()
+        )
+        (tmp_path / "source.txt").write_text("authoritative source text")
+        manifest = load_eval_suite_manifest(manifest_file)
+
+        timed_out = _fake_eval_result("openai-gpt-5.4", "case-one")
+        timed_out.metrics.generalist_review_pass = False
+        timed_out.metrics.generalist_review_score = None
+        timed_out.metrics.generalist_review_issues = [
+            "Reviewer error: Reviewer CLI exited 1: Timeout after 300s"
+        ]
+        recovered = _fake_eval_result("openai-gpt-5.4", "case-one")
+
+        with patch(
+            "autorac.harness.evals.run_source_eval",
+            side_effect=[[timed_out], [recovered]],
+        ) as mock_source, patch(
+            "autorac.harness.evals._validate_uk_shared_scalar_sibling_sets",
+            return_value=None,
+        ):
+            results = run_eval_suite(
+                manifest=manifest,
+                output_root=tmp_path / "out",
+                rac_path=tmp_path / "rac",
+                atlas_path=None,
+            )
+
+        assert results == [recovered]
+        assert mock_source.call_count == 2
 
     def test_run_eval_suite_resume_skips_completed_cases(self, tmp_path):
         manifest_file = tmp_path / "suite.yaml"

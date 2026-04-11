@@ -32,6 +32,7 @@ from autorac.harness.validator_pipeline import (
     PARAMETER_REVIEWER_PROMPT,
     RAC_REVIEWER_PROMPT,
     OracleSubprocessResult,
+    _run_codex_reviewer_cli,
     extract_grounding_values,
     extract_named_scalar_occurrences,
     extract_numbers_from_text,
@@ -150,13 +151,27 @@ class TestRunClaudeCode:
         mock_run.assert_not_called()
 
     def test_handles_missing_cli(self):
-        with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run:
-            mock_run.side_effect = [FileNotFoundError(), FileNotFoundError()]
+        with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run, patch(
+            "autorac.harness.validator_pipeline._run_codex_reviewer_cli",
+            return_value=("Reviewer CLIs not found (missing claude and codex)", 1),
+        ):
+            mock_run.side_effect = [FileNotFoundError()]
             output, code = run_claude_code("test")
             assert "not found" in output
             assert code == 1
 
     def test_falls_back_to_codex_when_claude_missing(self):
+        with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run, patch(
+            "autorac.harness.validator_pipeline._run_codex_reviewer_cli",
+            return_value=('{"score": 8.0, "passed": true, "issues": [], "reasoning": "ok"}', 0),
+        ) as mock_codex:
+            mock_run.side_effect = [FileNotFoundError()]
+            output, code = run_claude_code("test prompt", cwd=Path("/tmp"))
+            assert '"score": 8.0' in output
+            assert code == 0
+            mock_codex.assert_called_once()
+
+    def test_codex_reviewer_cli_extracts_jsonl_output(self):
         codex_jsonl = "\n".join(
             [
                 json.dumps(
@@ -171,14 +186,53 @@ class TestRunClaudeCode:
                 json.dumps({"type": "turn.completed"}),
             ]
         )
-        with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run:
-            mock_run.side_effect = [
-                FileNotFoundError(),
-                Mock(stdout=codex_jsonl, stderr="", returncode=0),
-            ]
-            output, code = run_claude_code("test prompt", cwd=Path("/tmp"))
-            assert '"score": 8.0' in output
-            assert code == 0
+
+        class FakePopen:
+            def __init__(self, cmd, stdout, stderr, text, cwd):
+                self.args = cmd
+                self.returncode = 0
+                stdout.write(codex_jsonl)
+                stdout.flush()
+
+            def poll(self):
+                return self.returncode
+
+            def wait(self, timeout=None):
+                return self.returncode
+
+            def kill(self):
+                self.returncode = -9
+
+        with patch("autorac.harness.validator_pipeline.subprocess.Popen", FakePopen):
+            output, code = _run_codex_reviewer_cli("test prompt", timeout=5)
+
+        assert '"score": 8.0' in output
+        assert code == 0
+
+    def test_codex_reviewer_cli_times_out_when_idle(self):
+        class FakePopen:
+            def __init__(self, cmd, stdout, stderr, text, cwd):
+                self.args = cmd
+                self.returncode = None
+
+            def poll(self):
+                return self.returncode
+
+            def wait(self, timeout=None):
+                return self.returncode
+
+            def kill(self):
+                self.returncode = -9
+
+        with patch.dict(
+            "os.environ",
+            {"AUTORAC_REVIEWER_CODEX_IDLE_TIMEOUT_SECONDS": "0"},
+            clear=False,
+        ), patch("autorac.harness.validator_pipeline.subprocess.Popen", FakePopen):
+            output, code = _run_codex_reviewer_cli("test prompt", timeout=5)
+
+        assert "Timeout after 5s" in output
+        assert code == 1
 
 
 class TestExtractGroundingValues:

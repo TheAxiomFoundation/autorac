@@ -103,21 +103,105 @@ def _run_codex_reviewer_cli(
     cmd.append(prompt)
 
     try:
-        result = subprocess.run(
+        idle_timeout = min(
+            timeout,
+            max(
+                0,
+                int(
+                    os.getenv(
+                        "AUTORAC_REVIEWER_CODEX_IDLE_TIMEOUT_SECONDS",
+                        "45",
+                    )
+                ),
+            ),
+        )
+        result = _run_subprocess_with_idle_timeout(
             cmd,
-            capture_output=True,
-            text=True,
             timeout=timeout,
+            idle_timeout=idle_timeout,
             cwd=cwd,
         )
-        output = result.stdout + result.stderr
-        return _extract_codex_text_output(output), result.returncode
+        return _extract_codex_text_output(result.output), result.returncode
     except subprocess.TimeoutExpired:
         return f"Timeout after {timeout}s", 1
     except FileNotFoundError:
         return "Reviewer CLIs not found (missing claude and codex)", 1
     except Exception as e:
         return f"Error: {e}", 1
+
+
+@dataclass
+class _SubprocessRunResult:
+    """Captured subprocess output plus exit status."""
+
+    output: str
+    returncode: int
+
+
+def _run_subprocess_with_idle_timeout(
+    cmd: list[str],
+    *,
+    timeout: int,
+    idle_timeout: int,
+    cwd: Optional[Path] = None,
+    poll_interval: float = 0.5,
+) -> _SubprocessRunResult:
+    """Run a subprocess, aborting if it stops emitting output for too long."""
+    with tempfile.NamedTemporaryFile(mode="w+", delete=False) as stdout_file, tempfile.NamedTemporaryFile(
+        mode="w+", delete=False
+    ) as stderr_file:
+        stdout_path = Path(stdout_file.name)
+        stderr_path = Path(stderr_file.name)
+        process = subprocess.Popen(
+            cmd,
+            stdout=stdout_file,
+            stderr=stderr_file,
+            text=True,
+            cwd=cwd,
+        )
+
+    start = time.time()
+    last_activity = start
+    last_snapshot: tuple[tuple[int, int, int], tuple[int, int, int]] | None = None
+
+    def _snapshot() -> tuple[tuple[int, int, int], tuple[int, int, int]]:
+        values: list[tuple[int, int, int]] = []
+        for path in (stdout_path, stderr_path):
+            try:
+                stat = path.stat()
+            except OSError:
+                values.append((0, 0, 0))
+                continue
+            values.append((1, stat.st_size, stat.st_mtime_ns))
+        return values[0], values[1]
+
+    try:
+        while True:
+            if process.poll() is not None:
+                break
+
+            now = time.time()
+            if now - start > timeout:
+                process.kill()
+                process.wait()
+                raise subprocess.TimeoutExpired(cmd, timeout)
+
+            snapshot = _snapshot()
+            if snapshot != last_snapshot:
+                last_snapshot = snapshot
+                last_activity = now
+            elif idle_timeout >= 0 and now - last_activity >= idle_timeout:
+                process.kill()
+                process.wait()
+                raise subprocess.TimeoutExpired(cmd, idle_timeout)
+
+            time.sleep(poll_interval)
+
+        output = stdout_path.read_text() + stderr_path.read_text()
+        return _SubprocessRunResult(output=output, returncode=process.returncode or 0)
+    finally:
+        stdout_path.unlink(missing_ok=True)
+        stderr_path.unlink(missing_ok=True)
 
 
 def _extract_codex_text_output(output: str) -> str:

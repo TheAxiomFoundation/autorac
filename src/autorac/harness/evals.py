@@ -16,7 +16,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timezone
 from pathlib import Path
 from statistics import mean
-from typing import Literal
+from typing import Literal, Sequence
 from urllib.parse import urlparse
 from xml.etree import ElementTree as ET
 
@@ -1548,7 +1548,12 @@ def _suite_case_results_should_retry(case_results: list[EvalResult]) -> bool:
     """Return True when a suite case likely failed for a transient reason."""
     if _suite_case_results_hit_usage_limit(case_results):
         return False
-    return any(result.error is not None or result.metrics is None for result in case_results)
+    return any(
+        result.error is not None
+        or result.metrics is None
+        or _eval_result_indicates_retryable_timeout(result)
+        for result in case_results
+    )
 
 
 def _suite_case_results_hit_usage_limit(case_results: list[EvalResult]) -> bool:
@@ -1569,6 +1574,22 @@ def _eval_result_indicates_usage_limit(result: EvalResult) -> bool:
         texts.extend(result.metrics.taxsim_issues)
 
     return any("usage limit" in text.lower() for text in texts)
+
+
+def _eval_result_indicates_retryable_timeout(result: EvalResult) -> bool:
+    """Return True when one result failed due to a transient timeout."""
+    texts: list[str] = []
+    if result.error:
+        texts.append(result.error)
+    if result.metrics is not None:
+        texts.extend(result.metrics.compile_issues)
+        texts.extend(result.metrics.ci_issues)
+        texts.extend(result.metrics.generalist_review_issues)
+        texts.extend(result.metrics.policyengine_issues)
+        texts.extend(result.metrics.taxsim_issues)
+
+    lowered = [text.lower() for text in texts]
+    return any("timeout after" in text or "timed out" in text for text in lowered)
 
 
 def summarize_readiness(
@@ -3044,6 +3065,7 @@ def _run_codex_prompt_eval(
                 process,
                 last_message_file=last_message_file,
                 timeout=600,
+                heartbeat_paths=[stdout_path, stderr_path],
             )
         except subprocess.TimeoutExpired:
             timed_out = True
@@ -3134,8 +3156,10 @@ def _wait_for_codex_process(
     last_message_file: Path,
     timeout: int,
     *,
+    heartbeat_paths: Sequence[Path] | None = None,
     settle_seconds: float = 5.0,
     max_output_wait_seconds: float = 30.0,
+    max_idle_seconds: float = 120.0,
     poll_interval: float = 0.5,
 ) -> bool:
     """Wait for Codex CLI, terminating it once output is stable or persistent."""
@@ -3143,6 +3167,23 @@ def _wait_for_codex_process(
     last_snapshot: tuple[int, int] | None = None
     stable_since: float | None = None
     output_seen_at: float | None = None
+    last_activity_at = start
+    heartbeat_snapshot: tuple[tuple[int, int, int], ...] | None = None
+
+    def _snapshot_activity() -> tuple[tuple[int, int, int], ...]:
+        files = [last_message_file, *(heartbeat_paths or [])]
+        snapshot: list[tuple[int, int, int]] = []
+        for path in files:
+            if not path.exists():
+                snapshot.append((0, 0, 0))
+                continue
+            try:
+                stat = path.stat()
+            except OSError:
+                snapshot.append((0, 0, 0))
+                continue
+            snapshot.append((1, stat.st_size, stat.st_mtime_ns))
+        return tuple(snapshot)
 
     while True:
         if process.poll() is not None:
@@ -3151,6 +3192,19 @@ def _wait_for_codex_process(
         now = time.time()
         if now - start > timeout:
             raise subprocess.TimeoutExpired(process.args, timeout)
+
+        current_heartbeat_snapshot = _snapshot_activity()
+        if current_heartbeat_snapshot != heartbeat_snapshot:
+            heartbeat_snapshot = current_heartbeat_snapshot
+            last_activity_at = now
+        elif now - last_activity_at >= max_idle_seconds:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+            raise subprocess.TimeoutExpired(process.args, max_idle_seconds)
 
         if last_message_file.exists():
             try:
