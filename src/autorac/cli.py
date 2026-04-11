@@ -18,6 +18,7 @@ import os
 import re
 import shutil
 import sys
+import time
 from dataclasses import asdict, is_dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -591,6 +592,18 @@ def main():
         "--resume",
         action="store_true",
         help="Resume a partially completed suite in the same output directory",
+    )
+    eval_suite_parser.add_argument(
+        "--auto-resume-attempts",
+        type=int,
+        default=0,
+        help="Retry and resume a suite after unexpected failures up to this many times",
+    )
+    eval_suite_parser.add_argument(
+        "--auto-resume-delay-seconds",
+        type=int,
+        default=5,
+        help="Seconds to wait before an automatic eval-suite resume attempt",
     )
     eval_suite_parser.add_argument(
         "--atlas-path",
@@ -2276,6 +2289,39 @@ def _build_eval_suite_payload(manifest, effective_runners, results, readiness, a
     }
 
 
+def _load_eval_suite_run_state(output_root: Path) -> dict | None:
+    """Load persisted suite lifecycle state when available."""
+    state_path = output_root / "suite-run.json"
+    if not state_path.exists():
+        return None
+    try:
+        return json.loads(state_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _suite_auto_resume_reason(state: dict | None, total_cases: int) -> str | None:
+    """Return a human-readable reason to auto-resume, if the suite is incomplete."""
+    if not state:
+        return None
+    status = str(state.get("status") or "").strip().lower()
+    completed_cases = int(state.get("completed_cases", 0) or 0)
+    if completed_cases >= total_cases or status == "completed":
+        return None
+    error = str(state.get("error") or "").strip()
+    if "usage limit" in error.lower():
+        return None
+    if status not in {"running", "failed", "interrupted"}:
+        return None
+    active_case = state.get("active_case") or {}
+    active_name = active_case.get("name")
+    if active_name:
+        return f"{status} while running case '{active_name}'"
+    if error:
+        return f"{status}: {error}"
+    return status or "incomplete state"
+
+
 def cmd_eval_suite(args):
     """Run a manifest-driven benchmark suite and evaluate readiness gates."""
     manifest = load_eval_suite_manifest(args.manifest)
@@ -2292,14 +2338,56 @@ def cmd_eval_suite(args):
         print(f"Atlas repo not found: {atlas_path}")
         sys.exit(1)
 
-    results = run_eval_suite(
-        manifest=manifest,
-        output_root=args.output,
-        rac_path=rac_path,
-        atlas_path=atlas_path if has_citation_case else None,
-        runner_specs=effective_runners,
-        resume_existing=getattr(args, "resume", False),
-    )
+    auto_resume_attempts = max(getattr(args, "auto_resume_attempts", 0), 0)
+    auto_resume_delay_seconds = max(getattr(args, "auto_resume_delay_seconds", 0), 0)
+    resume_existing = getattr(args, "resume", False)
+    recovery_count = 0
+
+    while True:
+        try:
+            results = run_eval_suite(
+                manifest=manifest,
+                output_root=args.output,
+                rac_path=rac_path,
+                atlas_path=atlas_path if has_citation_case else None,
+                runner_specs=effective_runners,
+                resume_existing=resume_existing,
+            )
+        except KeyboardInterrupt:
+            raise
+        except BaseException as exc:
+            if recovery_count >= auto_resume_attempts:
+                raise
+            recovery_count += 1
+            detail = str(exc).strip() or exc.__class__.__name__
+            print(
+                "eval-suite exited unexpectedly; "
+                f"auto-resuming {recovery_count}/{auto_resume_attempts} "
+                f"after {auto_resume_delay_seconds}s ({detail})",
+                file=sys.stderr,
+            )
+            if auto_resume_delay_seconds:
+                time.sleep(auto_resume_delay_seconds)
+            resume_existing = True
+            continue
+
+        auto_resume_reason = _suite_auto_resume_reason(
+            _load_eval_suite_run_state(args.output),
+            total_cases=len(manifest.cases),
+        )
+        if auto_resume_reason and recovery_count < auto_resume_attempts:
+            recovery_count += 1
+            print(
+                "eval-suite stopped before completion; "
+                f"auto-resuming {recovery_count}/{auto_resume_attempts} "
+                f"after {auto_resume_delay_seconds}s ({auto_resume_reason})",
+                file=sys.stderr,
+            )
+            if auto_resume_delay_seconds:
+                time.sleep(auto_resume_delay_seconds)
+            resume_existing = True
+            continue
+        break
 
     grouped: dict[str, list] = {}
     for result in results:
