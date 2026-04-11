@@ -1340,6 +1340,30 @@ class TestGeneratedBundleCleaning:
         )
         assert output_file.with_suffix(".rac.test").exists()
 
+    def test_materialize_eval_artifact_normalizes_bundled_day_periods_with_dotted_paths(
+        self, tmp_path
+    ):
+        output_file = tmp_path / "source" / "9-CCR-2503-6-3.606.1-K.rac"
+        llm_response = (
+            "=== FILE: ./9-CCR-2503-6-3.606.1-K.rac ===\n"
+            "authorized_basic_cash_assistance_grant_amount:\n"
+            "    entity: TanfUnit\n"
+            "    period: Month\n"
+            "    dtype: Money\n"
+            "    from 2026-04-02: 0\n"
+            "=== FILE: ./9-CCR-2503-6-3.606.1-K.rac.test ===\n"
+            "- name: base_case\n"
+            "  period: 2026-04-01\n"
+            "  output:\n"
+            "    authorized_basic_cash_assistance_grant_amount: 0\n"
+        )
+
+        wrote = _materialize_eval_artifact(llm_response, output_file)
+
+        assert wrote is True
+        test_text = output_file.with_suffix(".rac.test").read_text()
+        assert "period: '2026-04-02'" in test_text or "period: 2026-04-02" in test_text
+
     def test_materialize_eval_artifact_prefers_workspace_files_over_prose_bundle(
         self, tmp_path
     ):
@@ -2632,8 +2656,11 @@ class TestEvalPrompt:
         assert "For `dtype: Rate`, encode percentages as decimal ratios like `0.60` or `0.40`, never as `%` literals." in prompt
         assert "Do not respond with summaries like `Both files written`" in prompt
         assert "Do not use inline assignment syntax like `:=` inside `from` blocks" in prompt
-        assert "use supported RAC helpers like `floor(...)`" in prompt
+        assert "model truncation toward zero rather than toward negative infinity" in prompt
+        assert "if amount >= 0: floor(amount) else: ceil(amount)" in prompt
+        assert "Reserve bare `floor(...)` for instructions that explicitly say `round down`" in prompt
         assert "unsupported operators such as `%`" in prompt
+        assert "include a `.rac.test` case with a negative fractional amount" in prompt
 
     def test_build_eval_prompt_for_uk_leaf_prefers_person_over_family_constant(
         self, tmp_path
@@ -4628,6 +4655,43 @@ cases:
             ).resolve(),
         ]
 
+    def test_repo_us_co_colorado_works_leaf_k_repair_manifest_loads_expected_case(self):
+        repo_root = Path(__file__).resolve().parents[1]
+        manifest = load_eval_suite_manifest(
+            repo_root / "benchmarks" / "us_co_colorado_works_leaf_k_repair.yaml"
+        )
+
+        assert manifest.name == "Colorado Works leaf K repair"
+        assert manifest.mode == "repo-augmented"
+        assert len(manifest.cases) == 1
+        assert manifest.gates.min_cases == 1
+        assert manifest.gates.min_success_rate == 1.0
+        assert manifest.gates.min_compile_pass_rate == 1.0
+        assert manifest.gates.min_ci_pass_rate == 1.0
+        assert manifest.gates.min_zero_ungrounded_rate == 1.0
+        assert manifest.gates.min_generalist_review_pass_rate == 1.0
+        assert manifest.gates.max_mean_estimated_cost_usd == 0.5
+        assert manifest.cases[0].name == "co-3-606-1-k"
+        assert manifest.cases[0].source_id == "9 CCR 2503-6 3.606.1(K)"
+        assert manifest.cases[0].allow_context == [
+            (
+                repo_root.parent
+                / "rac-us-co"
+                / "regulation"
+                / "9-CCR-2503-6"
+                / "3.606.1"
+                / "F.rac"
+            ).resolve(),
+            (
+                repo_root.parent
+                / "rac-us-co"
+                / "regulation"
+                / "9-CCR-2503-6"
+                / "3.606.1"
+                / "I.rac"
+            ).resolve(),
+        ]
+
 
 class TestReadinessSummary:
     def test_summarize_readiness_applies_suite_gates(self):
@@ -5193,6 +5257,22 @@ class TestSourceEval:
         assert (
             _normalize_nonannual_test_period_value("2025-W13", date(2025, 3, 21))
             == "2025-03-21"
+        )
+
+    def test_normalize_nonannual_test_period_value_bumps_explicit_day_before_effective_date(
+        self,
+    ):
+        assert (
+            _normalize_nonannual_test_period_value("2026-04-01", date(2026, 4, 2))
+            == "2026-04-02"
+        )
+
+    def test_normalize_nonannual_test_period_value_bumps_yaml_date_before_effective_date(
+        self,
+    ):
+        assert (
+            _normalize_nonannual_test_period_value(date(2026, 4, 1), date(2026, 4, 2))
+            == "2026-04-02"
         )
 
     def test_allows_relative_workspace_reads(self, tmp_path):

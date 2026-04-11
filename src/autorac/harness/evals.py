@@ -2653,7 +2653,10 @@ Rules:
 - If `./source.txt` states that a fixed supplement, allowance, or addition is payable only while an eligibility condition holds, do not leave that money output unconditional; make the amount depend on that eligibility condition, usually with `else: 0` when the source states no alternate amount.
 - If `./source.txt` itself states the concrete facts that make someone eligible, do not collapse those facts into an opaque local input like `*_eligible_for_*` or `*_qualifies_for_*`. Expose the source-stated facts directly and derive eligibility from them only if needed.
 - For example, if the source says `pregnant parents are eligible ... through the month in which the pregnancy ends`, prefer direct facts like `client_is_pregnant_parent` and a month-end boundary fact/helper over a black-box `person_is_eligible_for_pregnancy_allowance`.
-- For textual rounding instructions like `drop the cents`, `drop any cents`, `round down`, or `truncate`, use supported RAC helpers like `floor(...)` rather than unsupported operators such as `%`.
+- For textual instructions like `drop the cents`, `drop any cents`, or `truncate`, model truncation toward zero rather than toward negative infinity.
+- If negative values are possible, use a sign-aware RAC expression such as `if amount >= 0: floor(amount) else: ceil(amount)` instead of bare `floor(amount)`.
+- Reserve bare `floor(...)` for instructions that explicitly say `round down` or for complete-band/counting rules, and do not use unsupported operators such as `%`.
+- When a rule drops cents or truncates and the computed amount may be negative, include a `.rac.test` case with a negative fractional amount so `floor(-1.25)` versus truncation-to-`-1` is actually exercised.
 - When a copied precedent file supplies chart values, thresholds, or standard amounts that your artifact imports, do not guess contradictory `.rac.test` expectations for those imported values. Choose test rows that match explicit imported chart values, or assert only relationships that do not require guessing the imported amount.
 - If you import variables like `need_standard_for_assistance_unit` or `grant_standard_for_assistance_unit` from a copied chart/standard file, keep `.rac.test` inputs and expected outputs consistent with the rows visible in that imported file rather than inventing zero or placeholder standards.
 - If an imported chart file keys those values by household composition, pick `.rac.test` households from explicit chart rows that visibly exist in the copied file. Do not invent degenerate placeholder rows like `number_of_children_in_assistance_unit: 0` plus `number_of_caretakers_in_assistance_unit: 0` unless the imported chart explicitly defines that exact row for the imported symbol.
@@ -3810,6 +3813,10 @@ def _normalize_nonannual_test_period_value(
     """Convert non-annual periods to concrete dates on or after the effective date."""
     if period is None:
         return effective_date.isoformat()
+    if isinstance(period, date):
+        if period < effective_date:
+            return effective_date.isoformat()
+        return period.isoformat()
     if isinstance(period, int):
         if period == effective_date.year:
             return effective_date.isoformat()
@@ -3833,6 +3840,14 @@ def _normalize_nonannual_test_period_value(
             return period
         if re.fullmatch(r"\d{4}-\d{2}", period):
             if period == effective_date.strftime("%Y-%m"):
+                return effective_date.isoformat()
+            return period
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", period):
+            try:
+                parsed = date.fromisoformat(period)
+            except ValueError:
+                return period
+            if parsed < effective_date:
                 return effective_date.isoformat()
             return period
     return period
@@ -3993,6 +4008,9 @@ def _materialize_eval_artifact(
     bundle = _extract_generated_file_bundle(llm_response)
     if bundle:
         wrote_main = False
+        bundle_by_candidate_name = {
+            Path(file_name).name: content for file_name, content in bundle.items()
+        }
         for file_name, content in bundle.items():
             candidate_name = Path(file_name).name
             if candidate_name == expected_path.name:
@@ -4007,7 +4025,7 @@ def _materialize_eval_artifact(
                 elif target_path == expected_test_path:
                     content = _normalize_single_amount_row_test_content(
                         content,
-                        rac_content=bundle.get(expected_path.name),
+                        rac_content=bundle_by_candidate_name.get(expected_path.name),
                         source_text=source_text,
                     )
             elif target_path == expected_path:
@@ -4015,7 +4033,7 @@ def _materialize_eval_artifact(
             elif target_path == expected_test_path:
                 content = _normalize_test_periods_to_effective_dates(
                     content,
-                    rac_content=bundle.get(expected_path.name),
+                    rac_content=bundle_by_candidate_name.get(expected_path.name),
                     source_text=source_text,
                 )
             target_path.parent.mkdir(parents=True, exist_ok=True)
