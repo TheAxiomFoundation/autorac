@@ -4310,6 +4310,56 @@ cases:
             ).resolve(),
         ]
 
+    def test_repo_us_co_colorado_works_leaf_seed_manifest_loads_expected_cases(self):
+        repo_root = Path(__file__).resolve().parents[1]
+        manifest = load_eval_suite_manifest(
+            repo_root / "benchmarks" / "us_co_colorado_works_leaf_seed.yaml"
+        )
+
+        assert manifest.mode == "repo-augmented"
+        assert len(manifest.cases) == 6
+        assert manifest.gates.min_cases == 6
+        assert manifest.gates.min_compile_pass_rate == 1.0
+        assert manifest.gates.min_ci_pass_rate == 1.0
+        assert all(case.kind == "source" for case in manifest.cases)
+        assert [case.name for case in manifest.cases] == [
+            "co-3-606-1-e",
+            "co-3-606-1-g",
+            "co-3-606-1-h",
+            "co-3-606-1-i",
+            "co-3-606-1-j",
+            "co-3-606-1-k",
+        ]
+        assert manifest.cases[0].allow_context == []
+        assert manifest.cases[2].allow_context == [
+            (
+                repo_root.parent
+                / "rac-us-co"
+                / "regulation"
+                / "9-CCR-2503-6"
+                / "3.606.1"
+                / "F.rac"
+            ).resolve()
+        ]
+        assert manifest.cases[5].allow_context == [
+            (
+                repo_root.parent
+                / "rac-us-co"
+                / "regulation"
+                / "9-CCR-2503-6"
+                / "3.606.1"
+                / "F.rac"
+            ).resolve(),
+            (
+                repo_root.parent
+                / "rac-us-co"
+                / "regulation"
+                / "9-CCR-2503-6"
+                / "3.606.1"
+                / "I.rac"
+            ).resolve(),
+        ]
+
 
 class TestReadinessSummary:
     def test_summarize_readiness_applies_suite_gates(self):
