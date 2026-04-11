@@ -3245,7 +3245,7 @@ class TestEvalPrompt:
         )
         assert (
             definition_files[0].import_path
-            == "legislation/ukpga/2002/16/section/3ZA/3.rac"
+            == "legislation/ukpga/2002/16/section/3ZA/3"
         )
         stub_path = workspace.root / definition_files[0].workspace_path
         assert stub_path.exists()
@@ -3288,7 +3288,7 @@ is_individual_responsibility_contract:
         ]
         assert len(concept_files) == 1
         assert concept_files[0].workspace_path == "context/statute/crs/26-2-703/12.rac"
-        assert concept_files[0].import_path == "statute/crs/26-2-703/12.rac"
+        assert concept_files[0].import_path == "statute/crs/26-2-703/12"
         copied_path = workspace.root / concept_files[0].workspace_path
         assert copied_path.exists()
         assert "is_individual_responsibility_contract" in copied_path.read_text()
@@ -4633,7 +4633,7 @@ class TestRepoAugmentedContext:
         manifest = json.loads(workspace.manifest_file.read_text())
         assert manifest["mode"] == "repo-augmented"
         assert manifest["context_files"][0]["source_path"] == str(context_file)
-        assert manifest["context_files"][0]["import_path"] == "26/32/b/2/A.rac"
+        assert manifest["context_files"][0]["import_path"] == "26/32/b/2/A"
         copied = workspace.root / manifest["context_files"][0]["workspace_path"]
         assert copied.exists()
 
@@ -4679,7 +4679,7 @@ class TestRepoAugmentedContext:
         assert manifest["mode"] == "repo-augmented"
         assert manifest["source_file"] == "source.txt"
         assert manifest["context_files"][0]["source_path"] == str(context_file)
-        assert manifest["context_files"][0]["import_path"] == "26/24/b.rac"
+        assert manifest["context_files"][0]["import_path"] == "26/24/b"
         copied = workspace.root / manifest["context_files"][0]["workspace_path"]
         assert copied.exists()
 
@@ -4718,7 +4718,7 @@ class TestRepoAugmentedContext:
 
         assert (
             "inspect `context/regulation/9-CCR-2503-6/3.606.1/F.rac`; "
-            "import target `regulation/9-CCR-2503-6/3.606.1/F.rac`"
+            "import target `regulation/9-CCR-2503-6/3.606.1/F`"
         ) in prompt
         assert "do not wrap import targets in quotes" in prompt
         assert "use the listed import target rather than the `./context/...` inspection path" in prompt

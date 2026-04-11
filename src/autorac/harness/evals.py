@@ -1922,7 +1922,7 @@ def prepare_eval_workspace(
                 EvalContextFile(
                     source_path=str(source_path),
                     workspace_path=str(workspace_relative_path),
-                    import_path=str(relative_target),
+                    import_path=_relative_rac_path_to_import_target(relative_target),
                     kind=kind,
                 )
             )
@@ -1967,7 +1967,9 @@ def _materialize_resolved_definition_stub(
     return EvalContextFile(
         source_path=resolved_term.citation,
         workspace_path=str(relative_target),
-        import_path=str(relative_target.relative_to("context")),
+        import_path=_relative_rac_path_to_import_target(
+            relative_target.relative_to("context")
+        ),
         kind="definition_stub",
         label=resolved_term.label,
     )
@@ -1989,7 +1991,9 @@ def _materialize_resolved_canonical_concept(
     return EvalContextFile(
         source_path=str(resolved_concept.source_file),
         workspace_path=str(relative_target),
-        import_path=str(relative_target.relative_to("context")),
+        import_path=_relative_rac_path_to_import_target(
+            relative_target.relative_to("context")
+        ),
         kind="canonical_concept",
         label=resolved_concept.label,
     )
@@ -2016,6 +2020,12 @@ def _context_import_relative_target(source_path: Path, rac_path: Path) -> Path:
             return resolved_source.relative_to(resolved_candidate)
 
     return Path("external") / resolved_source.name
+
+
+def _relative_rac_path_to_import_target(path: Path) -> str:
+    """Convert a relative RAC file path into a bare import target."""
+    normalized = path.with_suffix("") if path.suffix == ".rac" else path
+    return normalized.as_posix()
 
 
 def _target_rel_for_eval_identifier(citation: str) -> Path | None:
@@ -2865,7 +2875,7 @@ def _hydrate_eval_root(eval_root: Path, workspace: EvalWorkspace) -> None:
         if not workspace_path.parts or workspace_path.parts[0] != "context":
             continue
 
-        target = eval_root / item.import_path
+        target = eval_root / _import_target_to_path(item.import_path)
         if target.exists():
             continue
 
