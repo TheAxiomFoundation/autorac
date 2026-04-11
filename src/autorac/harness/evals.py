@@ -2637,6 +2637,21 @@ Rules:
 - If you import variables like `need_standard_for_assistance_unit` or `grant_standard_for_assistance_unit` from a copied chart/standard file, keep `.rac.test` inputs and expected outputs consistent with the rows visible in that imported file rather than inventing zero or placeholder standards.
 - If an imported chart file keys those values by household composition, pick `.rac.test` households from explicit chart rows that visibly exist in the copied file. Do not invent degenerate placeholder rows like `number_of_children_in_assistance_unit: 0` plus `number_of_caretakers_in_assistance_unit: 0` unless the imported chart explicitly defines that exact row for the imported symbol.
 - Do not assert an exact zero imported standard, grant, or threshold unless that exact imported row is visible in the copied chart file. When the chart row is not visible, prefer relational assertions over guessed exact imported outputs.
+- Do not use a `0 children / 0 caretakers` household as the primary threshold test for imported `need_standard_for_assistance_unit` or `grant_standard_for_assistance_unit`; instead choose a non-degenerate row that is visibly grounded in the copied chart.
+- Wrong (`.rac.test` guesses a degenerate chart row):
+  - name: zero_need_standard_exceeded
+    input:
+      number_of_children_in_assistance_unit: 0
+      number_of_caretakers_in_assistance_unit: 0
+    output:
+      gross_income_is_within_need_standard_for_basic_cash_assistance: false
+- Right (`.rac.test` uses a visible chart row like one child / no caretaker):
+  - name: one_child_income_within_need_standard
+    input:
+      number_of_children_in_assistance_unit: 1
+      number_of_caretakers_in_assistance_unit: 0
+    output:
+      gross_income_is_within_need_standard_for_basic_cash_assistance: true
 - Wrong:
   some_paragraph_applies:
       entity: Person

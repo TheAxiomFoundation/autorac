@@ -4726,6 +4726,9 @@ class TestRepoAugmentedContext:
         assert "keep `.rac.test` inputs and expected outputs consistent with the rows visible in that imported file" in prompt
         assert "Do not invent degenerate placeholder rows like `number_of_children_in_assistance_unit: 0` plus `number_of_caretakers_in_assistance_unit: 0`" in prompt
         assert "Do not assert an exact zero imported standard, grant, or threshold unless that exact imported row is visible in the copied chart file" in prompt
+        assert "Do not use a `0 children / 0 caretakers` household as the primary threshold test" in prompt
+        assert "Wrong (`.rac.test` guesses a degenerate chart row):" in prompt
+        assert "Right (`.rac.test` uses a visible chart row like one child / no caretaker):" in prompt
 
     def test_hydrate_eval_root_copies_context_into_import_tree(self, tmp_path):
         repo_root = tmp_path / "repos"
