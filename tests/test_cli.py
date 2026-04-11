@@ -23,6 +23,7 @@ from autorac.cli import (
     cmd_coverage,
     cmd_encode,
     cmd_eval_suite,
+    cmd_eval_suite_archive,
     cmd_eval_suite_report,
     cmd_init,
     cmd_log,
@@ -257,6 +258,13 @@ class TestMain:
         with tempfile.NamedTemporaryFile(suffix=".json") as f:
             with patch("sys.argv", ["autorac", "eval-suite-report", f.name]):
                 with patch("autorac.cli.cmd_eval_suite_report") as mock_cmd:
+                    main()
+                    mock_cmd.assert_called_once()
+
+    def test_eval_suite_archive_command_dispatches(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch("sys.argv", ["autorac", "eval-suite-archive", tmpdir]):
+                with patch("autorac.cli.cmd_eval_suite_archive") as mock_cmd:
                     main()
                     mock_cmd.assert_called_once()
 
@@ -558,6 +566,189 @@ class TestCmdEvalSuiteReport:
             with patch("autorac.cli.cmd_sync_sdk_sessions") as mock_cmd:
                 main()
                 mock_cmd.assert_called_once()
+
+
+class TestCmdEvalSuiteArchive:
+    def test_archives_suite_and_rewrites_result_paths(self, tmp_path, capsys):
+        source_output = tmp_path / "wave21-rerun16"
+        case_dir = source_output / "01-case-a" / "codex-gpt-5.4" / "source"
+        trace_dir = source_output / "traces"
+        workspace_dir = source_output / "_eval_workspaces" / "case-a"
+        case_dir.mkdir(parents=True)
+        trace_dir.mkdir(parents=True)
+        workspace_dir.mkdir(parents=True)
+
+        output_file = case_dir / "rule.rac"
+        trace_file = trace_dir / "case-a.json"
+        context_manifest_file = workspace_dir / "context-manifest.json"
+        output_file.write_text("# rule\n")
+        trace_file.write_text("{}\n")
+        context_manifest_file.write_text("{}\n")
+
+        result_payload = {
+            "citation": "case-a",
+            "runner": "codex:gpt-5.4",
+            "backend": "codex",
+            "model": "gpt-5.4",
+            "mode": "repo-augmented",
+            "output_file": str(output_file),
+            "trace_file": str(trace_file),
+            "context_manifest_file": str(context_manifest_file),
+            "duration_ms": 1234,
+            "success": True,
+            "error": None,
+            "input_tokens": 10,
+            "output_tokens": 20,
+            "cache_read_tokens": 0,
+            "cache_creation_tokens": 0,
+            "reasoning_output_tokens": 0,
+            "estimated_cost_usd": 0.12,
+            "actual_cost_usd": None,
+            "retrieved_files": [str(output_file)],
+            "unexpected_accesses": [],
+            "metrics": {
+                "compile_pass": True,
+                "compile_issues": [],
+                "ci_pass": True,
+                "ci_issues": [],
+                "embedded_source_present": True,
+                "grounded_numeric_count": 1,
+                "ungrounded_numeric_count": 0,
+                "grounding": [],
+                "source_numeric_occurrence_count": 1,
+                "covered_source_numeric_occurrence_count": 1,
+                "missing_source_numeric_occurrence_count": 0,
+                "numeric_occurrence_issues": [],
+                "generalist_review_pass": True,
+                "generalist_review_score": 9.0,
+                "generalist_review_issues": [],
+                "policyengine_pass": None,
+                "policyengine_score": None,
+                "policyengine_issues": [],
+                "taxsim_pass": None,
+                "taxsim_score": None,
+                "taxsim_issues": [],
+            },
+        }
+
+        (source_output / "suite-run.json").write_text(
+            json.dumps(
+                {
+                    "manifest": {
+                        "name": "UK wave 21",
+                        "path": "/tmp/uk_wave21.yaml",
+                        "runners": ["openai:gpt-5.4"],
+                        "effective_runners": ["codex:gpt-5.4"],
+                    },
+                    "status": "completed",
+                    "started_at": "2026-04-10T12:00:00+00:00",
+                    "finished_at": "2026-04-10T12:30:00+00:00",
+                    "updated_at": "2026-04-10T12:30:00+00:00",
+                    "total_cases": 1,
+                    "completed_cases": 1,
+                    "result_count": 1,
+                },
+                indent=2,
+            )
+            + "\n"
+        )
+        (source_output / "results.json").write_text(
+            json.dumps(
+                {
+                    "manifest": {
+                        "name": "UK wave 21",
+                        "path": "/tmp/uk_wave21.yaml",
+                        "runners": ["openai:gpt-5.4"],
+                        "effective_runners": ["codex:gpt-5.4"],
+                    },
+                    "results": [result_payload],
+                    "readiness": {
+                        "codex:gpt-5.4": {
+                            "total_cases": 1,
+                            "success_rate": 1.0,
+                            "compile_pass_rate": 1.0,
+                            "ci_pass_rate": 1.0,
+                            "zero_ungrounded_rate": 1.0,
+                        }
+                    },
+                    "all_ready": True,
+                },
+                indent=2,
+            )
+            + "\n"
+        )
+        (source_output / "summary.json").write_text(
+            json.dumps(
+                {
+                    "manifest": {
+                        "name": "UK wave 21",
+                        "path": "/tmp/uk_wave21.yaml",
+                        "runners": ["openai:gpt-5.4"],
+                        "effective_runners": ["codex:gpt-5.4"],
+                    },
+                    "readiness": {
+                        "codex:gpt-5.4": {
+                            "total_cases": 1,
+                            "success_rate": 1.0,
+                        }
+                    },
+                    "all_ready": True,
+                },
+                indent=2,
+            )
+            + "\n"
+        )
+        (source_output / "suite-results.jsonl").write_text(
+            json.dumps(
+                {
+                    "case_index": 1,
+                    "case_name": "case-a",
+                    "case_kind": "source",
+                    "result": result_payload,
+                },
+                sort_keys=True,
+            )
+            + "\n"
+        )
+
+        archive_root = tmp_path / "archives"
+        args = SimpleNamespace(
+            source_output=source_output,
+            archive_root=archive_root,
+            name="Wave21 Rerun16",
+            json=False,
+        )
+
+        cmd_eval_suite_archive(args)
+
+        archive_dir = archive_root / "wave21-rerun16"
+        assert archive_dir.exists()
+        archived_results = json.loads((archive_dir / "results.json").read_text())
+        archived_result = archived_results["results"][0]
+        assert archived_result["output_file"].startswith(str(archive_dir))
+        assert archived_result["trace_file"].startswith(str(archive_dir))
+        assert archived_result["context_manifest_file"].startswith(str(archive_dir))
+        assert not archived_result["output_file"].startswith(str(source_output))
+
+        archived_row = json.loads((archive_dir / "suite-results.jsonl").read_text().strip())
+        assert archived_row["result"]["output_file"].startswith(str(archive_dir))
+
+        metadata = json.loads((archive_dir / "archive-metadata.json").read_text())
+        assert metadata["source_output"] == str(source_output.resolve())
+        assert metadata["archive_dir"] == str(archive_dir)
+        assert "results.json" in metadata["rewritten_files"]
+        assert "suite-results.jsonl" in metadata["rewritten_files"]
+
+        index_rows = [
+            json.loads(line)
+            for line in (archive_root / "index.jsonl").read_text().splitlines()
+            if line.strip()
+        ]
+        assert len(index_rows) == 1
+        assert index_rows[0]["archive_dir"] == str(archive_dir)
+
+        captured = capsys.readouterr()
+        assert "Archived eval suite to" in captured.out
 
 
 # =========================================================================

@@ -187,9 +187,27 @@ As of 2026-04-10:
   - [uk_readiness.yaml](../benchmarks/uk_readiness.yaml)
   - [uk_policyengine_readiness.yaml](../benchmarks/uk_policyengine_readiness.yaml)
 
+### 2026-04-10: Eval-suite runs gained a durable local archive registry
+
+- Hypothesis:
+  - If benchmark artifacts remain only in `/tmp`, they are too easy to lose and
+    too hard to cite consistently in later methods or appendix work.
+- Effect:
+  - `autorac eval-suite-archive` now snapshots a suite output tree into a stable
+    local archive under `artifacts/eval-suites` by default.
+  - Archived `results.json`, `summary.json`, and `suite-results.jsonl` payloads
+    are rewritten so artifact paths point at the archived copy rather than the
+    original `/tmp` run directory.
+  - Each archive writes `archive-metadata.json` and appends a compact record to
+    `artifacts/eval-suites/index.jsonl`.
+- Primary evidence paths:
+  - [cli.py](../src/autorac/cli.py)
+  - [test_cli.py](../tests/test_cli.py)
+  - [README.md](../README.md)
+
 ## Open Documentation Debt
 
-- Add a stable run registry outside `/tmp` for the benchmark waves we cite publicly.
 - Add before/after metric snapshots for every kept harness change rather than relying on commit messages.
+- Promote the local archive registry into a shareable or publishable artifact index for externally cited runs.
 - Add a formal result appendix generator for one-run and multi-run suite outputs.
 - Add a public-comparison note clarifying that standard UK FRS-based microdata is licensing-constrained, so public record-level dashboards need a separate open dataset.

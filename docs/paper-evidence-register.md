@@ -122,7 +122,7 @@ PY
 
 ## Missing Pieces For A Stronger Paper
 
-- A stable benchmark artifact registry outside `/tmp`.
+- A shareable or publishable benchmark artifact registry, not just a local archive.
 - A table of before/after metrics for each accepted harness change.
 - Record-level public comparison data for UK that can be shown without licensing constraints.
 - A citation-ready appendix generated directly from `results.json` and `summary.json`.

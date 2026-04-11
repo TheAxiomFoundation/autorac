@@ -15,8 +15,11 @@ import argparse
 import csv
 import json
 import os
+import re
+import shutil
 import sys
 from dataclasses import asdict, is_dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 from .harness.encoding_db import (
@@ -130,6 +133,11 @@ def _effective_runner_specs(specs: list[str], args) -> list[str]:
     """Apply GPT backend override to a runner list."""
     backend = _resolved_gpt_backend(args)
     return [_rewrite_gpt_runner_backend(spec, backend) for spec in specs]
+
+
+def _utc_now_iso() -> str:
+    """Render an RFC3339 UTC timestamp without fractional seconds."""
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
 def main():
@@ -639,6 +647,35 @@ def main():
         help="Emit machine-readable JSON summary instead of Markdown",
     )
 
+    eval_suite_archive_parser = subparsers.add_parser(
+        "eval-suite-archive",
+        help="Copy an eval-suite output tree into the durable local archive registry",
+    )
+    eval_suite_archive_parser.add_argument(
+        "source_output",
+        type=Path,
+        help="Path to an eval-suite output directory containing suite-run.json",
+    )
+    eval_suite_archive_parser.add_argument(
+        "--archive-root",
+        type=Path,
+        default=None,
+        help=(
+            "Destination root for archived suite outputs "
+            "(defaults to AUTORAC_EVAL_ARCHIVE_ROOT or ./artifacts/eval-suites)"
+        ),
+    )
+    eval_suite_archive_parser.add_argument(
+        "--name",
+        default=None,
+        help="Optional archive directory name (defaults to the source directory name)",
+    )
+    eval_suite_archive_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit machine-readable archive metadata",
+    )
+
     # =========================================================================
     # Session logging commands (for hooks)
     # =========================================================================
@@ -753,6 +790,8 @@ def main():
         cmd_eval_suite(args)
     elif args.command == "eval-suite-report":
         cmd_eval_suite_report(args)
+    elif args.command == "eval-suite-archive":
+        cmd_eval_suite_archive(args)
     elif args.command == "session-start":
         cmd_session_start(args)
     elif args.command == "session-end":
@@ -2354,6 +2393,188 @@ def cmd_eval_suite(args):
         print()
 
     sys.exit(0 if all_ready else 1)
+
+
+def _autorac_repo_root() -> Path:
+    """Return the repository root for the current autorac checkout."""
+    return Path(__file__).resolve().parents[2]
+
+
+def _default_eval_suite_archive_root() -> Path:
+    """Resolve the durable local archive root for suite outputs."""
+    configured = os.getenv("AUTORAC_EVAL_ARCHIVE_ROOT")
+    if configured:
+        return Path(configured).expanduser().resolve()
+    return (_autorac_repo_root() / "artifacts" / "eval-suites").resolve()
+
+
+def _slugify_archive_name(value: str) -> str:
+    """Convert an arbitrary archive label into a filesystem-safe directory name."""
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", value.strip().lower())
+    cleaned = re.sub(r"-{2,}", "-", cleaned).strip("-")
+    return cleaned or "eval-suite"
+
+
+def _unique_archive_dir(archive_root: Path, base_name: str) -> Path:
+    """Return the first available archive directory under the root."""
+    candidate = archive_root / base_name
+    if not candidate.exists():
+        return candidate
+    suffix = 2
+    while True:
+        candidate = archive_root / f"{base_name}-{suffix}"
+        if not candidate.exists():
+            return candidate
+        suffix += 1
+
+
+def _rewrite_archive_paths_in_payload(payload, source_root: Path, archive_root: Path):
+    """Rewrite absolute paths that pointed at the source suite root."""
+    source_root_str = str(source_root)
+    archive_root_str = str(archive_root)
+    source_prefix = source_root_str + os.sep
+
+    if isinstance(payload, dict):
+        return {
+            key: _rewrite_archive_paths_in_payload(value, source_root, archive_root)
+            for key, value in payload.items()
+        }
+    if isinstance(payload, list):
+        return [
+            _rewrite_archive_paths_in_payload(value, source_root, archive_root)
+            for value in payload
+        ]
+    if isinstance(payload, str):
+        if payload == source_root_str:
+            return archive_root_str
+        if payload.startswith(source_prefix):
+            return archive_root_str + payload[len(source_root_str) :]
+    return payload
+
+
+def _rewrite_archived_eval_suite_json_files(
+    archive_dir: Path, source_root: Path
+) -> list[str]:
+    """Rewrite archived JSON payloads so artifact paths point at the archive."""
+    rewritten_files: list[str] = []
+
+    for filename in ["suite-run.json", "results.json", "summary.json"]:
+        path = archive_dir / filename
+        if not path.exists():
+            continue
+        payload = json.loads(path.read_text())
+        rewritten = _rewrite_archive_paths_in_payload(payload, source_root, archive_dir)
+        if rewritten != payload:
+            path.write_text(json.dumps(rewritten, indent=2, sort_keys=True) + "\n")
+            rewritten_files.append(filename)
+
+    ledger_path = archive_dir / "suite-results.jsonl"
+    if ledger_path.exists():
+        rows = []
+        changed = False
+        for line in ledger_path.read_text().splitlines():
+            if not line.strip():
+                continue
+            payload = json.loads(line)
+            rewritten = _rewrite_archive_paths_in_payload(
+                payload, source_root, archive_dir
+            )
+            rows.append(rewritten)
+            changed = changed or rewritten != payload
+        if changed:
+            ledger_path.write_text(
+                "".join(json.dumps(row, sort_keys=True) + "\n" for row in rows)
+            )
+            rewritten_files.append("suite-results.jsonl")
+
+    return rewritten_files
+
+
+def _build_eval_suite_archive_metadata(
+    archive_dir: Path, source_root: Path, rewritten_files: list[str]
+) -> dict:
+    """Build a compact metadata record for an archived suite snapshot."""
+    state_path = archive_dir / "suite-run.json"
+    summary_path = archive_dir / "summary.json"
+    results_path = archive_dir / "results.json"
+
+    state = json.loads(state_path.read_text()) if state_path.exists() else {}
+    summary = json.loads(summary_path.read_text()) if summary_path.exists() else {}
+    results = json.loads(results_path.read_text()) if results_path.exists() else {}
+    manifest = (
+        state.get("manifest")
+        or summary.get("manifest")
+        or results.get("manifest")
+        or {}
+    )
+
+    return {
+        "archived_at": _utc_now_iso(),
+        "source_output": str(source_root),
+        "archive_dir": str(archive_dir),
+        "manifest": manifest,
+        "status": state.get("status"),
+        "started_at": state.get("started_at"),
+        "finished_at": state.get("finished_at"),
+        "total_cases": state.get("total_cases"),
+        "completed_cases": state.get("completed_cases"),
+        "result_count": state.get("result_count", len(results.get("results", []) or [])),
+        "all_ready": summary.get("all_ready"),
+        "rewritten_files": rewritten_files,
+    }
+
+
+def cmd_eval_suite_archive(args):
+    """Archive an eval-suite output tree into the durable local registry."""
+    source_output = args.source_output.expanduser().resolve()
+    if not source_output.exists() or not source_output.is_dir():
+        print(f"Eval suite output directory not found: {source_output}")
+        sys.exit(1)
+
+    state_path = source_output / "suite-run.json"
+    if not state_path.exists():
+        print(f"Not an eval-suite output directory (missing suite-run.json): {source_output}")
+        sys.exit(1)
+
+    archive_root = (
+        args.archive_root.expanduser().resolve()
+        if args.archive_root is not None
+        else _default_eval_suite_archive_root()
+    )
+    archive_root.mkdir(parents=True, exist_ok=True)
+
+    base_name = _slugify_archive_name(args.name or source_output.name)
+    archive_dir = _unique_archive_dir(archive_root, base_name)
+    shutil.copytree(source_output, archive_dir)
+
+    rewritten_files = _rewrite_archived_eval_suite_json_files(archive_dir, source_output)
+    metadata = _build_eval_suite_archive_metadata(
+        archive_dir=archive_dir,
+        source_root=source_output,
+        rewritten_files=rewritten_files,
+    )
+
+    metadata_path = archive_dir / "archive-metadata.json"
+    metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n")
+    index_path = archive_root / "index.jsonl"
+    with index_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(metadata, sort_keys=True) + "\n")
+
+    if args.json:
+        print(json.dumps(metadata, indent=2))
+        return
+
+    print(f"Archived eval suite to {archive_dir}")
+    print(f"Source: {source_output}")
+    print(f"Archive root: {archive_root}")
+    if rewritten_files:
+        print(f"Rewrote archived paths in: {', '.join(rewritten_files)}")
+    if metadata.get("status"):
+        print(f"Status: {metadata['status']}")
+    if metadata.get("completed_cases") is not None and metadata.get("total_cases") is not None:
+        print(
+            f"Progress: {metadata['completed_cases']}/{metadata['total_cases']} cases"
+        )
 
 
 def _ordered_runner_names(payload: dict) -> list[str]:

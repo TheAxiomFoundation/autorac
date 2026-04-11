@@ -36,6 +36,7 @@ of ad hoc spot checks.
 autorac eval-suite benchmarks/uk_starter.yaml
 autorac eval-suite benchmarks/uk_readiness.yaml
 autorac eval-suite benchmarks/uk_policyengine_readiness.yaml
+autorac eval-suite-archive /tmp/autorac-uk-wave21-bulk-codex-rerun16-20260410
 ```
 
 - `benchmarks/uk_starter.yaml` is the core UK benchmark set and now explicitly exercises the PolicyEngine UK oracle on 11 mapped statutory rate/amount slices.
@@ -51,6 +52,11 @@ Each suite reports:
 - mean estimated cost
 
 The command exits `0` only when all readiness gates pass.
+
+Use `eval-suite-archive` when a run is worth citing later. It copies the full
+suite output tree into a durable local registry under `artifacts/eval-suites`
+by default, rewrites archived JSON/JSONL artifact paths away from `/tmp`, and
+appends a record to `artifacts/eval-suites/index.jsonl`.
 
 ## Methods and paper notes
 
