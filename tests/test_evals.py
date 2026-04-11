@@ -968,6 +968,40 @@ example_timing_rule:
         assert "do not model `royalty` as a free-standing qualifying limb" in prompt
         assert "a bare `payment_is_royalty` fact is too broad" in prompt
 
+    def test_build_eval_prompt_for_employed_earner_definition_preserves_shared_qualifier(
+        self, tmp_path
+    ):
+        workspace = prepare_eval_workspace(
+            citation="uksi/2002/1792/regulation/17A/5",
+            runner=parse_runner_spec("openai:gpt-5.4"),
+            output_root=tmp_path / "out",
+            source_text=(
+                "17A. Earnings of an employed earner\n\n"
+                "(5)\n\n"
+                "In this regulation “employed earner” means a person who is gainfully "
+                "employed in Great Britain either under a contract of service, or in an "
+                "office (including elective office) with emoluments chargeable to income "
+                "tax under Schedule E."
+            ),
+            rac_path=tmp_path / "rac",
+            mode="cold",
+            extra_context_paths=[],
+        )
+
+        prompt = _build_eval_prompt(
+            "uksi/2002/1792/regulation/17A/5",
+            "cold",
+            workspace,
+            [],
+            target_file_name="uksi-2002-1792-regulation-17A-5.rac",
+            include_tests=True,
+            runner_backend="openai",
+        )
+
+        assert "preserve the shared qualifying employment/office across each alternative limb" in prompt
+        assert "do not decompose the rule into one free-standing `person_is_X` fact plus separate `under_A` and `in_B` facts" in prompt
+        assert "distribute the shared qualifier across the alternatives with branch-specific combined facts" in prompt
+
     def test_build_eval_prompt_for_complete_capital_bands_discourages_fractional_division(
         self, tmp_path
     ):
