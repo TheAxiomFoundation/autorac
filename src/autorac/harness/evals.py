@@ -3097,18 +3097,21 @@ def _wait_for_codex_process(
     timeout: int,
     *,
     settle_seconds: float = 5.0,
+    max_output_wait_seconds: float = 30.0,
     poll_interval: float = 0.5,
 ) -> bool:
-    """Wait for Codex CLI, terminating it once the last message file is stable."""
+    """Wait for Codex CLI, terminating it once output is stable or persistent."""
     start = time.time()
     last_snapshot: tuple[int, int] | None = None
     stable_since: float | None = None
+    output_seen_at: float | None = None
 
     while True:
         if process.poll() is not None:
             return False
 
-        if time.time() - start > timeout:
+        now = time.time()
+        if now - start > timeout:
             raise subprocess.TimeoutExpired(process.args, timeout)
 
         if last_message_file.exists():
@@ -3120,10 +3123,11 @@ def _wait_for_codex_process(
                 stat = None
 
             if text and stat is not None:
+                output_seen_at = output_seen_at or now
                 snapshot = (stat.st_size, stat.st_mtime_ns)
                 if snapshot == last_snapshot:
-                    stable_since = stable_since or time.time()
-                    if time.time() - stable_since >= settle_seconds:
+                    stable_since = stable_since or now
+                    if now - stable_since >= settle_seconds:
                         process.terminate()
                         try:
                             process.wait(timeout=5)
@@ -3134,6 +3138,17 @@ def _wait_for_codex_process(
                 else:
                     last_snapshot = snapshot
                     stable_since = None
+                    if (
+                        output_seen_at is not None
+                        and now - output_seen_at >= max_output_wait_seconds
+                    ):
+                        process.terminate()
+                        try:
+                            process.wait(timeout=5)
+                        except subprocess.TimeoutExpired:
+                            process.kill()
+                            process.wait()
+                        return True
 
         time.sleep(poll_interval)
 

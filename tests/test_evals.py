@@ -113,6 +113,44 @@ class TestCodexPromptEval:
         assert terminated is True
         assert process.terminated is True
 
+    def test_wait_for_codex_process_terminates_after_persistent_output(self, tmp_path):
+        last_message = tmp_path / ".codex-last-message.txt"
+        last_message.write_text("ready\n")
+
+        class FakeProcess:
+            def __init__(self):
+                self.args = ["codex", "exec"]
+                self.returncode = None
+                self.terminated = False
+
+            def poll(self):
+                if self.returncode is None:
+                    last_message.touch()
+                return self.returncode
+
+            def terminate(self):
+                self.terminated = True
+                self.returncode = -15
+
+            def wait(self, timeout=None):
+                return self.returncode
+
+            def kill(self):
+                self.returncode = -9
+
+        process = FakeProcess()
+        terminated = _wait_for_codex_process(
+            process,
+            last_message,
+            timeout=1,
+            settle_seconds=1,
+            max_output_wait_seconds=0,
+            poll_interval=0,
+        )
+
+        assert terminated is True
+        assert process.terminated is True
+
     def test_run_codex_prompt_eval_accepts_stable_last_message_on_termination(self, tmp_path):
         runner = parse_runner_spec("codex:gpt-5.4")
         workspace = prepare_eval_workspace(
