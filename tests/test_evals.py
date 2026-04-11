@@ -4182,6 +4182,59 @@ cases:
         assert results == [failed]
         assert mock_source.call_count == 1
 
+    def test_run_eval_suite_stops_after_usage_limit_error(self, tmp_path):
+        manifest_file = tmp_path / "suite.yaml"
+        manifest_file.write_text(
+            """
+name: Usage limit suite
+runners:
+  - openai:gpt-5.4
+cases:
+  - kind: source
+    name: case-one
+    source_id: case-one
+    source_file: ./source.txt
+  - kind: source
+    name: case-two
+    source_id: case-two
+    source_file: ./source.txt
+            """.strip()
+        )
+        (tmp_path / "source.txt").write_text("authoritative source text")
+        manifest = load_eval_suite_manifest(manifest_file)
+        output_root = tmp_path / "out"
+
+        usage_limited = _fake_eval_result("openai-gpt-5.4", "case-one")
+        usage_limited.metrics.generalist_review_pass = False
+        usage_limited.metrics.generalist_review_score = None
+        usage_limited.metrics.generalist_review_issues = [
+            "Reviewer CLI exited 1: You've hit your usage limit."
+        ]
+        second = _fake_eval_result("openai-gpt-5.4", "case-two")
+
+        with patch(
+            "autorac.harness.evals.run_source_eval",
+            side_effect=[[usage_limited], [second]],
+        ) as mock_source, patch(
+            "autorac.harness.evals._validate_uk_shared_scalar_sibling_sets",
+            return_value=None,
+        ):
+            results = run_eval_suite(
+                manifest=manifest,
+                output_root=output_root,
+                rac_path=tmp_path / "rac",
+                atlas_path=None,
+            )
+
+        assert results == [usage_limited]
+        assert mock_source.call_count == 1
+        state = json.loads((output_root / "suite-run.json").read_text())
+        assert state["status"] == "failed"
+        assert "usage limit" in state["error"].lower()
+        assert state["completed_cases"] == 1
+        lines = (output_root / "suite-results.jsonl").read_text().strip().splitlines()
+        assert len(lines) == 1
+
     def test_run_eval_suite_resume_skips_completed_cases(self, tmp_path):
         manifest_file = tmp_path / "suite.yaml"
         manifest_file.write_text(

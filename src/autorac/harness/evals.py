@@ -1226,6 +1226,22 @@ def run_eval_suite(
             active_case_started_at = None
             active_case_output_root = None
             _append_eval_suite_case_results(output_root, index, case, case_results)
+            if _suite_case_results_hit_usage_limit(case_results):
+                _write_eval_suite_run_state(
+                    output_root=output_root,
+                    manifest=manifest,
+                    resolved_runners=resolved_runners,
+                    status="failed",
+                    started_at=started_at,
+                    completed_cases=completed_cases,
+                    result_count=len(results),
+                    last_case_name=last_case_name,
+                    error=(
+                        "Usage limit reached while running "
+                        f"case '{case.name}'. Stop the suite and retry after quota resets."
+                    ),
+                )
+                return results
             _write_eval_suite_run_state(
                 output_root=output_root,
                 manifest=manifest,
@@ -1528,7 +1544,29 @@ def _suite_case_failure_results(
 
 def _suite_case_results_should_retry(case_results: list[EvalResult]) -> bool:
     """Return True when a suite case likely failed for a transient reason."""
+    if _suite_case_results_hit_usage_limit(case_results):
+        return False
     return any(result.error is not None or result.metrics is None for result in case_results)
+
+
+def _suite_case_results_hit_usage_limit(case_results: list[EvalResult]) -> bool:
+    """Return True when a case result indicates hard quota exhaustion."""
+    return any(_eval_result_indicates_usage_limit(result) for result in case_results)
+
+
+def _eval_result_indicates_usage_limit(result: EvalResult) -> bool:
+    """Return True when one result contains a non-retryable usage-limit error."""
+    texts: list[str] = []
+    if result.error:
+        texts.append(result.error)
+    if result.metrics is not None:
+        texts.extend(result.metrics.compile_issues)
+        texts.extend(result.metrics.ci_issues)
+        texts.extend(result.metrics.generalist_review_issues)
+        texts.extend(result.metrics.policyengine_issues)
+        texts.extend(result.metrics.taxsim_issues)
+
+    return any("usage limit" in text.lower() for text in texts)
 
 
 def summarize_readiness(
