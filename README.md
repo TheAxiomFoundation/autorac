@@ -35,10 +35,12 @@ of ad hoc spot checks.
 ```bash
 autorac eval-suite benchmarks/uk_starter.yaml
 autorac eval-suite benchmarks/uk_readiness.yaml
+autorac eval-suite benchmarks/uk_policyengine_readiness.yaml
 ```
 
-- `benchmarks/uk_starter.yaml` is the current runnable UK benchmark set.
-- `benchmarks/uk_readiness.yaml` is the stricter go/no-go target for bulk UK work.
+- `benchmarks/uk_starter.yaml` is the core UK benchmark set and now explicitly exercises the PolicyEngine UK oracle on 11 mapped statutory rate/amount slices.
+- `benchmarks/uk_readiness.yaml` is the go/no-go target for that same core UK oracle lane.
+- `benchmarks/uk_policyengine_readiness.yaml` is the broader UK oracle regression lane across 33 mapped legislation and source slices.
 
 Each suite reports:
 - success rate

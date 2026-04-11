@@ -4149,6 +4149,31 @@ cases:
         lines = (output_root / "suite-results.jsonl").read_text().strip().splitlines()
         assert len(lines) == 2
 
+    def test_repo_uk_starter_and_readiness_enable_policyengine_uk(self):
+        repo_root = Path(__file__).resolve().parents[1]
+
+        for filename in ("uk_starter.yaml", "uk_readiness.yaml"):
+            manifest = load_eval_suite_manifest(repo_root / "benchmarks" / filename)
+
+            assert manifest.gates.min_policyengine_pass_rate is not None
+            assert len(manifest.cases) == 11
+            assert all(case.oracle == "policyengine" for case in manifest.cases)
+            assert all(case.policyengine_country == "uk" for case in manifest.cases)
+            assert all(case.policyengine_rac_var_hint for case in manifest.cases)
+
+    def test_repo_uk_policyengine_readiness_is_oracle_only(self):
+        repo_root = Path(__file__).resolve().parents[1]
+        manifest = load_eval_suite_manifest(
+            repo_root / "benchmarks" / "uk_policyengine_readiness.yaml"
+        )
+
+        assert len(manifest.cases) == 33
+        assert manifest.gates.min_cases == 33
+        assert manifest.gates.min_policyengine_pass_rate == 0.85
+        assert all(case.oracle == "policyengine" for case in manifest.cases)
+        assert all(case.policyengine_country == "uk" for case in manifest.cases)
+        assert all(case.policyengine_rac_var_hint for case in manifest.cases)
+
 
 class TestReadinessSummary:
     def test_summarize_readiness_applies_suite_gates(self):
