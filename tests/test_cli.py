@@ -25,6 +25,7 @@ from autorac.cli import (
     cmd_eval_suite,
     cmd_eval_suite_archive,
     cmd_eval_suite_report,
+    cmd_eval_suite_revalidate,
     cmd_init,
     cmd_log,
     cmd_log_event,
@@ -50,6 +51,7 @@ from autorac.harness.encoding_db import (
     ReviewResult,
     ReviewResults,
 )
+from autorac.harness.evals import EvalArtifactMetrics
 
 # =========================================================================
 # Test main() dispatch
@@ -748,6 +750,174 @@ class TestCmdEvalSuiteReport:
             with patch("autorac.cli.cmd_sync_sdk_sessions") as mock_cmd:
                 main()
                 mock_cmd.assert_called_once()
+
+
+class TestCmdEvalSuiteRevalidate:
+    def test_revalidates_existing_suite_outputs_in_place(self, tmp_path):
+        manifest_file = tmp_path / "suite.yaml"
+        source_file = tmp_path / "source.txt"
+        source_file.write_text("authoritative source text")
+        manifest_file.write_text(
+            "\n".join(
+                [
+                    "name: SNAP repair",
+                    "runners:",
+                    "  - openai:gpt-5.4",
+                    "cases:",
+                    "  - kind: source",
+                    "    name: case-a",
+                    "    source_id: case-a",
+                    f"    source_file: {source_file}",
+                    "    oracle: policyengine",
+                    "    policyengine_country: us",
+                    "    policyengine_rac_var_hint: snap_net_income_pre_shelter",
+                ]
+            )
+        )
+
+        source_output = tmp_path / "out"
+        rac_file = source_output / "01-case-a" / "openai-gpt-5.4" / "source" / "case-a.rac"
+        rac_file.parent.mkdir(parents=True)
+        rac_file.write_text(
+            '"""\nauthoritative source text\n"""\n\ncase_a:\n    entity: Household\n    period: Month\n    dtype: Money\n    unit: USD\n    from 2024-01-01: 1\n'
+        )
+        (source_output / "suite-run.json").write_text(
+            json.dumps(
+                {
+                    "manifest": {
+                        "name": "SNAP repair",
+                        "path": str(manifest_file),
+                        "runners": ["openai:gpt-5.4"],
+                        "effective_runners": ["openai:gpt-5.4"],
+                    },
+                    "status": "completed",
+                    "started_at": "2026-04-12T19:00:00+00:00",
+                    "updated_at": "2026-04-12T19:01:00+00:00",
+                    "total_cases": 1,
+                    "completed_cases": 1,
+                    "result_count": 1,
+                }
+            )
+            + "\n"
+        )
+        stale_result = {
+            "citation": "case-a",
+            "runner": "openai-gpt-5.4",
+            "backend": "openai",
+            "model": "gpt-5.4",
+            "mode": "repo-augmented",
+            "output_file": str(rac_file),
+            "trace_file": str(source_output / "trace.json"),
+            "context_manifest_file": str(source_output / "context.json"),
+            "duration_ms": 1,
+            "success": True,
+            "error": None,
+            "input_tokens": 1,
+            "output_tokens": 1,
+            "cache_read_tokens": 0,
+            "cache_creation_tokens": 0,
+            "reasoning_output_tokens": 0,
+            "estimated_cost_usd": 0.01,
+            "actual_cost_usd": None,
+            "retrieved_files": [],
+            "unexpected_accesses": [],
+            "metrics": {
+                "compile_pass": False,
+                "compile_issues": ["old"],
+                "ci_pass": False,
+                "ci_issues": ["old"],
+                "embedded_source_present": True,
+                "grounded_numeric_count": 0,
+                "ungrounded_numeric_count": 1,
+                "grounding": [],
+                "source_numeric_occurrence_count": 0,
+                "covered_source_numeric_occurrence_count": 0,
+                "missing_source_numeric_occurrence_count": 0,
+                "numeric_occurrence_issues": [],
+                "generalist_review_pass": False,
+                "generalist_review_score": 1.0,
+                "generalist_review_issues": ["old"],
+                "policyengine_pass": False,
+                "policyengine_score": 0.0,
+                "policyengine_issues": ["old"],
+                "taxsim_pass": None,
+                "taxsim_score": None,
+                "taxsim_issues": [],
+            },
+        }
+        (source_output / "suite-results.jsonl").write_text(
+            json.dumps(
+                {
+                    "case_index": 1,
+                    "case_name": "case-a",
+                    "case_kind": "source",
+                    "result": stale_result,
+                }
+            )
+            + "\n"
+        )
+
+        fresh_metrics = EvalArtifactMetrics(
+            compile_pass=True,
+            compile_issues=[],
+            ci_pass=True,
+            ci_issues=[],
+            embedded_source_present=True,
+            grounded_numeric_count=1,
+            ungrounded_numeric_count=0,
+            grounding=[],
+            source_numeric_occurrence_count=0,
+            covered_source_numeric_occurrence_count=0,
+            missing_source_numeric_occurrence_count=0,
+            numeric_occurrence_issues=[],
+            generalist_review_pass=True,
+            generalist_review_score=9.0,
+            generalist_review_issues=[],
+            policyengine_pass=True,
+            policyengine_score=1.0,
+            policyengine_issues=[],
+            taxsim_pass=None,
+            taxsim_score=None,
+            taxsim_issues=[],
+        )
+        summary = MagicMock(
+            ready=True,
+            total_cases=1,
+            success_rate=1.0,
+            compile_pass_rate=1.0,
+            ci_pass_rate=1.0,
+            zero_ungrounded_rate=1.0,
+            generalist_review_pass_rate=1.0,
+            mean_generalist_review_score=9.0,
+            policyengine_case_count=1,
+            policyengine_pass_rate=1.0,
+            mean_policyengine_score=1.0,
+            mean_estimated_cost_usd=0.01,
+            gate_results=[],
+        )
+        args = SimpleNamespace(
+            source_output=source_output,
+            manifest=None,
+            rac_path=tmp_path / "rac",
+            json=True,
+        )
+        args.rac_path.mkdir()
+
+        with patch("autorac.cli.evaluate_artifact", return_value=fresh_metrics) as mock_eval, patch(
+            "autorac.cli.summarize_readiness", return_value=summary
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                cmd_eval_suite_revalidate(args)
+
+        assert exc_info.value.code == 0
+        mock_eval.assert_called_once()
+        ledger = (source_output / "suite-results.jsonl").read_text()
+        assert '"compile_pass": true' in ledger
+        assert '"policyengine_pass": true' in ledger
+        summary_payload = json.loads((source_output / "summary.json").read_text())
+        assert summary_payload["all_ready"] is True
+        run_state = json.loads((source_output / "suite-run.json").read_text())
+        assert "revalidated_at" in run_state
 
 
 class TestCmdEvalSuiteArchive:

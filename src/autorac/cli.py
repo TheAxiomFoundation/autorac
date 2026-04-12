@@ -12,6 +12,7 @@ Self-contained -- no external plugin dependencies.
 """
 
 import argparse
+import contextlib
 import csv
 import json
 import os
@@ -32,6 +33,8 @@ from .harness.encoding_db import (
     ReviewResults,
 )
 from .harness.evals import (
+    _eval_result_from_payload,
+    evaluate_artifact,
     load_eval_suite_manifest,
     run_akn_section_eval,
     run_eval_suite,
@@ -40,7 +43,7 @@ from .harness.evals import (
     run_source_eval,
     summarize_readiness,
 )
-from .harness.validator_pipeline import ValidatorPipeline
+from .harness.validator_pipeline import ValidatorPipeline, extract_embedded_source_text
 from .statute import parse_usc_citation
 
 # Default DB path - can be overridden with --db
@@ -623,6 +626,33 @@ def main():
         help="Emit machine-readable JSON summary",
     )
 
+    eval_suite_revalidate_parser = subparsers.add_parser(
+        "eval-suite-revalidate",
+        help="Re-run validators for an existing eval-suite output without regenerating artifacts",
+    )
+    eval_suite_revalidate_parser.add_argument(
+        "source_output",
+        type=Path,
+        help="Path to an existing eval-suite output directory containing suite-results.jsonl",
+    )
+    eval_suite_revalidate_parser.add_argument(
+        "--manifest",
+        type=Path,
+        default=None,
+        help="Optional manifest override (defaults to the manifest path recorded in suite-run.json)",
+    )
+    eval_suite_revalidate_parser.add_argument(
+        "--rac-path",
+        type=Path,
+        default=None,
+        help="Path to rac repo (defaults to sibling repo checkout)",
+    )
+    eval_suite_revalidate_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit machine-readable JSON summary",
+    )
+
     eval_suite_report_parser = subparsers.add_parser(
         "eval-suite-report",
         help="Render a paper-ready comparison report from eval-suite JSON output",
@@ -801,6 +831,8 @@ def main():
         cmd_eval_uk_legislation_section(args)
     elif args.command == "eval-suite":
         cmd_eval_suite(args)
+    elif args.command == "eval-suite-revalidate":
+        cmd_eval_suite_revalidate(args)
     elif args.command == "eval-suite-report":
         cmd_eval_suite_report(args)
     elif args.command == "eval-suite-archive":
@@ -2480,6 +2512,164 @@ def cmd_eval_suite(args):
                 )
         print()
 
+    sys.exit(0 if all_ready else 1)
+
+
+def cmd_eval_suite_revalidate(args):
+    """Re-run validators for an existing eval-suite output in place."""
+    source_output = Path(args.source_output)
+    if not source_output.exists():
+        print(f"Suite output not found: {source_output}")
+        sys.exit(1)
+
+    run_state = _load_eval_suite_run_state(source_output)
+    manifest_path = args.manifest
+    if manifest_path is None and run_state:
+        manifest_meta = run_state.get("manifest") or {}
+        path_str = str(manifest_meta.get("path") or "").strip()
+        if path_str:
+            manifest_path = Path(path_str)
+    if manifest_path is None:
+        print(
+            "Could not determine manifest path for suite revalidation. "
+            "Pass --manifest explicitly."
+        )
+        sys.exit(1)
+
+    manifest = load_eval_suite_manifest(manifest_path)
+    rac_path = args.rac_path or _default_repo_checkout("rac")
+    if not rac_path.exists():
+        print(f"rac repo not found: {rac_path}")
+        sys.exit(1)
+
+    ledger_path = source_output / "suite-results.jsonl"
+    if not ledger_path.exists():
+        print(f"suite-results.jsonl not found: {ledger_path}")
+        sys.exit(1)
+
+    ledger_entries: list[dict] = []
+    results = []
+    for line in ledger_path.read_text().splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        entry = json.loads(stripped)
+        ledger_entries.append(entry)
+        results.append(_eval_result_from_payload(entry.get("result") or {}))
+
+    for entry, result in zip(ledger_entries, results):
+        case_index = int(entry.get("case_index", 0) or 0)
+        if case_index <= 0 or case_index > len(manifest.cases):
+            continue
+        case = manifest.cases[case_index - 1]
+        if not result.success or not result.output_file:
+            continue
+
+        rac_file = Path(result.output_file)
+        if not rac_file.exists():
+            continue
+
+        source_text = ""
+        with contextlib.suppress(OSError):
+            source_text = extract_embedded_source_text(rac_file.read_text())
+        if (
+            not source_text
+            and case.kind == "source"
+            and case.source_file is not None
+            and case.source_file.exists()
+        ):
+            source_text = case.source_file.read_text()
+
+        result.metrics = evaluate_artifact(
+            rac_file=rac_file,
+            rac_root=rac_file.parents[1],
+            rac_path=rac_path,
+            source_text=source_text,
+            oracle=case.oracle,
+            policyengine_country=case.policyengine_country,
+            policyengine_rac_var_hint=case.policyengine_rac_var_hint,
+        )
+        entry["result"] = result.to_dict()
+
+    grouped: dict[str, list] = {}
+    for result in results:
+        grouped.setdefault(result.runner, []).append(result)
+
+    effective_runners = manifest.runners
+    if run_state:
+        manifest_meta = run_state.get("manifest") or {}
+        effective_runners = list(
+            manifest_meta.get("effective_runners") or effective_runners
+        )
+
+    readiness = {
+        runner: summarize_readiness(runner_results, manifest.gates)
+        for runner, runner_results in grouped.items()
+    }
+    all_ready = all(summary.ready for summary in readiness.values())
+    payload = _build_eval_suite_payload(
+        manifest=manifest,
+        effective_runners=effective_runners,
+        results=results,
+        readiness=readiness,
+        all_ready=all_ready,
+    )
+
+    ledger_path.write_text(
+        "".join(json.dumps(entry, sort_keys=True) + "\n" for entry in ledger_entries)
+    )
+    (source_output / "results.json").write_text(json.dumps(payload, indent=2) + "\n")
+    (source_output / "summary.json").write_text(
+        json.dumps(
+            {
+                "manifest": payload["manifest"],
+                "readiness": payload["readiness"],
+                "all_ready": all_ready,
+            },
+            indent=2,
+        )
+        + "\n"
+    )
+
+    if run_state:
+        now_iso = _utc_now_iso()
+        run_state["updated_at"] = now_iso
+        run_state["revalidated_at"] = now_iso
+        (source_output / "suite-run.json").write_text(
+            json.dumps(run_state, indent=2, sort_keys=True) + "\n"
+        )
+
+    if args.json:
+        print(json.dumps(payload, indent=2))
+        sys.exit(0 if all_ready else 1)
+
+    print(f"Manifest: {manifest.path}")
+    print(f"Suite: {manifest.name}")
+    print(f"Output root: {source_output}")
+    print(f"Revalidated cases: {len(results)}")
+    print()
+    for runner, summary in readiness.items():
+        print(f"{runner}: {'READY' if summary.ready else 'NOT READY'}")
+        print(
+            f"  cases={summary.total_cases} success={summary.success_rate:.1%} "
+            f"compile={summary.compile_pass_rate:.1%} ci={summary.ci_pass_rate:.1%} "
+            f"zero_ungrounded={summary.zero_ungrounded_rate:.1%} "
+            f"generalist_review={summary.generalist_review_pass_rate:.1%}"
+        )
+        if summary.mean_generalist_review_score is not None:
+            print(
+                f"  mean_generalist_review_score={summary.mean_generalist_review_score:.2f}/10"
+            )
+        if summary.policyengine_case_count:
+            print(
+                f"  policyengine_cases={summary.policyengine_case_count} "
+                f"pass_rate={(summary.policyengine_pass_rate or 0):.1%} "
+                f"mean_score={(summary.mean_policyengine_score or 0):.1%}"
+            )
+        if summary.mean_estimated_cost_usd is not None:
+            print(f"  mean_estimated_cost=${summary.mean_estimated_cost_usd:.4f}")
+        for gate in summary.gate_results:
+            print(_format_gate_result(gate))
     sys.exit(0 if all_ready else 1)
 
 
