@@ -514,6 +514,20 @@ Effective October 1, 2025 through September 30, 2026.
         assert 546.0 in occurrences
         assert 218.0 in occurrences
 
+    def test_ignores_table_heading_numbers_and_label_ages_but_keeps_row_values(self):
+        occurrences = extract_numeric_occurrences_from_text(
+            """
+Table 5: Maximum Asset Limits
+All other households: $3,000
+Households with at least one person age 60 or older or disabled: $4,500
+"""
+        )
+
+        assert 5.0 not in occurrences
+        assert 60.0 not in occurrences
+        assert 3000.0 in occurrences
+        assert 4500.0 in occurrences
+
     def test_ignores_inline_usc_citation_references(self):
         occurrences = extract_numeric_occurrences_from_text(
             """

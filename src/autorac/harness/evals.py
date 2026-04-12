@@ -3896,8 +3896,53 @@ def _default_test_period_for_granularity(
 def _normalize_nonannual_test_period_value(
     period: object,
     effective_date: date,
+    granularity: str | None = None,
 ) -> object:
     """Convert non-annual periods to concrete dates on or after the effective date."""
+    if granularity == "Month":
+        effective_month = effective_date.strftime("%Y-%m")
+        if period is None:
+            return effective_month
+        if isinstance(period, date):
+            period_month = period.strftime("%Y-%m")
+            if period_month < effective_month:
+                return effective_month
+            return period_month
+        if isinstance(period, int):
+            if period == effective_date.year:
+                return effective_month
+            if period > effective_date.year:
+                return f"{period}-01"
+            return period
+        if isinstance(period, str):
+            if re.fullmatch(r"\d{4}", period):
+                year = int(period)
+                if year == effective_date.year:
+                    return effective_month
+                if year > effective_date.year:
+                    return f"{year}-01"
+                return period
+            if _ISO_WEEK_PERIOD_PATTERN.fullmatch(period):
+                week_year = int(period[:4])
+                if week_year == effective_date.year:
+                    return effective_month
+                if week_year > effective_date.year:
+                    return f"{week_year}-01"
+                return period
+            if re.fullmatch(r"\d{4}-\d{2}", period):
+                if period < effective_month:
+                    return effective_month
+                return period
+            if re.fullmatch(r"\d{4}-\d{2}-\d{2}", period):
+                try:
+                    parsed = date.fromisoformat(period)
+                except ValueError:
+                    return period
+                period_month = parsed.strftime("%Y-%m")
+                if period_month < effective_month:
+                    return effective_month
+                return period_month
+
     if period is None:
         return effective_date.isoformat()
     if isinstance(period, date):
@@ -4051,6 +4096,7 @@ def _normalize_test_periods_to_effective_dates(
             normalized_case["period"] = _normalize_nonannual_test_period_value(
                 normalized_case.get("period"),
                 effective_date,
+                granularity=granularity,
             )
 
         for key in ("input", "inputs", "output"):

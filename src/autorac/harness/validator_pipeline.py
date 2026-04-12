@@ -673,11 +673,16 @@ _MONTH_DAY_OF_MONTH_PATTERN = re.compile(
     r"\b\d{1,2}(?:st|nd|rd|th)\s+day\s+of\s+(?:a|the)\s+month\b",
     re.IGNORECASE,
 )
+_TABLE_HEADING_PATTERN = re.compile(r"^\s*table\s+\d+[A-Za-z]?(?:\s*:.*)?$", re.IGNORECASE)
 _ORDINAL_NUMBER_PATTERN = re.compile(r"\b(\d+)(?:st|nd|rd|th)\b", re.IGNORECASE)
 _SCHEDULE_BLOCK_HEADING_PATTERN = re.compile(r"^[A-Z][A-Z0-9_ ]+:\s*$")
 _SCHEDULE_SIZE_ROW_PATTERN = re.compile(
     r"^\s*[-*]?\s*(?:size|household size|unit size)(?:\s+\d+(?:\s+or\s+more)?)?\s*:\s*"
     r"(?:[$£€]\s*)?(-?[\d,]+(?:\.\d+)?)\s*$",
+    re.IGNORECASE,
+)
+_VALUE_BEARING_TABLE_ROW_PATTERN = re.compile(
+    r"^\s*[-*]?\s*[^:]+:\s*(?:[$£€]\s*)?(-?[\d,]+(?:\.\d+)?)\s*$",
     re.IGNORECASE,
 )
 _SUBPOUND_MONEY_PATTERN = re.compile(
@@ -1071,11 +1076,16 @@ def _clean_source_text_for_numeric_extraction(text: str) -> str:
             continue
         if _STRUCTURAL_SOURCE_CITATION_PATTERN.match(structural_stripped):
             continue
+        if _TABLE_HEADING_PATTERN.match(structural_stripped):
+            continue
 
         normalized_line = line.lstrip(_STRUCTURAL_SOURCE_QUOTE_CHARS)
         normalized_line = _STRUCTURAL_SOURCE_CITATION_PREFIX_PATTERN.sub(
             "", normalized_line, count=1
         )
+        value_row_match = _VALUE_BEARING_TABLE_ROW_PATTERN.match(normalized_line)
+        if value_row_match:
+            normalized_line = value_row_match.group(1)
         normalized_line = _TABLE_ROW_LABEL_PATTERN.sub("size", normalized_line)
         cleaned_lines.append(_STRUCTURAL_SOURCE_PREFIX_PATTERN.sub("", normalized_line))
 

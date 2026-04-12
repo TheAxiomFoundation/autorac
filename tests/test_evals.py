@@ -1408,7 +1408,7 @@ class TestGeneratedBundleCleaning:
 
         assert wrote is True
         test_text = output_file.with_suffix(".rac.test").read_text()
-        assert "period: '2026-04-02'" in test_text or "period: 2026-04-02" in test_text
+        assert "period: '2026-04'" in test_text or "period: 2026-04" in test_text
 
     def test_materialize_eval_artifact_prefers_workspace_files_over_prose_bundle(
         self, tmp_path
@@ -5705,6 +5705,18 @@ class TestSourceEval:
         assert (
             _normalize_nonannual_test_period_value(date(2026, 4, 1), date(2026, 4, 2))
             == "2026-04-02"
+        )
+
+    def test_normalize_nonannual_test_period_value_uses_month_period_for_monthly_rules(
+        self,
+    ):
+        assert (
+            _normalize_nonannual_test_period_value(
+                "2025-10-01",
+                date(2025, 10, 1),
+                granularity="Month",
+            )
+            == "2025-10"
         )
 
     def test_allows_relative_workspace_reads(self, tmp_path):
