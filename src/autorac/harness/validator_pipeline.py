@@ -138,6 +138,125 @@ class _SubprocessRunResult:
     returncode: int
 
 
+@dataclass(frozen=True)
+class _PolicyEngineUSVarAdapter:
+    """Declarative mapping/config for PE-US replay of a RAC variable."""
+
+    rac_vars: tuple[str, ...]
+    pe_var: str
+    monthly: bool = False
+    spm: bool = False
+    annualized_person_inputs: tuple[tuple[str, str], ...] = ()
+    boolean_person_inputs: tuple[tuple[str, str], ...] = ()
+    default_state_code: str | None = None
+    state_code_from_boolean_input: tuple[str, str, str] | None = None
+
+
+_PE_US_VAR_ADAPTERS = (
+    _PolicyEngineUSVarAdapter(
+        rac_vars=("snap", "snap_benefits"),
+        pe_var="snap",
+        monthly=True,
+        spm=True,
+    ),
+    _PolicyEngineUSVarAdapter(
+        rac_vars=("snap_allotment", "snap_normal_allotment"),
+        pe_var="snap_normal_allotment",
+        monthly=True,
+        spm=True,
+    ),
+    _PolicyEngineUSVarAdapter(
+        rac_vars=("snap_expected_contribution",),
+        pe_var="snap_expected_contribution",
+        monthly=True,
+        spm=True,
+    ),
+    _PolicyEngineUSVarAdapter(
+        rac_vars=("snap_min_allotment", "minimum_allotment"),
+        pe_var="snap_min_allotment",
+        monthly=True,
+        spm=True,
+    ),
+    _PolicyEngineUSVarAdapter(
+        rac_vars=("snap_net_income", "snap_net_income_calculation"),
+        pe_var="snap_net_income",
+        monthly=True,
+        spm=True,
+    ),
+    _PolicyEngineUSVarAdapter(
+        rac_vars=("snap_standard_deduction",),
+        pe_var="snap_standard_deduction",
+        monthly=True,
+        spm=True,
+    ),
+    _PolicyEngineUSVarAdapter(
+        rac_vars=("snap_child_support_deduction",),
+        pe_var="snap_child_support_gross_income_deduction",
+        monthly=True,
+        spm=True,
+        annualized_person_inputs=(
+            ("snap_child_support_payments_made", "child_support_expense"),
+        ),
+        state_code_from_boolean_input=(
+            "snap_state_uses_child_support_deduction",
+            "TX",
+            "CA",
+        ),
+    ),
+    _PolicyEngineUSVarAdapter(
+        rac_vars=("snap_excess_medical_expense_deduction",),
+        pe_var="snap_excess_medical_expense_deduction",
+        monthly=True,
+        spm=True,
+        annualized_person_inputs=(
+            (
+                "snap_allowable_medical_expenses_before_threshold",
+                "medical_out_of_pocket_expenses",
+            ),
+        ),
+        boolean_person_inputs=(
+            (
+                "snap_household_has_elderly_or_disabled_member",
+                "is_usda_disabled",
+            ),
+        ),
+        default_state_code="NY",
+    ),
+    _PolicyEngineUSVarAdapter(
+        rac_vars=("snap_maximum_allotment",),
+        pe_var="snap_max_allotment",
+        monthly=True,
+        spm=True,
+    ),
+)
+
+_PE_US_VARIABLE_MAP = {
+    rac_var: adapter.pe_var
+    for adapter in _PE_US_VAR_ADAPTERS
+    for rac_var in adapter.rac_vars
+}
+
+_PE_US_VAR_ADAPTERS_BY_NAME = {
+    name: adapter
+    for adapter in _PE_US_VAR_ADAPTERS
+    for name in (adapter.pe_var, *adapter.rac_vars)
+}
+
+_PE_US_MONTHLY_VAR_NAMES = {
+    name
+    for adapter in _PE_US_VAR_ADAPTERS
+    if adapter.monthly
+    for name in (adapter.pe_var, *adapter.rac_vars)
+}
+
+_PE_US_SPM_VAR_NAMES = {
+    name
+    for adapter in _PE_US_VAR_ADAPTERS
+    if adapter.spm
+    for name in (adapter.pe_var, *adapter.rac_vars)
+}
+
+
 def _run_subprocess_with_idle_timeout(
     cmd: list[str],
     *,
@@ -3537,7 +3656,7 @@ print("BENCHMARK:" + json.dumps(result))
                 "working_tax_credit_severely_disabled_element_amount": "WTC_severely_disabled_element",
             }
 
-        return {
+        mapping = {
             # EITC
             "eitc": "eitc",
             "earned_income_credit": "eitc",
@@ -3554,21 +3673,14 @@ print("BENCHMARK:" + json.dumps(result))
             # AGI
             "agi": "adjusted_gross_income",
             "adjusted_gross_income": "adjusted_gross_income",
-            # SNAP
-            "snap_allotment": "snap_normal_allotment",
-            "snap_benefits": "snap",
-            "snap": "snap",
-            "snap_normal_allotment": "snap_normal_allotment",
-            "snap_expected_contribution": "snap_expected_contribution",
-            "snap_min_allotment": "snap_min_allotment",
-            "snap_net_income": "snap_net_income",
-            "snap_standard_deduction": "snap_standard_deduction",
-            "snap_child_support_deduction": "snap_child_support_gross_income_deduction",
-            "snap_excess_medical_expense_deduction": "snap_excess_medical_expense_deduction",
-            "snap_maximum_allotment": "snap_max_allotment",
-            "minimum_allotment": "snap_min_allotment",
-            "snap_net_income_calculation": "snap_net_income",
         }
+        mapping.update(_PE_US_VARIABLE_MAP)
+        return mapping
+
+    @staticmethod
+    def _get_pe_us_var_adapter(name: str) -> _PolicyEngineUSVarAdapter | None:
+        """Return the PE-US adapter row for a mapped PE var or RAC alias."""
+        return _PE_US_VAR_ADAPTERS_BY_NAME.get(name)
 
     @staticmethod
     def _is_uk_child_benefit_rate_var(rac_var: str) -> bool:
@@ -3938,36 +4050,15 @@ print("BENCHMARK:" + json.dumps(result))
 
     # PE variables that are defined as monthly (not annual)
     _PE_MONTHLY_VARS = {
-        "snap",
-        "snap_normal_allotment",
-        "snap_max_allotment",
-        "snap_net_income",
-        "snap_expected_contribution",
-        "snap_min_allotment",
-        "snap_child_support_gross_income_deduction",
         "snap_gross_income",
-        "snap_standard_deduction",
-        "snap_child_support_deduction",
-        "snap_excess_medical_expense_deduction",
         "snap_emergency_allotment",
         "ssi",
         "ssi_amount_if_eligible",
         "tanf",
-    }
+    } | _PE_US_MONTHLY_VAR_NAMES
 
     # PE variables at spm_unit level (need spm_units in situation)
-    _PE_SPM_VARS = {
-        "snap",
-        "snap_normal_allotment",
-        "snap_max_allotment",
-        "snap_net_income",
-        "snap_expected_contribution",
-        "snap_min_allotment",
-        "snap_child_support_gross_income_deduction",
-        "snap_standard_deduction",
-        "snap_child_support_deduction",
-        "snap_excess_medical_expense_deduction",
-    }
+    _PE_SPM_VARS = set(_PE_US_SPM_VAR_NAMES)
 
     def _is_pe_test_mappable(
         self, country: str, rac_var: str, inputs: dict, expected: Any = None
@@ -4262,6 +4353,8 @@ print("BENCHMARK:" + json.dumps(result))
         else:
             calc_period = f"int('{year}')"
 
+        adapter = self._get_pe_us_var_adapter(pe_var)
+
         adult_attrs = [f"'age': {{'{year}': 30}}"]
         members = ["'adult'"]
 
@@ -4272,28 +4365,22 @@ print("BENCHMARK:" + json.dumps(result))
         if earned:
             adult_attrs.append(f"'employment_income': {{'{year}': {earned}}}")
 
-        child_support_paid = inputs.get("snap_child_support_payments_made")
-        if child_support_paid is not None:
-            with contextlib.suppress(TypeError, ValueError):
-                annual_child_support = float(child_support_paid) * 12
-                adult_attrs.append(
-                    f"'child_support_expense': {{'{year}': {annual_child_support}}}"
-                )
-
-        if "snap_household_has_elderly_or_disabled_member" in inputs:
-            adult_attrs.append(
-                "'is_usda_disabled': "
-                f"{{'{year}': {bool(inputs['snap_household_has_elderly_or_disabled_member'])}}}"
-            )
-
-        medical_expenses = inputs.get("snap_allowable_medical_expenses_before_threshold")
-        if medical_expenses is not None:
-            with contextlib.suppress(TypeError, ValueError):
-                annual_medical_expenses = float(medical_expenses) * 12
-                adult_attrs.append(
-                    "'medical_out_of_pocket_expenses': "
-                    f"{{'{year}': {annual_medical_expenses}}}"
-                )
+        if adapter is not None:
+            for rac_key, pe_attr in adapter.annualized_person_inputs:
+                value = inputs.get(rac_key)
+                if value is None:
+                    continue
+                with contextlib.suppress(TypeError, ValueError):
+                    annual_value = float(value) * 12
+                    adult_attrs.append(
+                        f"'{pe_attr}': {{'{year}': {annual_value}}}"
+                    )
+            for rac_key, pe_attr in adapter.boolean_person_inputs:
+                if rac_key in inputs:
+                    adult_attrs.append(
+                        f"'{pe_attr}': "
+                        f"{{'{year}': {bool(inputs[rac_key])}}}"
+                    )
 
         people_parts = [f"'adult': {{{', '.join(adult_attrs)}}}"]
 
@@ -4335,14 +4422,17 @@ print("BENCHMARK:" + json.dumps(result))
             spm_extra = ", " + ", ".join(override_parts)
 
         household_state = "CA"
-        if pe_var == "snap_excess_medical_expense_deduction":
-            # Use a neutral state without a standard medical deduction option
-            # unless the case provides explicit state context.
-            household_state = "NY"
-        if "snap_state_uses_child_support_deduction" in inputs:
-            household_state = (
-                "TX" if bool(inputs["snap_state_uses_child_support_deduction"]) else "CA"
-            )
+        if adapter is not None and adapter.default_state_code is not None:
+            household_state = adapter.default_state_code
+        if (
+            adapter is not None
+            and adapter.state_code_from_boolean_input is not None
+        ):
+            input_key, true_state, false_state = adapter.state_code_from_boolean_input
+            if input_key in inputs:
+                household_state = (
+                    true_state if bool(inputs[input_key]) else false_state
+                )
         if "state_code_str" in inputs:
             household_state = str(inputs["state_code_str"])
         elif "state_name" in inputs:
