@@ -486,6 +486,59 @@ Effective October 1, 2025 through September 30, 2026.
         assert 546.0 in occurrences
         assert 218.0 in occurrences
 
+    def test_ignores_inline_usc_citation_references(self):
+        occurrences = extract_numeric_occurrences_from_text(
+            """
+SNAP child support deduction under 7 USC 2014(e)(4).
+
+Legally obligated child support payments are deductible only when the State agency
+elects the deduction treatment instead of the exclusion under 7 USC 2014(d)(6).
+
+Income earned by an eligible student under 2014(d)(7) remains excluded.
+"""
+        )
+
+        assert 7.0 not in occurrences
+        assert 4.0 not in occurrences
+        assert 6.0 not in occurrences
+        assert 2014.0 not in occurrences
+
+    def test_collapses_repeated_schedule_row_values_with_size_labels(self):
+        occurrences = extract_numeric_occurrences_from_text(
+            """
+USDA SNAP standard deduction schedule effective October 1, 2021 through September 30, 2022
+
+CONTIGUOUS_US:
+- size 1: 177
+- size 2: 177
+- size 3: 177
+- size 4: 184
+- size 5: 215
+- size 6 or more: 246
+
+AK:
+- size 1: 303
+- size 2: 303
+- size 3: 303
+- size 4: 303
+- size 5: 303
+- size 6 or more: 308
+"""
+        )
+
+        assert 1.0 not in occurrences
+        assert 2.0 not in occurrences
+        assert 3.0 not in occurrences
+        assert 4.0 not in occurrences
+        assert 5.0 not in occurrences
+        assert 6.0 not in occurrences
+        assert occurrences.count(177.0) == 1
+        assert occurrences.count(184.0) == 1
+        assert occurrences.count(215.0) == 1
+        assert occurrences.count(246.0) == 1
+        assert occurrences.count(303.0) == 1
+        assert occurrences.count(308.0) == 1
+
 
 class TestImportClosureHelpers:
     def test_extract_import_paths_supports_list_and_mapping_forms(self, pipeline):
@@ -1697,6 +1750,86 @@ additional_person_increment:
     dtype: Money
     unit: USD
     from 2025-10-01: 218
+'''
+        )
+
+        with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run:
+            mock_run.side_effect = [
+                Mock(
+                    stdout="============================================================\nTests: 1  Passed: 1  Failed: 0\nAll tests passed.\n",
+                    stderr="",
+                    returncode=0,
+                ),
+                Mock(
+                    stdout="Checked 1 .rac files\n\nAll files pass validation\n",
+                    stderr="",
+                    returncode=0,
+                ),
+            ]
+            result = pipeline._run_ci(rac_file)
+
+        assert result.passed is True
+        assert not any("Embedded scalar literal" in issue for issue in result.issues)
+
+    def test_ci_allows_capped_unit_size_table_index_literals(self, pipeline):
+        """CI should allow schedule-row indices on derived *_size helpers."""
+        rac_file = pipeline.rac_us_path / "us" / "snap_standard_deduction_leaf.rac"
+        rac_file.parent.mkdir(parents=True, exist_ok=True)
+        rac_file.write_text(
+            '''
+"""
+USDA SNAP standard deduction schedule.
+"""
+
+status: encoded
+
+snap_standard_deduction_capped_unit_size:
+    entity: SPMUnit
+    period: Month
+    dtype: Count
+
+snap_standard_deduction:
+    entity: SPMUnit
+    period: Month
+    dtype: Money
+    unit: USD
+    from 2025-10-01:
+        if snap_standard_deduction_capped_unit_size <= 3:
+            size_1_3_amount
+        elif snap_standard_deduction_capped_unit_size == 4:
+            size_4_amount
+        elif snap_standard_deduction_capped_unit_size == 5:
+            size_5_amount
+        else:
+            size_6_or_more_amount
+
+size_1_3_amount:
+    entity: SPMUnit
+    period: Month
+    dtype: Money
+    unit: USD
+    from 2025-10-01: 177
+
+size_4_amount:
+    entity: SPMUnit
+    period: Month
+    dtype: Money
+    unit: USD
+    from 2025-10-01: 184
+
+size_5_amount:
+    entity: SPMUnit
+    period: Month
+    dtype: Money
+    unit: USD
+    from 2025-10-01: 215
+
+size_6_or_more_amount:
+    entity: SPMUnit
+    period: Month
+    dtype: Money
+    unit: USD
+    from 2025-10-01: 246
 '''
         )
 

@@ -447,6 +447,11 @@ _SOURCE_REFERENCE_PATTERNS = (
         rf"\b(?:step|steps)\s+{_SOURCE_REFERENCE_SEQUENCE_PATTERN}(?:\s*,?\s*(?:above|below))?",
         re.IGNORECASE,
     ),
+    re.compile(
+        r"\b(?:\d+\s+(?:U\.?\s*S\.?\s*C\.?|USC|C\.?\s*F\.?\s*R\.?|CFR|CCR)\s+)?"
+        r"\d+[A-Za-z0-9./-]*(?:\([^)]+\))+",
+        re.IGNORECASE,
+    ),
     re.compile(r"\b(?:Act|Order|Regulations?)\s+\d{4}\b"),
 )
 _DIRECT_SCALAR_VALUE_PATTERN = re.compile(r"-?[\d,]+(?:\.\d+)?")
@@ -464,10 +469,20 @@ _MONTH_DAY_OF_MONTH_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _ORDINAL_NUMBER_PATTERN = re.compile(r"\b(\d+)(?:st|nd|rd|th)\b", re.IGNORECASE)
+_SCHEDULE_BLOCK_HEADING_PATTERN = re.compile(r"^[A-Z][A-Z0-9_ ]+:\s*$")
+_SCHEDULE_SIZE_ROW_PATTERN = re.compile(
+    r"^\s*[-*]?\s*(?:size|household size|unit size)(?:\s+\d+(?:\s+or\s+more)?)?\s*:\s*"
+    r"(?:[$£€]\s*)?(-?[\d,]+(?:\.\d+)?)\s*$",
+    re.IGNORECASE,
+)
 _SUBPOUND_MONEY_PATTERN = re.compile(
     r"(\d+(?:\.\d+)?)\s*(?:pence|penny)\b", re.IGNORECASE
 )
 _TABLE_KEY_ASSIGNMENT_PATTERN = re.compile(r"\b\d+(?=\s*=)")
+_TABLE_ROW_LABEL_PATTERN = re.compile(
+    r"\b(?:size|household size|unit size)\s+\d+(?:\s+or\s+more)?(?=\s*:)",
+    re.IGNORECASE,
+)
 _CARDINAL_WORD_VALUES = {
     "zero": 0.0,
     "one": 1.0,
@@ -624,7 +639,7 @@ def _extract_formula_grounding_values(
         raw = match.group(1).replace(",", "")
         if raw == "0.5" and _is_half_up_rounding_expression(cleaned):
             continue
-        if _is_structural_household_size_index_literal(cleaned, raw):
+        if _is_structural_schedule_index_literal(cleaned, raw):
             continue
         with contextlib.suppress(ValueError):
             value = float(raw)
@@ -641,8 +656,8 @@ def _is_half_up_rounding_expression(expression: str) -> bool:
     )
 
 
-def _is_structural_household_size_index_literal(expression: str, literal: str) -> bool:
-    """Return True when a small integer only serves as a household-size table index."""
+def _is_structural_schedule_index_literal(expression: str, literal: str) -> bool:
+    """Return True when a small integer only serves as a schedule index."""
     if literal in _EMBEDDED_SCALAR_ALLOWED_VALUES:
         return False
     if not re.fullmatch(r"\d+(?:\.0+)?", literal):
@@ -651,15 +666,15 @@ def _is_structural_household_size_index_literal(expression: str, literal: str) -
         numeric_value = float(literal)
         if not numeric_value.is_integer() or not (4 <= int(numeric_value) <= 8):
             return False
-    if not re.search(r"\b[A-Za-z_]\w*household_size\b", expression):
+    if not re.search(r"\b[A-Za-z_]\w*_size\b", expression):
         return False
 
     normalized = re.sub(r"\s+", " ", expression)
     comparison_pattern = re.compile(
-        rf"\b(?:if|elif)\s+[A-Za-z_]\w*household_size\s*(?:==|>=|>|<=|<)\s*{re.escape(literal)}\b"
+        rf"\b(?:if|elif)\s+[A-Za-z_]\w*_size\s*(?:==|>=|>|<=|<)\s*{re.escape(literal)}\b"
     )
     delta_pattern = re.compile(
-        rf"(?:\(\s*)?[A-Za-z_]\w*household_size\s*-\s*{re.escape(literal)}(?:\s*\))?"
+        rf"(?:\(\s*)?[A-Za-z_]\w*_size\s*-\s*{re.escape(literal)}(?:\s*\))?"
     )
     return bool(comparison_pattern.search(normalized) or delta_pattern.search(normalized))
 
@@ -699,8 +714,10 @@ def _call_body_contains_any(
 def extract_numbers_from_text(text: str) -> set[float]:
     """Extract numeric values from embedded statute text."""
     text = _clean_source_text_for_numeric_extraction(text)
+    schedule_occurrences, text = _extract_collapsed_schedule_row_occurrences(text)
     numbers = set()
     occupied_spans: list[tuple[int, int]] = []
+    numbers.update(schedule_occurrences)
 
     for span, value in _iter_normalized_special_numeric_matches(text):
         numbers.add(value)
@@ -796,6 +813,7 @@ def _clean_source_text_for_numeric_extraction(text: str) -> str:
         normalized_line = _STRUCTURAL_SOURCE_CITATION_PREFIX_PATTERN.sub(
             "", normalized_line, count=1
         )
+        normalized_line = _TABLE_ROW_LABEL_PATTERN.sub("size", normalized_line)
         cleaned_lines.append(_STRUCTURAL_SOURCE_PREFIX_PATTERN.sub("", normalized_line))
 
     cleaned = "\n".join(cleaned_lines)
@@ -808,11 +826,57 @@ def _clean_source_text_for_numeric_extraction(text: str) -> str:
     return cleaned
 
 
+def _extract_collapsed_schedule_row_occurrences(
+    text: str,
+) -> tuple[list[float], str]:
+    """Extract schedule row values once per contiguous value block and remove row lines."""
+    occurrences: list[float] = []
+    retained_lines: list[str] = []
+    current_heading: str | None = None
+    last_value_by_block: dict[str, float] = {}
+    ungrouped_block = 0
+    current_ungrouped_block: str | None = None
+
+    for line in text.splitlines():
+        stripped = line.strip()
+        if _SCHEDULE_BLOCK_HEADING_PATTERN.fullmatch(stripped):
+            current_heading = stripped
+            current_ungrouped_block = None
+            retained_lines.append(line)
+            continue
+
+        row_match = _SCHEDULE_SIZE_ROW_PATTERN.fullmatch(stripped)
+        if row_match:
+            with contextlib.suppress(ValueError):
+                value = float(row_match.group(1).replace(",", ""))
+                if current_heading is not None:
+                    block_key = current_heading
+                else:
+                    if current_ungrouped_block is None:
+                        ungrouped_block += 1
+                        current_ungrouped_block = f"__ungrouped_{ungrouped_block}"
+                    block_key = current_ungrouped_block
+                if last_value_by_block.get(block_key) != value:
+                    occurrences.append(value)
+                    last_value_by_block[block_key] = value
+            continue
+
+        if stripped:
+            current_heading = None
+            current_ungrouped_block = None
+        retained_lines.append(line)
+
+    return occurrences, "\n".join(retained_lines)
+
+
 def extract_numeric_occurrences_from_text(text: str) -> list[float]:
     """Extract substantive numeric occurrences from source text, preserving repeats."""
     cleaned = _clean_source_text_for_numeric_extraction(text)
+    collapsed_schedule_occurrences, cleaned = _extract_collapsed_schedule_row_occurrences(
+        cleaned
+    )
 
-    occurrences: list[float] = []
+    occurrences: list[float] = list(collapsed_schedule_occurrences)
     spans: list[tuple[int, int]] = []
 
     for span, value in _iter_normalized_special_numeric_matches(cleaned):
@@ -2075,7 +2139,7 @@ class ValidatorPipeline:
                 continue
             if literal == "0.5" and half_up_rounding_expression:
                 continue
-            if _is_structural_household_size_index_literal(
+            if _is_structural_schedule_index_literal(
                 scrubbed_expression, literal
             ):
                 continue
