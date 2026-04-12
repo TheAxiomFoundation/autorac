@@ -3489,7 +3489,7 @@ is_individual_responsibility_contract:
         assert "prefer test inputs like `snap_gross_income` plus the applicable deduction symbols" in prompt
         assert "creating near-duplicate locals such as `snap_excess_medical_deduction`" in prompt
         assert "make it a real rate-valued helper" in prompt
-        assert "encode `50 percent` as `0.5`" in prompt
+        assert "encode `50 percent` as `0.5` and `130 percent` as `1.3`" in prompt
         assert "do not collapse the principal output to an unconditional `true` or `false`" in prompt
 
     def test_build_eval_prompt_includes_resolved_canonical_concept_guidance(
@@ -5113,18 +5113,19 @@ cases:
             (
                 repo_root.parent
                 / "rac-us"
-                / "usda"
-                / "snap"
-                / "fy-2026-cola"
-                / "2.rac"
+                / "statute"
+                / "7"
+                / "2014"
+                / "c.rac"
             ).resolve(),
             (
                 repo_root.parent
                 / "rac-us"
-                / "usda"
-                / "snap"
-                / "fy-2026-cola"
-                / "3.rac"
+                / "statute"
+                / "7"
+                / "2014"
+                / "g"
+                / "1.rac"
             ).resolve(),
         ]
         assert case.oracle == "policyengine"

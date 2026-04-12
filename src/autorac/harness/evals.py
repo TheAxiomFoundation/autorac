@@ -2801,7 +2801,7 @@ snap_maximum_allotment:
 - Do not append a multiline conditional directly onto another expression like `base_amount + if condition: ...`; factor the conditional into its own helper variable or make the whole formula a single conditional expression.
 - For derived values, keep using normal RAC blocks with `entity`, `period`, `dtype`, and `from YYYY-MM-DD:` formulas.
 - For `dtype: Rate`, encode percentages as decimal ratios like `0.60` or `0.40`, never as `%` literals.
-- If you introduce a helper whose name, label, or description says `percent`, `share`, or `rate`, make it a real rate-valued helper: use `dtype: Rate` when applicable, encode `50 percent` as `0.5`, and make downstream formulas reference that helper instead of hardcoding `/ 2` or `/ 100` separately.
+- If you introduce a helper whose name, label, or description says `percent`, `share`, or `rate`, make it a real rate-valued helper: use `dtype: Rate` when applicable, encode `50 percent` as `0.5` and `130 percent` as `1.3`, and make downstream formulas reference that helper instead of hardcoding `/ 2`, `/ 100`, `50`, or `130` separately.
 - Do not use Python inline ternaries like `x if cond else y`; use RAC conditional expressions instead.
 - Do not use YAML-style `if:` / `then:` / `else:` blocks.
 {file_output_rules}

@@ -16,8 +16,8 @@ cases:
     source_id: Federal SNAP current-effective household eligibility
     source_file: ../../rac-us/sources/slices/7-USC/snap/current-effective/is_snap_eligible.txt
     allow_context:
-      - ../../rac-us/usda/snap/fy-2026-cola/2.rac
-      - ../../rac-us/usda/snap/fy-2026-cola/3.rac
+      - ../../rac-us/statute/7/2014/c.rac
+      - ../../rac-us/statute/7/2014/g/1.rac
     oracle: policyengine
     policyengine_country: auto
     policyengine_rac_var_hint: is_snap_eligible
