@@ -3501,6 +3501,9 @@ is_individual_responsibility_contract:
         assert "snap_household_income_under_2014_d_and_e" in prompt
         assert "author it as an amendment layer targeting those canonical symbols" in prompt
         assert "emit dated `amend` blocks for those canonical symbols" in prompt
+        assert "Do not import a canonical output like `snap_one_person_thrifty_food_plan_cost`" in prompt
+        assert "Wrong for annual parameter tables" in prompt
+        assert "do not create documentary scalar constants like `snap_household_size_four: 4`" in prompt
         assert "after the 15th day of a month" in prompt
         assert "do not decompose it into separate numeric `*_day`" in prompt
         assert "Do not add a documentary scalar like `*_cutoff_day: 15`" in prompt
@@ -4875,6 +4878,42 @@ cases:
                 / "c"
                 / "1.rac"
             ).resolve(),
+        ]
+
+    def test_repo_us_snap_fy2026_cola_table_repair_manifest_loads_expected_case(
+        self,
+    ):
+        repo_root = Path(__file__).resolve().parents[1]
+        manifest = load_eval_suite_manifest(
+            repo_root / "benchmarks" / "us_snap_fy2026_cola_table_repair.yaml"
+        )
+
+        assert manifest.name == "SNAP FY2026 COLA table repair"
+        assert manifest.mode == "repo-augmented"
+        assert len(manifest.cases) == 1
+        assert manifest.gates.min_cases == 1
+        assert manifest.gates.min_success_rate == 1.0
+        assert manifest.gates.min_compile_pass_rate == 1.0
+        assert manifest.gates.min_ci_pass_rate == 1.0
+        assert manifest.gates.min_zero_ungrounded_rate == 1.0
+        assert manifest.gates.min_generalist_review_pass_rate == 1.0
+        assert manifest.gates.max_mean_estimated_cost_usd == 0.3
+        case = manifest.cases[0]
+        assert case.kind == "source"
+        assert case.name == "snap-fy2026-cola-allotments"
+        assert case.source_id == "USDA SNAP FY 2026 COLA allotment table"
+        assert case.source_file == (
+            repo_root.parent
+            / "rac-us"
+            / "sources"
+            / "slices"
+            / "usda"
+            / "snap"
+            / "fy-2026-cola"
+            / "allotment-table.txt"
+        ).resolve()
+        assert case.allow_context == [
+            (repo_root.parent / "rac-us" / "statute" / "7" / "2017" / "a.rac").resolve()
         ]
 
 
