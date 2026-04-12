@@ -2580,6 +2580,8 @@ Available precedent files:
 - If `./source.txt` is omitted/repealed text shown only by ellipses or otherwise contains no operative rule content for the target slice, emit only a top-level `status: deferred` (or `status: entity_not_supported` when appropriate), keep the embedded source/docstring showing that omission, and emit no local rule blocks.
 - For ordinary source slices, the `.rac.test` file should usually contain 3-4 cases covering true/applicable, false/inapplicable, and boundary or alternate factual branches.
 - Only a single fixed-amount source slice may use 1-2 cases.
+- When the rule includes a thresholded positive branch such as `max(0, amount - threshold)` or an `if eligible: computed_amount else: 0` structure, include at least one `.rac.test` case that exercises the positive non-zero path whenever the source permits it.
+- Do not write only zero-output tests for a thresholded deduction, allowance, or offset when the source plainly permits a positive result above the threshold.
 - The `.rac.test` file must be a YAML list of cases beginning with `- name:` entries, not a top-level mapping keyed by case names.
 - For a single fixed-amount source slice, a base case is sufficient.
 - Add an effective-date boundary only when the period supports a meaningful point-in-time boundary.

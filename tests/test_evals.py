@@ -3493,6 +3493,7 @@ is_individual_responsibility_contract:
             workspace,
             [],
             target_file_name="24-c.rac",
+            include_tests=True,
         )
 
         assert "emit the upstream import instead of restating the concept locally" in prompt
@@ -3511,6 +3512,8 @@ is_individual_responsibility_contract:
         assert "after the 15th day of a month" in prompt
         assert "do not decompose it into separate numeric `*_day`" in prompt
         assert "Do not add a documentary scalar like `*_cutoff_day: 15`" in prompt
+        assert "include at least one `.rac.test` case that exercises the positive non-zero path" in prompt
+        assert "Do not write only zero-output tests for a thresholded deduction" in prompt
         assert "still emit the unresolved import path" in prompt
         assert "otherwise keep the helper local to this leaf" in prompt
 
