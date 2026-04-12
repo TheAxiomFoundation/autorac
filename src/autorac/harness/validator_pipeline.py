@@ -640,6 +640,29 @@ def _is_half_up_rounding_expression(expression: str) -> bool:
     )
 
 
+def _is_structural_household_size_index_literal(expression: str, literal: str) -> bool:
+    """Return True when a small integer only serves as a household-size table index."""
+    if literal in _EMBEDDED_SCALAR_ALLOWED_VALUES:
+        return False
+    if not re.fullmatch(r"\d+(?:\.0+)?", literal):
+        return False
+    with contextlib.suppress(ValueError):
+        numeric_value = float(literal)
+        if not numeric_value.is_integer() or not (4 <= int(numeric_value) <= 8):
+            return False
+    if not re.search(r"\b[A-Za-z_]\w*household_size\b", expression):
+        return False
+
+    normalized = re.sub(r"\s+", " ", expression)
+    comparison_pattern = re.compile(
+        rf"\b(?:if|elif)\s+[A-Za-z_]\w*household_size\s*(?:==|>=|>|<=|<)\s*{re.escape(literal)}\b"
+    )
+    delta_pattern = re.compile(
+        rf"\(\s*[A-Za-z_]\w*household_size\s*-\s*{re.escape(literal)}\s*\)"
+    )
+    return bool(comparison_pattern.search(normalized) or delta_pattern.search(normalized))
+
+
 def _call_body_contains_any(
     compact_expression: str,
     function_name: str,
@@ -2050,6 +2073,10 @@ class ValidatorPipeline:
             if literal in _EMBEDDED_SCALAR_ALLOWED_VALUES:
                 continue
             if literal == "0.5" and half_up_rounding_expression:
+                continue
+            if _is_structural_household_size_index_literal(
+                scrubbed_expression, literal
+            ):
                 continue
             literals.append(literal)
         return sorted(set(literals))

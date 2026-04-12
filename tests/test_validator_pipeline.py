@@ -1610,6 +1610,107 @@ rounded_amount:
         assert result.passed is True
         assert not any("Embedded scalar literal" in issue for issue in result.issues)
 
+    def test_ci_allows_household_size_table_index_literals(self, pipeline):
+        """CI should allow 4-8 when they are only household-size schedule row labels."""
+        rac_file = pipeline.rac_us_path / "us" / "snap_table_leaf.rac"
+        rac_file.parent.mkdir(parents=True, exist_ok=True)
+        rac_file.write_text(
+            '''
+"""
+Maximum allotment schedule:
+- CONTIGUOUS_US: 1=298, 2=546, 3=785, 4=994, 5=1183, 6=1421, 7=1571, 8=1789, each additional person +218
+"""
+
+status: encoded
+
+snap_household_size:
+    entity: Household
+    period: Month
+    dtype: Integer
+
+snap_maximum_allotment:
+    entity: Household
+    period: Month
+    dtype: Money
+    unit: USD
+    from 2025-10-01:
+        if snap_household_size == 4:
+            maximum_allotment_4
+        elif snap_household_size == 5:
+            maximum_allotment_5
+        elif snap_household_size == 6:
+            maximum_allotment_6
+        elif snap_household_size == 7:
+            maximum_allotment_7
+        elif snap_household_size == 8:
+            maximum_allotment_8
+        elif snap_household_size > 8:
+            maximum_allotment_8 + ((snap_household_size - 8) * additional_person_increment)
+        else:
+            0
+
+maximum_allotment_4:
+    entity: Household
+    period: Month
+    dtype: Money
+    unit: USD
+    from 2025-10-01: 994
+
+maximum_allotment_5:
+    entity: Household
+    period: Month
+    dtype: Money
+    unit: USD
+    from 2025-10-01: 1183
+
+maximum_allotment_6:
+    entity: Household
+    period: Month
+    dtype: Money
+    unit: USD
+    from 2025-10-01: 1421
+
+maximum_allotment_7:
+    entity: Household
+    period: Month
+    dtype: Money
+    unit: USD
+    from 2025-10-01: 1571
+
+maximum_allotment_8:
+    entity: Household
+    period: Month
+    dtype: Money
+    unit: USD
+    from 2025-10-01: 1789
+
+additional_person_increment:
+    entity: Household
+    period: Month
+    dtype: Money
+    unit: USD
+    from 2025-10-01: 218
+'''
+        )
+
+        with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run:
+            mock_run.side_effect = [
+                Mock(
+                    stdout="============================================================\nTests: 1  Passed: 1  Failed: 0\nAll tests passed.\n",
+                    stderr="",
+                    returncode=0,
+                ),
+                Mock(
+                    stdout="Checked 1 .rac files\n\nAll files pass validation\n",
+                    stderr="",
+                    returncode=0,
+                ),
+            ]
+            result = pipeline._run_ci(rac_file)
+
+        assert result.passed is True
+        assert not any("Embedded scalar literal" in issue for issue in result.issues)
+
     def test_ci_rejects_decomposed_date_scalars(self, pipeline):
         """CI should fail when calendar dates are split into numeric day/year scalars."""
         rac_file = pipeline.rac_us_path / "uk" / "leaf.rac"
