@@ -5194,6 +5194,38 @@ cases:
         assert case.policyengine_country == "auto"
         assert case.policyengine_rac_var_hint == "snap_net_income_pre_shelter"
 
+    def test_repo_us_snap_nc_standard_utility_allowance_refresh_manifest_loads_expected_case(
+        self,
+    ):
+        repo_root = Path(__file__).resolve().parents[1]
+        manifest = load_eval_suite_manifest(
+            repo_root / "benchmarks" / "us_snap_nc_standard_utility_allowance_refresh.yaml"
+        )
+
+        assert manifest.name == "North Carolina SNAP standard utility allowance refresh"
+        assert manifest.mode == "repo-augmented"
+        assert len(manifest.cases) == 1
+        assert manifest.gates.min_policyengine_pass_rate == 1.0
+        case = manifest.cases[0]
+        assert case.kind == "source"
+        assert case.name == "snap_standard_utility_allowance_nc"
+        assert case.source_id == "North Carolina SNAP standard utility allowance under FNS 360.01(A)(1)"
+        assert case.source_file == (
+            repo_root.parent
+            / "rac-us"
+            / "sources"
+            / "slices"
+            / "ncdhhs"
+            / "fns"
+            / "360"
+            / "current-effective"
+            / "snap_standard_utility_allowance_nc.txt"
+        ).resolve()
+        assert case.allow_context == []
+        assert case.oracle == "policyengine"
+        assert case.policyengine_country == "auto"
+        assert case.policyengine_rac_var_hint == "snap_standard_utility_allowance"
+
 
 class TestReadinessSummary:
     def test_summarize_readiness_applies_suite_gates(self):
@@ -5786,6 +5818,14 @@ class TestSourceEval:
             in prompt
         )
         assert "assert a copied downstream output named by the oracle hint" in prompt
+        assert (
+            "do not assume a different jurisdiction implies zero unless the source text expressly says so"
+            in prompt
+        )
+        assert (
+            "prefer an inapplicable North Carolina case such as a non-SUA allowance type"
+            in prompt
+        )
 
     def test_build_eval_prompt_single_amount_slice_disallows_speculative_future_tests(
         self, tmp_path

@@ -2624,6 +2624,8 @@ Available precedent files:
 - In repo-augmented workspaces, every import path must point to a file that is actually copied into the workspace. If the copied context file is `usda/snap/fy-2026-cola/2.rac`, import `usda/snap/fy-2026-cola/2#...` rather than an uncopied `statute/...` path unless that statute file is also copied explicitly.
 - For evergreen monthly rules whose source slice does not itself hinge on a dated annual table, prefer a contemporary monthly `.rac.test` period like `2022-01` or `2024-01` rather than the earliest statutory effective date, unless the source text itself makes a specific historical period legally necessary.
 - When the source is an annual publication or current-effective table that updates copied canonical thresholds or limits, it is acceptable for `.rac.test` cases to assert a copied downstream output named by the oracle hint after your amendments apply, rather than testing only the amended parameter values in isolation.
+- For state- or jurisdiction-specific source slices that feed a nationwide oracle-backed variable, do not assume a different jurisdiction implies zero unless the source text expressly says so. Keep the cited jurisdiction fixed in negative tests and vary the local applicability condition instead.
+- For example, a North Carolina SNAP utility-allowance slice should prefer an inapplicable North Carolina case such as a non-SUA allowance type, rather than asserting that `snap_standard_utility_allowance` is zero in South Carolina just because the cited NC table does not govern SC.
 """
 
     return f"""You are participating in an encoding eval for {citation}.
