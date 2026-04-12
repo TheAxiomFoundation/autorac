@@ -416,6 +416,11 @@ _STRUCTURAL_SOURCE_HEADING_PATTERN = re.compile(
 _STRUCTURAL_SOURCE_CITATION_PATTERN = re.compile(
     r"^\d+\s+[A-Z]{2,}(?:\s+\d+[A-Za-z0-9./-]*)+\s*$"
 )
+_STRUCTURAL_SOURCE_CITATION_PREFIX_PATTERN = re.compile(
+    r"^\s*\d+\s+(?:U\.?\s*S\.?\s*C\.?|USC|C\.?\s*F\.?\s*R\.?|CFR|CCR)\s+"
+    r"\d+[A-Za-z0-9./-]*(?:\([^)]+\))*\s*",
+    re.IGNORECASE,
+)
 _STRUCTURAL_SOURCE_PREFIX_PATTERN = re.compile(
     r"^\s*(?:\d+(?:\.\d+){2,}\s+|\d+[A-Za-z]?\.\s+|\([0-9A-Za-zivxlcdm]+\)\s+)",
     re.IGNORECASE,
@@ -445,14 +450,20 @@ _SOURCE_REFERENCE_PATTERNS = (
     re.compile(r"\b(?:Act|Order|Regulations?)\s+\d{4}\b"),
 )
 _DIRECT_SCALAR_VALUE_PATTERN = re.compile(r"-?[\d,]+(?:\.\d+)?")
-_MONTH_NAME_PATTERN = re.compile(
-    r"\b(?:january|february|march|april|may|june|july|august|september|october|november|december)\b",
+_MONTH_NAME_BODY = (
+    r"(?:january|february|march|april|may|june|july|august|september|"
+    r"october|november|december)"
+)
+_MONTH_NAME_PATTERN = re.compile(rf"\b{_MONTH_NAME_BODY}\b", re.IGNORECASE)
+_MONTH_NAME_DATE_PATTERN = re.compile(
+    rf"\b{_MONTH_NAME_BODY}\s+\d{{1,2}},\s+\d{{4}}\b",
     re.IGNORECASE,
 )
 _ORDINAL_NUMBER_PATTERN = re.compile(r"\b(\d+)(?:st|nd|rd|th)\b", re.IGNORECASE)
 _SUBPOUND_MONEY_PATTERN = re.compile(
     r"(\d+(?:\.\d+)?)\s*(?:pence|penny)\b", re.IGNORECASE
 )
+_TABLE_KEY_ASSIGNMENT_PATTERN = re.compile(r"\b\d+(?=\s*=)")
 _CARDINAL_WORD_VALUES = {
     "zero": 0.0,
     "one": 1.0,
@@ -608,6 +619,8 @@ def _extract_formula_grounding_values(
     values: list[tuple[int, str, float]] = []
     for match in GROUNDING_FORMULA_NUMBER_PATTERN.finditer(cleaned):
         raw = match.group(1).replace(",", "")
+        if raw == "0.5" and _is_half_up_rounding_expression(cleaned):
+            continue
         with contextlib.suppress(ValueError):
             value = float(raw)
             if value not in GROUNDING_ALLOWED_VALUES:
@@ -615,8 +628,18 @@ def _extract_formula_grounding_values(
     return values
 
 
+def _is_half_up_rounding_expression(expression: str) -> bool:
+    """Return True when an expression uses the standard half-up rounding offset."""
+    compact = re.sub(r"\s+", "", expression)
+    return bool(
+        re.search(r"\bfloor\([^)]*(?:\+0\.5|0\.5\+)[^)]*\)", compact)
+        or re.search(r"\bceil\([^)]*(?:-0\.5|0\.5-)[^)]*\)", compact)
+    )
+
+
 def extract_numbers_from_text(text: str) -> set[float]:
     """Extract numeric values from embedded statute text."""
+    text = _clean_source_text_for_numeric_extraction(text)
     numbers = set()
     occupied_spans: list[tuple[int, int]] = []
 
@@ -671,7 +694,7 @@ def _ordinal_is_calendar_day_reference(text: str, end_index: int, value: float) 
 def _iter_normalized_special_numeric_matches(
     text: str,
 ) -> list[tuple[tuple[int, int], float]]:
-    """Return normalized special-case numeric matches like percentages and pence."""
+    """Return normalized special-case numeric matches like percentages, pence, and table values."""
     matches: list[tuple[tuple[int, int], float]] = []
 
     for pattern in (
@@ -686,6 +709,10 @@ def _iter_normalized_special_numeric_matches(
         with contextlib.suppress(ValueError):
             matches.append((match.span(), float(match.group(1).replace(",", "")) / 100))
 
+    for match in re.finditer(r"(?<=[=+])\s*(-?[\d,]+(?:\.\d+)?)\b", text):
+        with contextlib.suppress(ValueError):
+            matches.append((match.span(1), float(match.group(1).replace(",", ""))))
+
     return matches
 
 
@@ -693,8 +720,8 @@ def _span_overlaps(span: tuple[int, int], occupied_spans: list[tuple[int, int]])
     return any(not (span[1] <= start or span[0] >= end) for start, end in occupied_spans)
 
 
-def extract_numeric_occurrences_from_text(text: str) -> list[float]:
-    """Extract substantive numeric occurrences from source text, preserving repeats."""
+def _clean_source_text_for_numeric_extraction(text: str) -> str:
+    """Strip structural source scaffolding before numeric extraction."""
     cleaned_lines: list[str] = []
     for line in text.splitlines():
         stripped = line.strip()
@@ -705,13 +732,25 @@ def extract_numeric_occurrences_from_text(text: str) -> list[float]:
             continue
         if _STRUCTURAL_SOURCE_CITATION_PATTERN.match(structural_stripped):
             continue
+
         normalized_line = line.lstrip(_STRUCTURAL_SOURCE_QUOTE_CHARS)
+        normalized_line = _STRUCTURAL_SOURCE_CITATION_PREFIX_PATTERN.sub(
+            "", normalized_line, count=1
+        )
         cleaned_lines.append(_STRUCTURAL_SOURCE_PREFIX_PATTERN.sub("", normalized_line))
 
     cleaned = "\n".join(cleaned_lines)
     cleaned = GROUNDING_DATE_PATTERN.sub(" ", cleaned)
+    cleaned = _MONTH_NAME_DATE_PATTERN.sub(" ", cleaned)
+    cleaned = _TABLE_KEY_ASSIGNMENT_PATTERN.sub(" ", cleaned)
     for pattern in _SOURCE_REFERENCE_PATTERNS:
         cleaned = pattern.sub(" ", cleaned)
+    return cleaned
+
+
+def extract_numeric_occurrences_from_text(text: str) -> list[float]:
+    """Extract substantive numeric occurrences from source text, preserving repeats."""
+    cleaned = _clean_source_text_for_numeric_extraction(text)
 
     occurrences: list[float] = []
     spans: list[tuple[int, int]] = []
@@ -1960,6 +1999,9 @@ class ValidatorPipeline:
     def _extract_embedded_scalar_literals(self, expression: str) -> list[str]:
         literals: list[str] = []
         scrubbed_expression = _QUOTED_STRING_PATTERN.sub(" ", expression)
+        half_up_rounding_expression = _is_half_up_rounding_expression(
+            scrubbed_expression
+        )
         for match in _EMBEDDED_SCALAR_NUMBER.finditer(scrubbed_expression):
             start, end = match.span()
             prev = scrubbed_expression[start - 1] if start > 0 else ""
@@ -1970,6 +2012,8 @@ class ValidatorPipeline:
                 continue
             literal = match.group(0)
             if literal in _EMBEDDED_SCALAR_ALLOWED_VALUES:
+                continue
+            if literal == "0.5" and half_up_rounding_expression:
                 continue
             literals.append(literal)
         return sorted(set(literals))

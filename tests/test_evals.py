@@ -2657,6 +2657,9 @@ class TestEvalPrompt:
         assert "Do not respond with summaries like `Both files written`" in prompt
         assert "Do not use inline assignment syntax like `:=` inside `from` blocks" in prompt
         assert "model truncation toward zero rather than toward negative infinity" in prompt
+        assert "rounded to the nearest whole dollar" in prompt
+        assert "Model explicit half-up rounding instead" in prompt
+        assert "floor(amount + 0.5)" in prompt
         assert "if amount >= 0: floor(amount) else: ceil(amount)" in prompt
         assert "Reserve bare `floor(...)` for instructions that explicitly say `round down`" in prompt
         assert "unsupported operators such as `%`" in prompt
@@ -3496,6 +3499,10 @@ is_individual_responsibility_contract:
         assert "says a value is determined `in accordance with section X`" in prompt
         assert "statute/7/2014/e#snap_net_income" in prompt
         assert "snap_household_income_under_2014_d_and_e" in prompt
+        assert "author it as an amendment layer targeting those canonical symbols" in prompt
+        assert "emit dated `amend` blocks for those canonical symbols" in prompt
+        assert "after the 15th day of a month" in prompt
+        assert "do not decompose it into separate numeric `*_day`" in prompt
         assert "still emit the unresolved import path" in prompt
         assert "otherwise keep the helper local to this leaf" in prompt
 
@@ -5115,6 +5122,55 @@ class TestRepoAugmentedContext:
         _hydrate_eval_root(eval_root, workspace)
         assert (eval_root / "26" / "24" / "c" / "2.rac").read_text() == "status: encoded\n"
         assert (eval_root / "26" / "152" / "c.rac").read_text() == "status: encoded\n"
+
+    def test_repo_augmented_context_resolves_statute_prefixed_dependencies(self, tmp_path):
+        repo_root = tmp_path / "repos"
+        rac_root = repo_root / "rac"
+        rac_root.mkdir(parents=True)
+        rac_us_root = repo_root / "rac-us" / "statute" / "7" / "2014"
+        rac_us_root.mkdir(parents=True)
+
+        selected = rac_us_root / "e.rac"
+        selected.write_text(
+            "imports:\n"
+            "    - statute/7/2014/2014#snap_household_has_elderly_or_disabled_member\n"
+            "    - statute/7/2014/d#snap_gross_income\n"
+            "snap_net_income:\n"
+            "    entity: Household\n"
+            "    period: Month\n"
+            "    dtype: Money\n"
+        )
+
+        section_file = rac_us_root / "2014.rac"
+        section_file.write_text("status: encoded\n")
+        cross_file = rac_us_root / "d.rac"
+        cross_file.write_text("status: encoded\n")
+
+        runner = parse_runner_spec("openai:gpt-5.4")
+        workspace = prepare_eval_workspace(
+            citation="7 USC 2017(a)",
+            runner=runner,
+            output_root=tmp_path / "out",
+            source_text="2017(a) ...",
+            rac_path=rac_root,
+            mode="repo-augmented",
+            extra_context_paths=[selected],
+        )
+
+        manifest = json.loads(workspace.manifest_file.read_text())
+        copied_sources = {
+            item["source_path"]: item["kind"] for item in manifest["context_files"]
+        }
+
+        assert copied_sources[str(selected)] == "implementation_precedent"
+        assert copied_sources[str(section_file)] in {
+            "implementation_precedent",
+            "implementation_dependency",
+        }
+        assert copied_sources[str(cross_file)] in {
+            "implementation_precedent",
+            "implementation_dependency",
+        }
 
     def test_prompt_includes_scaffold_dates_from_context(self, tmp_path):
         repo_root = tmp_path / "repos"

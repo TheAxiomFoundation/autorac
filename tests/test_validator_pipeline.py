@@ -326,6 +326,26 @@ class TestExtractNumbersFromText:
         assert 2.0 in numbers
         assert 1.0 in numbers
 
+    def test_ignores_citation_prefix_dates_and_table_keys_for_grounding(self):
+        numbers = extract_numbers_from_text(
+            """
+7 U.S.C. 2017(c)(3) Optional combined allotment for expedited households
+Effective October 1, 2025 through September 30, 2026.
+- CONTIGUOUS_US: 1=298, 2=546, each additional person +218
+"""
+        )
+
+        assert 7.0 not in numbers
+        assert 3.0 not in numbers
+        assert 1.0 not in numbers
+        assert 2.0 not in numbers
+        assert 30.0 not in numbers
+        assert 2025.0 not in numbers
+        assert 2026.0 not in numbers
+        assert 298.0 in numbers
+        assert 546.0 in numbers
+        assert 218.0 in numbers
+
 
 class TestExtractNumericOccurrencesFromText:
     def test_ignores_structural_references_and_counts_repeated_scalars(self):
@@ -441,6 +461,26 @@ The amount is $20 per month.
         assert 9.0 not in occurrences
         assert 2503.0 not in occurrences
         assert 20.0 in occurrences
+
+    def test_ignores_citation_prefix_dates_and_table_keys(self):
+        occurrences = extract_numeric_occurrences_from_text(
+            """
+7 U.S.C. 2017(c)(3) Optional combined allotment for expedited households
+Effective October 1, 2025 through September 30, 2026.
+- CONTIGUOUS_US: 1=298, 2=546, each additional person +218
+"""
+        )
+
+        assert 7.0 not in occurrences
+        assert 3.0 not in occurrences
+        assert 1.0 not in occurrences
+        assert 2.0 not in occurrences
+        assert 30.0 not in occurrences
+        assert 2025.0 not in occurrences
+        assert 2026.0 not in occurrences
+        assert 298.0 in occurrences
+        assert 546.0 in occurrences
+        assert 218.0 in occurrences
 
 
 class TestImportClosureHelpers:
@@ -1463,6 +1503,46 @@ effective_date_label:
     dtype: String
     from 2025-04-07:
         "2025-04-07"
+'''
+        )
+
+        with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run:
+            mock_run.side_effect = [
+                Mock(
+                    stdout="============================================================\nTests: 1  Passed: 1  Failed: 0\nAll tests passed.\n",
+                    stderr="",
+                    returncode=0,
+                ),
+                Mock(
+                    stdout="Checked 1 .rac files\n\nAll files pass validation\n",
+                    stderr="",
+                    returncode=0,
+                ),
+            ]
+            result = pipeline._run_ci(rac_file)
+
+        assert result.passed is True
+        assert not any("Embedded scalar literal" in issue for issue in result.issues)
+
+    def test_ci_allows_half_up_rounding_offset_literal(self, pipeline):
+        """CI should allow the 0.5 offset when used for explicit half-up rounding."""
+        rac_file = pipeline.rac_us_path / "uk" / "leaf.rac"
+        rac_file.parent.mkdir(parents=True, exist_ok=True)
+        rac_file.write_text(
+            '''
+"""
+Rounded to the nearest whole dollar increment.
+"""
+
+status: encoded
+
+rounded_amount:
+    entity: Household
+    period: Month
+    dtype: Money
+    unit: USD
+    from 2025-04-07:
+        floor(base_amount + 0.5)
 '''
         )
 

@@ -103,6 +103,7 @@ _CONDITIONAL_AMOUNT_SLICE_PATTERN = re.compile(
     r"\b(?:if|where|unless|except|subject to|treated as paid)\b",
     re.IGNORECASE,
 )
+_LOCAL_IMPORT_ROOT_TOKENS = {"legislation", "statute", "regulation"}
 _DEFAULT_SHARED_LEGISLATION_CACHE_ROOT = (
     Path.home() / "tmp" / "autorac-shared-legislation-cache"
 ).resolve()
@@ -2641,6 +2642,8 @@ Rules:
 - For example, if the source says an allotment is reduced by household income `as determined in accordance with section 2014(d) and (e)` and a copied precedent file exports `statute/7/2014/e#snap_net_income`, import `snap_net_income` rather than inventing a local input like `snap_household_income_under_2014_d_and_e`.
 - If `./source.txt` uses a legally-defined term for which a resolved canonical definition file is provided above, import that canonical definition instead of inventing a leaf-local helper.
 - If `./source.txt` uses a legal concept for which a copied canonical concept file is provided above, import or re-export that exact canonical concept instead of duplicating it locally.
+- If `./source.txt` is an annual publication, table, or schedule that updates values for canonical concepts already defined in copied context, author it as an amendment layer targeting those canonical symbols rather than redefining the canonical outputs locally.
+- For example, if copied context already defines `snap_one_person_thrifty_food_plan_cost`, `snap_minimum_allotment`, or `snap_maximum_allotment`, emit dated `amend` blocks for those canonical symbols instead of a second full local definition of the same output.
 - For resolved definition files listed above, the required syntax is an `imports:` block that references the exact `path#symbol` target.
 - For copied canonical concept files listed above, the required syntax is an `imports:` block that references the exact `path#symbol` target.
 - In any `imports:` block, emit bare import targets like `- regulation/9-CCR-2503-6/3.606.1/F#need_standard_for_assistance_unit`; do not wrap import targets in quotes.
@@ -2654,10 +2657,13 @@ Rules:
 - Do not encode such local factual predicates as `status: deferred`; if they are not imported, leave them as plain input stubs instead.
 - When the source text says an amount is tested only after cited disregards, deductions, or other adjustments from an unavailable provision, preserve that post-adjustment quantity directly as an input/helper instead of silently switching to the raw pre-adjustment amount.
 - For example, if the source says gross income must not exceed a need standard `after disregards have been applied`, prefer an input like `countable_gross_earned_income_after_disregards` over raw `gross_earned_income`, unless the cited disregard rule is actually present in the workspace and can be modeled.
+- When the source text uses a month-day cutoff like `after the 15th day of a month`, keep that cutoff semantic in a fact-shaped input or comparison helper; do not decompose it into separate numeric `*_day`, `*_month`, or `*_year` scalar definitions.
 - If `./source.txt` states that a fixed supplement, allowance, or addition is payable only while an eligibility condition holds, do not leave that money output unconditional; make the amount depend on that eligibility condition, usually with `else: 0` when the source states no alternate amount.
 - If `./source.txt` itself states the concrete facts that make someone eligible, do not collapse those facts into an opaque local input like `*_eligible_for_*` or `*_qualifies_for_*`. Expose the source-stated facts directly and derive eligibility from them only if needed.
 - For example, if the source says `pregnant parents are eligible ... through the month in which the pregnancy ends`, prefer direct facts like `client_is_pregnant_parent` and a month-end boundary fact/helper over a black-box `person_is_eligible_for_pregnancy_allowance`.
 - For textual instructions like `drop the cents`, `drop any cents`, or `truncate`, model truncation toward zero rather than toward negative infinity.
+- For instructions like `rounded to the nearest whole dollar` or `nearest whole dollar increment`, do not rely on Python-style `round(...)` if the .5 behavior matters. Model explicit half-up rounding instead.
+- A safe RAC pattern is `floor(amount + 0.5)` when the amount is non-negative; if negative values are possible, use a sign-aware half-up equivalent rather than banker’s rounding.
 - If negative values are possible, use a sign-aware RAC expression such as `if amount >= 0: floor(amount) else: ceil(amount)` instead of bare `floor(amount)`.
 - Reserve bare `floor(...)` for instructions that explicitly say `round down` or for complete-band/counting rules, and do not use unsupported operators such as `%`.
 - When a rule drops cents or truncates and the computed amount may be negative, include a `.rac.test` case with a negative fractional amount so `floor(-1.25)` versus truncation-to-`-1` is actually exercised.
@@ -2846,9 +2852,19 @@ def _resolve_context_imports(source_path: Path, rac_us_root: Path) -> list[Path]
     """Resolve canonical import targets for one copied precedent file."""
     dependencies: list[Path] = []
     for import_target in _extract_import_targets(source_path.read_text()):
-        target = rac_us_root / _import_target_to_path(import_target)
-        if target.exists():
-            dependencies.append(target)
+        target_path = _import_target_to_path(import_target)
+        candidates = [rac_us_root / target_path]
+        if target_path.parts:
+            first = target_path.parts[0]
+            if first == rac_us_root.name:
+                candidates.append(rac_us_root / Path(*target_path.parts[1:]))
+            if first in _LOCAL_IMPORT_ROOT_TOKENS:
+                candidates.append(rac_us_root.parent / target_path)
+
+        for candidate in candidates:
+            if candidate.exists():
+                dependencies.append(candidate)
+                break
     return dependencies
 
 
