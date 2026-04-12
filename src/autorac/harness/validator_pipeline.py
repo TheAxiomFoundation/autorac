@@ -148,6 +148,7 @@ class _PolicyEngineUSVarAdapter:
     spm: bool = False
     annualized_person_inputs: tuple[tuple[str, str], ...] = ()
     boolean_person_inputs: tuple[tuple[str, str], ...] = ()
+    derived_spm_overrides: tuple[tuple[str, str, tuple[str, ...]], ...] = ()
     default_state_code: str | None = None
     state_code_from_boolean_input: tuple[str, str, str] | None = None
 
@@ -182,6 +183,9 @@ _PE_US_VAR_ADAPTERS = (
         pe_var="snap_net_income",
         monthly=True,
         spm=True,
+        derived_spm_overrides=(
+            ("snap_net_income", "difference", ("snap_household_income", "snap_deductions")),
+        ),
     ),
     _PolicyEngineUSVarAdapter(
         rac_vars=("snap_standard_deduction",),
@@ -4408,14 +4412,34 @@ print("BENCHMARK:" + json.dumps(result))
             "snap_unit_size": "snap_unit_size",
             "spm_unit_size": "snap_unit_size",
         }
-        override_parts = []
+        override_values: dict[str, Any] = {}
         for rac_key, pe_key in snap_overridable.items():
             if rac_key in inputs:
-                val = inputs[rac_key]
-                if is_monthly:
-                    override_parts.append(f"'{pe_key}': {{'{period}': {val}}}")
-                else:
-                    override_parts.append(f"'{pe_key}': {{'{year}': {val}}}")
+                override_values[pe_key] = inputs[rac_key]
+
+        if adapter is not None:
+            for target_key, operation, source_keys in adapter.derived_spm_overrides:
+                if target_key in override_values:
+                    continue
+                if not all(source_key in inputs for source_key in source_keys):
+                    continue
+                try:
+                    source_values = [float(inputs[source_key]) for source_key in source_keys]
+                except (TypeError, ValueError):
+                    continue
+                derived_value: float | None = None
+                if operation == "difference" and len(source_values) == 2:
+                    derived_value = source_values[0] - source_values[1]
+                if derived_value is None:
+                    continue
+                override_values[target_key] = int(derived_value) if derived_value.is_integer() else derived_value
+
+        override_parts = []
+        for pe_key, val in override_values.items():
+            if is_monthly:
+                override_parts.append(f"'{pe_key}': {{'{period}': {val}}}")
+            else:
+                override_parts.append(f"'{pe_key}': {{'{year}': {val}}}")
 
         spm_extra = ""
         if override_parts:

@@ -4341,6 +4341,19 @@ class TestGetPeVariableMap:
         assert "'medical_out_of_pocket_expenses': {'2022': 480.0}" in script
         assert "'state_code_str': {'2022': 'NY'}" in script
 
+    def test_build_pe_us_script_derives_snap_net_income_override(self, pipeline):
+        script = pipeline._build_pe_us_scenario_script(
+            "snap_net_income",
+            {
+                "period": "2022-01-01",
+                "snap_household_income": 3,
+                "snap_deductions": 1,
+            },
+            "2022",
+        )
+
+        assert "'snap_net_income': {'2022-01': 2}" in script
+
 
 # =========================================================================
 # _build_pe_scenario_script
