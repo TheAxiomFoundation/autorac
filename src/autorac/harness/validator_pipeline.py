@@ -635,10 +635,41 @@ def _extract_formula_grounding_values(
 def _is_half_up_rounding_expression(expression: str) -> bool:
     """Return True when an expression uses the standard half-up rounding offset."""
     compact = re.sub(r"\s+", "", expression)
-    return bool(
-        re.search(r"\bfloor\([^)]*(?:\+0\.5|0\.5\+)[^)]*\)", compact)
-        or re.search(r"\bceil\([^)]*(?:-0\.5|0\.5-)[^)]*\)", compact)
+    return _call_body_contains_any(compact, "floor", ("+0.5", "0.5+")) or (
+        _call_body_contains_any(compact, "ceil", ("-0.5", "0.5-"))
     )
+
+
+def _call_body_contains_any(
+    compact_expression: str,
+    function_name: str,
+    needles: tuple[str, ...],
+) -> bool:
+    token = f"{function_name}("
+    search_start = 0
+    while True:
+        call_start = compact_expression.find(token, search_start)
+        if call_start == -1:
+            return False
+
+        index = call_start + len(token)
+        depth = 1
+        body_chars: list[str] = []
+        while index < len(compact_expression) and depth > 0:
+            char = compact_expression[index]
+            if char == "(":
+                depth += 1
+            elif char == ")":
+                depth -= 1
+                if depth == 0:
+                    break
+            body_chars.append(char)
+            index += 1
+
+        if any(needle in "".join(body_chars) for needle in needles):
+            return True
+
+        search_start = call_start + 1
 
 
 def extract_numbers_from_text(text: str) -> set[float]:

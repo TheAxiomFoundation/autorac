@@ -1568,6 +1568,48 @@ rounded_amount:
         assert result.passed is True
         assert not any("Embedded scalar literal" in issue for issue in result.issues)
 
+    def test_ci_allows_half_up_rounding_offset_literal_with_nested_expression(
+        self, pipeline
+    ):
+        """CI should also allow the 0.5 offset inside nested floor(...) expressions."""
+        rac_file = pipeline.rac_us_path / "uk" / "leaf.rac"
+        rac_file.parent.mkdir(parents=True, exist_ok=True)
+        rac_file.write_text(
+            '''
+"""
+Rounded to the nearest whole dollar increment.
+"""
+
+status: encoded
+
+rounded_amount:
+    entity: Household
+    period: Month
+    dtype: Money
+    unit: USD
+    from 2025-04-07:
+        floor((base_amount * adjustment_rate) + 0.5)
+'''
+        )
+
+        with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run:
+            mock_run.side_effect = [
+                Mock(
+                    stdout="============================================================\nTests: 1  Passed: 1  Failed: 0\nAll tests passed.\n",
+                    stderr="",
+                    returncode=0,
+                ),
+                Mock(
+                    stdout="Checked 1 .rac files\n\nAll files pass validation\n",
+                    stderr="",
+                    returncode=0,
+                ),
+            ]
+            result = pipeline._run_ci(rac_file)
+
+        assert result.passed is True
+        assert not any("Embedded scalar literal" in issue for issue in result.issues)
+
     def test_ci_rejects_decomposed_date_scalars(self, pipeline):
         """CI should fail when calendar dates are split into numeric day/year scalars."""
         rac_file = pipeline.rac_us_path / "uk" / "leaf.rac"
