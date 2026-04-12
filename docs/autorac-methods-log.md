@@ -316,6 +316,38 @@ As of 2026-04-10:
   - [us-snap-asset-test-current-effective-refresh5-interrupted-20260412](../artifacts/eval-suites/us-snap-asset-test-current-effective-refresh5-interrupted-20260412)
   - [us-snap-asset-test-current-effective-refresh6-ready-20260412](../artifacts/eval-suites/us-snap-asset-test-current-effective-refresh6-ready-20260412)
 
+### 2026-04-12: SNAP current-effective eligibility benchmark closed after context and member-proxy repairs
+
+- Primary commits:
+  - `650c143` `Add SNAP eligibility refresh benchmark`
+  - `d74096c` `Tighten SNAP eligibility eval guidance`
+  - `a4c9641` `Refine SNAP eligibility oracle guidance`
+  - `6f3a344` `Tighten SNAP eligibility prompt surface`
+  - `eccd4ec` `Wire SNAP eligibility inputs into PE replay`
+  - `2d259ab` `Align SNAP eligibility benchmark context`
+  - `24da0b6` `Tighten SNAP eligibility member proxy handling`
+  - `77b563d` `Handle SNAP eligibility proxy synonyms`
+- Hypothesis:
+  - The remaining `is_snap_eligible` failures were not disagreements on the current-effective federal SNAP eligibility composite itself. They came from benchmark-context drift, over-generic household member proxies in the generated artifacts, and a PE replay bridge that only recognized one earlier proxy spelling.
+- Effect:
+  - The benchmark now allows the direct copied statute component files for the income and asset tests rather than indirect annual wrapper files that did not export the imported eligibility booleans.
+  - The prompt now rejects household count proxies and renamed household participation proxies in this oracle-backed eligibility lane, and it explicitly grounds `130 percent` as `1.3`.
+  - PE replay now supports the SNAP eligibility component inputs directly and can synthesize the minimal person-level fallback facts from the older and renamed household proxy inputs when the model still emits them.
+  - The current-effective SNAP eligibility benchmark reached a clean ready state with success, compile, CI, zero-ungrounded numerics, generalist review, and PolicyEngine all passing.
+- Primary evidence paths:
+  - [us_snap_eligibility_refresh.yaml](../benchmarks/us_snap_eligibility_refresh.yaml)
+  - [evals.py](../src/autorac/harness/evals.py)
+  - [validator_pipeline.py](../src/autorac/harness/validator_pipeline.py)
+  - [test_evals.py](../tests/test_evals.py)
+  - [test_validator_pipeline.py](../tests/test_validator_pipeline.py)
+  - [is_snap_eligible.txt](../../rac-us/sources/slices/7-USC/snap/current-effective/is_snap_eligible.txt)
+  - [us-snap-eligibility-refresh1-failed-20260412](../artifacts/eval-suites/us-snap-eligibility-refresh1-failed-20260412)
+  - [us-snap-eligibility-refresh2-failed-20260412](../artifacts/eval-suites/us-snap-eligibility-refresh2-failed-20260412)
+  - [us-snap-eligibility-refresh3-interrupted-20260412](../artifacts/eval-suites/us-snap-eligibility-refresh3-interrupted-20260412)
+  - [us-snap-eligibility-refresh4-interrupted-20260412](../artifacts/eval-suites/us-snap-eligibility-refresh4-interrupted-20260412)
+  - [us-snap-eligibility-refresh5-interrupted-20260412](../artifacts/eval-suites/us-snap-eligibility-refresh5-interrupted-20260412)
+  - [us-snap-eligibility-refresh6-ready-20260412](../artifacts/eval-suites/us-snap-eligibility-refresh6-ready-20260412)
+
 ## Open Documentation Debt
 
 - Add before/after metric snapshots for every kept harness change rather than relying on commit messages.

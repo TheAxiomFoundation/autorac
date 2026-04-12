@@ -91,6 +91,15 @@ This file is the claim register for future writing. It separates claims that are
     - [validator_pipeline.py](../src/autorac/harness/validator_pipeline.py)
     - [asset-limits-current-effective.txt](../../rac-us/sources/slices/usda/snap/fy-2026-cola/asset-limits-current-effective.txt)
     - [us-snap-asset-test-current-effective-refresh6-ready-20260412](../artifacts/eval-suites/us-snap-asset-test-current-effective-refresh6-ready-20260412)
+- A current-effective federal SNAP household-eligibility benchmark now reaches a clean ready state under AutoRAC.
+  - Correct scope:
+    - This supports the specific `is_snap_eligible` current-effective slice and the harness claim that AutoRAC can now align direct statute component imports, eligibility-composite prompt guidance, and PolicyEngine replay for this lane. It does not establish full federal SNAP closure or prove that person-level participation aggregation is solved generally.
+  - Evidence:
+    - [us_snap_eligibility_refresh.yaml](../benchmarks/us_snap_eligibility_refresh.yaml)
+    - [evals.py](../src/autorac/harness/evals.py)
+    - [validator_pipeline.py](../src/autorac/harness/validator_pipeline.py)
+    - [is_snap_eligible.txt](../../rac-us/sources/slices/7-USC/snap/current-effective/is_snap_eligible.txt)
+    - [us-snap-eligibility-refresh6-ready-20260412](../artifacts/eval-suites/us-snap-eligibility-refresh6-ready-20260412)
 
 ## Claims To Avoid Or Qualify
 
@@ -109,6 +118,9 @@ This file is the claim register for future writing. It separates claims that are
 - Do not claim that federal SNAP is fully encoded or benchmark-closed.
   - Correct framing:
     - The current AutoRAC reconstruction seed for four federal SNAP slices is now green, which is strong evidence for the repaired harness and those specific slices, but broader federal SNAP coverage still remains to be encoded and benchmarked.
+- Do not claim that the current-effective federal SNAP eligibility lane is fully person-granular.
+  - Correct framing:
+    - The `is_snap_eligible` benchmark is now green against compile, CI, generalist review, and PolicyEngine, but the accepted artifact still carries non-blocking household-level compression of the member-disqualification facts. This is a clean closeout for the specific benchmark slice, not a proof that general person-to-household aggregation is solved across the ontology.
 - Do not claim that Atlas already has a finished program-level match/mismatch dashboard.
   - Correct framing:
     - We have durable run artifacts and per-rule detail panes, but not yet a full aggregate dashboard of program-level agreement.
