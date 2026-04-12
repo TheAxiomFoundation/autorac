@@ -5712,7 +5712,7 @@ class TestSourceEval:
             in prompt
         )
         assert (
-            "do not introduce household proxy inputs like `snap_household_has_eligible_participating_member`"
+            "do not introduce household proxy inputs like `snap_household_has_eligible_participating_member` or count proxies like `snap_number_of_members_eligible_to_participate`"
             in prompt
         )
         assert (

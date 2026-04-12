@@ -4711,6 +4711,24 @@ print("BENCHMARK:" + json.dumps(result))
                 f"'is_snap_immigration_status_eligible': "
                 f"{{'{period}': {has_eligible_member}}}"
             )
+        elif (
+            adapter is not None
+            and adapter.pe_var == "is_snap_eligible"
+            and "snap_number_of_members_eligible_to_participate" in inputs
+            and "is_snap_ineligible_student" not in inputs
+            and "is_snap_immigration_status_eligible" not in inputs
+        ):
+            has_eligible_member = (
+                float(inputs["snap_number_of_members_eligible_to_participate"]) > 0
+            )
+            adult_attrs.append(
+                f"'is_snap_ineligible_student': "
+                f"{{'{year}': {not has_eligible_member}}}"
+            )
+            adult_attrs.append(
+                f"'is_snap_immigration_status_eligible': "
+                f"{{'{period}': {has_eligible_member}}}"
+            )
 
         people_parts = [f"'adult': {{{', '.join(adult_attrs)}}}"]
 
