@@ -3493,6 +3493,9 @@ is_individual_responsibility_contract:
         )
 
         assert "emit the upstream import instead of restating the concept locally" in prompt
+        assert "says a value is determined `in accordance with section X`" in prompt
+        assert "statute/7/2014/e#snap_net_income" in prompt
+        assert "snap_household_income_under_2014_d_and_e" in prompt
         assert "still emit the unresolved import path" in prompt
         assert "otherwise keep the helper local to this leaf" in prompt
 
@@ -4770,6 +4773,62 @@ cases:
                 / "3.606.1"
                 / "I.rac"
             ).resolve(),
+        ]
+
+    def test_repo_us_snap_federal_reconstruction_seed_manifest_loads_expected_cases(
+        self,
+    ):
+        repo_root = Path(__file__).resolve().parents[1]
+        manifest = load_eval_suite_manifest(
+            repo_root / "benchmarks" / "us_snap_federal_reconstruction_seed.yaml"
+        )
+
+        assert manifest.name == "SNAP federal reconstruction seed"
+        assert manifest.mode == "repo-augmented"
+        assert len(manifest.cases) == 4
+        assert manifest.gates.min_cases == 4
+        assert manifest.gates.min_success_rate == 0.75
+        assert manifest.gates.min_compile_pass_rate == 1.0
+        assert manifest.gates.min_ci_pass_rate == 1.0
+        assert manifest.gates.min_zero_ungrounded_rate == 1.0
+        assert manifest.gates.min_generalist_review_pass_rate == 1.0
+        assert manifest.gates.max_mean_estimated_cost_usd == 0.75
+        assert all(case.kind == "source" for case in manifest.cases)
+        assert [case.name for case in manifest.cases] == [
+            "snap-2017-a",
+            "snap-2017-c-1",
+            "snap-2017-c-3",
+            "snap-fy2026-cola-allotments",
+        ]
+        assert manifest.cases[0].allow_context == [
+            (repo_root.parent / "rac-us" / "statute" / "7" / "2014" / "e.rac").resolve(),
+            (
+                repo_root.parent
+                / "rac-us"
+                / "statute"
+                / "7"
+                / "2014"
+                / "g"
+                / "1.rac"
+            ).resolve(),
+        ]
+        assert manifest.cases[1].allow_context == [
+            (repo_root.parent / "rac-us" / "statute" / "7" / "2017" / "a.rac").resolve()
+        ]
+        assert manifest.cases[2].allow_context == [
+            (repo_root.parent / "rac-us" / "statute" / "7" / "2017" / "a.rac").resolve(),
+            (
+                repo_root.parent
+                / "rac-us"
+                / "statute"
+                / "7"
+                / "2017"
+                / "c"
+                / "1.rac"
+            ).resolve(),
+        ]
+        assert manifest.cases[3].allow_context == [
+            (repo_root.parent / "rac-us" / "statute" / "7" / "2017" / "a.rac").resolve()
         ]
 
 

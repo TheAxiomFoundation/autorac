@@ -1,0 +1,42 @@
+name: SNAP federal reconstruction seed
+runners:
+  - openai:gpt-5.4
+mode: repo-augmented
+gates:
+  min_cases: 4
+  min_success_rate: 0.75
+  min_compile_pass_rate: 1.0
+  min_ci_pass_rate: 1.0
+  min_zero_ungrounded_rate: 1.0
+  min_generalist_review_pass_rate: 1.0
+  max_mean_estimated_cost_usd: 0.75
+cases:
+  - kind: source
+    name: snap-2017-a
+    source_id: 7 USC 2017(a)
+    source_file: ../../rac-us/sources/slices/7-USC/2017/a.txt
+    allow_context:
+      - ../../rac-us/statute/7/2014/e.rac
+      - ../../rac-us/statute/7/2014/g/1.rac
+
+  - kind: source
+    name: snap-2017-c-1
+    source_id: 7 USC 2017(c)(1)
+    source_file: ../../rac-us/sources/slices/7-USC/2017/c/1.txt
+    allow_context:
+      - ../../rac-us/statute/7/2017/a.rac
+
+  - kind: source
+    name: snap-2017-c-3
+    source_id: 7 USC 2017(c)(3)
+    source_file: ../../rac-us/sources/slices/7-USC/2017/c/3.txt
+    allow_context:
+      - ../../rac-us/statute/7/2017/a.rac
+      - ../../rac-us/statute/7/2017/c/1.rac
+
+  - kind: source
+    name: snap-fy2026-cola-allotments
+    source_id: USDA SNAP FY 2026 COLA allotment table
+    source_file: ../../rac-us/sources/slices/usda/snap/fy-2026-cola/allotment-table.txt
+    allow_context:
+      - ../../rac-us/statute/7/2017/a.rac

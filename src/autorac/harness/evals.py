@@ -2637,6 +2637,8 @@ Rules:
 - Include the source text in a triple-quoted docstring.
 - Use RAC DSL conventions.
 - If `./source.txt` explicitly cites another section or source for a definition, emit the upstream import instead of restating the concept locally.
+- When `./source.txt` says a value is determined `in accordance with section X`, `under section X`, or another cited upstream computation, and a copied precedent file from that cited section exports the matching computed concept, import that exported concept instead of inventing a fresh local `*_under_section_X` input or helper.
+- For example, if the source says an allotment is reduced by household income `as determined in accordance with section 2014(d) and (e)` and a copied precedent file exports `statute/7/2014/e#snap_net_income`, import `snap_net_income` rather than inventing a local input like `snap_household_income_under_2014_d_and_e`.
 - If `./source.txt` uses a legally-defined term for which a resolved canonical definition file is provided above, import that canonical definition instead of inventing a leaf-local helper.
 - If `./source.txt` uses a legal concept for which a copied canonical concept file is provided above, import or re-export that exact canonical concept instead of duplicating it locally.
 - For resolved definition files listed above, the required syntax is an `imports:` block that references the exact `path#symbol` target.
