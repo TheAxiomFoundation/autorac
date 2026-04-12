@@ -491,7 +491,6 @@ _DATE_DECOMPOSITION_CUE_TOKENS = {
     "date",
     "birthday",
     "anniversary",
-    "threshold",
     "cutoff",
     "effective",
     "calendar",

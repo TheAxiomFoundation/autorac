@@ -1785,7 +1785,60 @@ twelve_month_period:
 '''
         )
 
-        result = pipeline._run_ci(rac_file)
+        with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run:
+            mock_run.side_effect = [
+                Mock(
+                    stdout="============================================================\nTests: 1  Passed: 1  Failed: 0\nAll tests passed.\n",
+                    stderr="",
+                    returncode=0,
+                ),
+                Mock(
+                    stdout="Checked 1 .rac files\n\nAll files pass validation\n",
+                    stderr="",
+                    returncode=0,
+                ),
+            ]
+            result = pipeline._run_ci(rac_file)
+
+        assert result.passed is True
+        assert not any("Decomposed date scalar" in issue for issue in result.issues)
+
+    def test_ci_allows_noncalendar_month_threshold_scalars(self, pipeline):
+        """Benefit-period names like initial_month should not be mistaken for calendar months."""
+        rac_file = pipeline.rac_us_path / "us" / "snap_leaf.rac"
+        rac_file.parent.mkdir(parents=True, exist_ok=True)
+        rac_file.write_text(
+            '''
+"""
+If the initial allotment is less than $10, no benefit shall be issued.
+"""
+
+status: encoded
+
+snap_initial_month_minimum_prorated_allotment_threshold:
+    entity: Household
+    period: Month
+    dtype: Money
+    unit: USD
+    from 2025-10-01:
+        10
+'''
+        )
+
+        with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run:
+            mock_run.side_effect = [
+                Mock(
+                    stdout="============================================================\nTests: 1  Passed: 1  Failed: 0\nAll tests passed.\n",
+                    stderr="",
+                    returncode=0,
+                ),
+                Mock(
+                    stdout="Checked 1 .rac files\n\nAll files pass validation\n",
+                    stderr="",
+                    returncode=0,
+                ),
+            ]
+            result = pipeline._run_ci(rac_file)
 
         assert result.passed is True
         assert not any("Decomposed date scalar" in issue for issue in result.issues)
