@@ -290,6 +290,32 @@ As of 2026-04-10:
   - [us-snap-federal-reconstruction-seed-run7-20260411](../artifacts/eval-suites/us-snap-federal-reconstruction-seed-run7-20260411)
   - [us-snap-federal-reconstruction-seed-run8-20260411](../artifacts/eval-suites/us-snap-federal-reconstruction-seed-run8-20260411)
 
+### 2026-04-12: SNAP current-effective asset benchmark closed after publication-table and PE replay fixes
+
+- Primary commits:
+  - `b3edc32` `Add current-effective SNAP asset benchmark`
+  - `38d50d6` `Derive SNAP asset replay inputs from exclusions`
+  - `f3901c5` `Normalize monthly test periods for table updates`
+  - `083f8f8` `Fix SNAP asset oracle replay periods`
+- Hypothesis:
+  - The remaining SNAP asset-test failures were not substantive disagreements on the FY2026 asset limits; they were harness mismatches across three layers: (1) a benchmark that needed a current-effective USDA publication slice instead of the bare statute text, (2) monthly test periods being normalized to day-level dates for a monthly oracle lane, and (3) PolicyEngine asset replay using month-keyed overrides for variables that PolicyEngine US expects at year granularity.
+- Effect:
+  - AutoRAC now has a dedicated current-effective SNAP asset benchmark rooted in the FY2026 USDA COLA publication slice, with policyengine gating on the comparable downstream boolean `meets_snap_asset_test`.
+  - Validator replay now derives `snap_assets` from total resources minus exclusions when needed, applies SNAP asset overrides at annual PolicyEngine periods, and ignores auxiliary `.rac.test` outputs that do not resolve to the hinted oracle target.
+  - Numeric grounding now ignores structural table headings and descriptive row-label ages while preserving the actual value rows.
+  - Test-period normalization now keeps monthly rules at `YYYY-MM` instead of converting them to effective-date day strings.
+  - The current-effective asset benchmark reached a clean ready state with success, compile, CI, zero-ungrounded numerics, generalist review, and PolicyEngine all passing.
+- Primary evidence paths:
+  - [us_snap_asset_test_current_effective_refresh.yaml](../benchmarks/us_snap_asset_test_current_effective_refresh.yaml)
+  - [evals.py](../src/autorac/harness/evals.py)
+  - [validator_pipeline.py](../src/autorac/harness/validator_pipeline.py)
+  - [test_evals.py](../tests/test_evals.py)
+  - [test_validator_pipeline.py](../tests/test_validator_pipeline.py)
+  - [asset-limits-current-effective.txt](../../rac-us/sources/slices/usda/snap/fy-2026-cola/asset-limits-current-effective.txt)
+  - [us-snap-asset-test-current-effective-refresh1-interrupted-20260412](../artifacts/eval-suites/us-snap-asset-test-current-effective-refresh1-interrupted-20260412)
+  - [us-snap-asset-test-current-effective-refresh5-interrupted-20260412](../artifacts/eval-suites/us-snap-asset-test-current-effective-refresh5-interrupted-20260412)
+  - [us-snap-asset-test-current-effective-refresh6-ready-20260412](../artifacts/eval-suites/us-snap-asset-test-current-effective-refresh6-ready-20260412)
+
 ## Open Documentation Debt
 
 - Add before/after metric snapshots for every kept harness change rather than relying on commit messages.

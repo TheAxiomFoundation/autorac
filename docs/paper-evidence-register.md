@@ -82,6 +82,15 @@ This file is the claim register for future writing. It separates claims that are
     - [validator_pipeline.py](../src/autorac/harness/validator_pipeline.py)
     - [us-snap-federal-reconstruction-seed-run8-20260411](../artifacts/eval-suites/us-snap-federal-reconstruction-seed-run8-20260411)
     - [us-snap-fy2026-cola-table-repair4-20260411](../artifacts/eval-suites/us-snap-fy2026-cola-table-repair4-20260411)
+- A current-effective federal SNAP asset benchmark now reaches a clean ready state under AutoRAC.
+  - Correct scope:
+    - This supports the specific FY2026 USDA current-effective asset-limit slice and the harness claim that AutoRAC can validate annual publication-layer SNAP amendments against PolicyEngine once replay periods and oracle scoping are aligned. It does not by itself establish broader federal SNAP eligibility closure beyond this asset lane.
+  - Evidence:
+    - [us_snap_asset_test_current_effective_refresh.yaml](../benchmarks/us_snap_asset_test_current_effective_refresh.yaml)
+    - [evals.py](../src/autorac/harness/evals.py)
+    - [validator_pipeline.py](../src/autorac/harness/validator_pipeline.py)
+    - [asset-limits-current-effective.txt](../../rac-us/sources/slices/usda/snap/fy-2026-cola/asset-limits-current-effective.txt)
+    - [us-snap-asset-test-current-effective-refresh6-ready-20260412](../artifacts/eval-suites/us-snap-asset-test-current-effective-refresh6-ready-20260412)
 
 ## Claims To Avoid Or Qualify
 
