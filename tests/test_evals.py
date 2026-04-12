@@ -4978,6 +4978,39 @@ cases:
             (repo_root.parent / "rac-us" / "statute" / "7" / "2017" / "a.rac").resolve()
         ]
 
+    def test_repo_us_snap_asset_test_refresh_manifest_loads_expected_case(self):
+        repo_root = Path(__file__).resolve().parents[1]
+        manifest = load_eval_suite_manifest(
+            repo_root / "benchmarks" / "us_snap_asset_test_refresh.yaml"
+        )
+
+        assert manifest.name == "SNAP asset test refresh"
+        assert manifest.mode == "repo-augmented"
+        assert len(manifest.cases) == 1
+        assert manifest.gates.min_cases == 1
+        assert manifest.gates.min_success_rate == 1.0
+        assert manifest.gates.min_compile_pass_rate == 1.0
+        assert manifest.gates.min_ci_pass_rate == 1.0
+        assert manifest.gates.min_zero_ungrounded_rate == 1.0
+        assert manifest.gates.min_generalist_review_pass_rate == 1.0
+        case = manifest.cases[0]
+        assert case.kind == "source"
+        assert case.name == "meets_snap_asset_test"
+        assert case.source_id == "7 USC 2014(g)(1)"
+        assert case.source_file == (
+            repo_root.parent
+            / "rac-us"
+            / "sources"
+            / "slices"
+            / "7-USC"
+            / "2014"
+            / "g"
+            / "1.txt"
+        ).resolve()
+        assert case.oracle == "policyengine"
+        assert case.policyengine_country == "auto"
+        assert case.policyengine_rac_var_hint == "meets_snap_asset_test"
+
 
 class TestReadinessSummary:
     def test_summarize_readiness_applies_suite_gates(self):
