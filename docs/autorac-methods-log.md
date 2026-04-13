@@ -443,8 +443,8 @@ As of 2026-04-10:
   - [validator_pipeline.py](../src/autorac/harness/validator_pipeline.py)
   - [test_evals.py](../tests/test_evals.py)
   - [test_validator_pipeline.py](../tests/test_validator_pipeline.py)
-  - [snap_limited_utility_allowance_tn.txt](../../rac-us/sources/slices/tenncare/post-eligibility/current-effective/snap_limited_utility_allowance_tn.txt)
-  - [snap_standard_utility_allowance_tn.txt](../../rac-us/sources/slices/tenncare/post-eligibility/current-effective/snap_standard_utility_allowance_tn.txt)
+  - [snap_limited_utility_allowance_tn.txt](../../rac-us-tn/sources/slices/tenncare/post-eligibility/current-effective/snap_limited_utility_allowance_tn.txt)
+  - [snap_standard_utility_allowance_tn.txt](../../rac-us-tn/sources/slices/tenncare/post-eligibility/current-effective/snap_standard_utility_allowance_tn.txt)
   - [us-snap-tn-limited-utility-allowance-refresh4-ready-20260412](../artifacts/eval-suites/us-snap-tn-limited-utility-allowance-refresh4-ready-20260412)
   - [us-snap-tn-standard-utility-allowance-refresh5-failed-20260412](../artifacts/eval-suites/us-snap-tn-standard-utility-allowance-refresh5-failed-20260412)
   - [us-snap-tn-standard-utility-allowance-refresh7-ready-20260412](../artifacts/eval-suites/us-snap-tn-standard-utility-allowance-refresh7-ready-20260412)
@@ -462,8 +462,33 @@ As of 2026-04-10:
   - The fresh Tennessee telephone replay reached a clean ready state against compile, CI, generalist review, and PolicyEngine without additional harness tuning, which is good evidence that the repaired state-overlay utility-allowance pattern now generalizes across all three Tennessee allowance categories.
 - Primary evidence paths:
   - [us_snap_tn_individual_utility_allowance_refresh.yaml](../benchmarks/us_snap_tn_individual_utility_allowance_refresh.yaml)
-  - [snap_individual_utility_allowance_tn.txt](../../rac-us/sources/slices/tenncare/post-eligibility/current-effective/snap_individual_utility_allowance_tn.txt)
+  - [snap_individual_utility_allowance_tn.txt](../../rac-us-tn/sources/slices/tenncare/post-eligibility/current-effective/snap_individual_utility_allowance_tn.txt)
   - [us-snap-tn-individual-utility-allowance-refresh1-ready-20260412](../artifacts/eval-suites/us-snap-tn-individual-utility-allowance-refresh1-ready-20260412)
+
+### 2026-04-12: Tennessee SNAP source corpus moved out of rac-us into rac-us-tn
+
+- Primary commits:
+  - `6302f5a` `Initialize Tennessee jurisdiction source repo`
+  - `08360c4` `Remove Tennessee overlays from federal rac-us`
+- Hypothesis:
+  - The Tennessee SNAP utility slices were benchmark-clean, but they still lived in `rac-us`, which violates the intended boundary that repos correspond to jurisdictions rather than program labels. Moving those sources into a dedicated `rac-us-tn` repo should preserve benchmark behavior while making the repository structure align with the legal/policy authority.
+- Effect:
+  - Created a new Tennessee jurisdiction repo, `rac-us-tn`, with Tennessee source slices and minimal validation/docs scaffolding.
+  - Removed the Tennessee utility source slices from `rac-us` so the federal repo now stays federal.
+  - Retargeted the Tennessee AutoRAC manifests and manifest-load tests to source from `rac-us-tn`.
+  - Re-ran all three Tennessee utility overlays against the new repo path and archived fresh ready artifacts, confirming that the repo-boundary correction did not break the benchmarked Tennessee lanes.
+- Primary evidence paths:
+  - [us_snap_tn_standard_utility_allowance_refresh.yaml](../benchmarks/us_snap_tn_standard_utility_allowance_refresh.yaml)
+  - [us_snap_tn_limited_utility_allowance_refresh.yaml](../benchmarks/us_snap_tn_limited_utility_allowance_refresh.yaml)
+  - [us_snap_tn_individual_utility_allowance_refresh.yaml](../benchmarks/us_snap_tn_individual_utility_allowance_refresh.yaml)
+  - [test_evals.py](../tests/test_evals.py)
+  - [rac-us-tn README](../../rac-us-tn/README.md)
+  - [snap_standard_utility_allowance_tn.txt](../../rac-us-tn/sources/slices/tenncare/post-eligibility/current-effective/snap_standard_utility_allowance_tn.txt)
+  - [snap_limited_utility_allowance_tn.txt](../../rac-us-tn/sources/slices/tenncare/post-eligibility/current-effective/snap_limited_utility_allowance_tn.txt)
+  - [snap_individual_utility_allowance_tn.txt](../../rac-us-tn/sources/slices/tenncare/post-eligibility/current-effective/snap_individual_utility_allowance_tn.txt)
+  - [us-snap-tn-standard-utility-allowance-reorg1-ready-20260412](../artifacts/eval-suites/us-snap-tn-standard-utility-allowance-reorg1-ready-20260412)
+  - [us-snap-tn-limited-utility-allowance-reorg1-ready-20260412](../artifacts/eval-suites/us-snap-tn-limited-utility-allowance-reorg1-ready-20260412)
+  - [us-snap-tn-individual-utility-allowance-reorg1-ready-20260412](../artifacts/eval-suites/us-snap-tn-individual-utility-allowance-reorg1-ready-20260412)
 
 ## Open Documentation Debt
 
