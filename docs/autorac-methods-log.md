@@ -650,6 +650,22 @@ As of 2026-04-10:
   - [us-snap-co-self-employment-expense-option-refresh1-ci-false-positive-20260413](../artifacts/eval-suites/us-snap-co-self-employment-expense-option-refresh1-ci-false-positive-20260413)
   - [us-snap-co-self-employment-expense-option-refresh2-ready-20260413](../artifacts/eval-suites/us-snap-co-self-employment-expense-option-refresh2-ready-20260413)
 
+### 2026-04-13: New York SNAP self-employment expense option closes on the event-driven Codex queue
+
+- Hypothesis:
+  - After California, Colorado, Tennessee, and North Carolina closed on the delegated parameter-backed `sets` path for SNAP self-employment expense treatment, the same lane should transfer to New York without new harness work. The remaining question was whether the event-driven Codex queue would close the slice cleanly rather than needing a one-off manual replay.
+- Effect:
+  - Added a New York OTDA SNAP Source Book source slice plus `relation: sets` sidecar in `rac-us-ny`, anchored to `cfr/7/273.11/b/3#snap_self_employment_expense_based_deduction_applies`.
+  - Added a checked-in AutoRAC benchmark for the New York self-employment expense option.
+  - Seeded the local event-driven SNAP queue with the new New York benchmark and let the Codex-backed runner process it end to end.
+  - The first queue run closed fully ready on success, compile, CI, generalist review, and PolicyEngine. The only reviewer notes were non-blocking suggestions about using a dated start boundary instead of the `0001-01-01` sentinel and adding a second temporal-stability test case.
+- Primary evidence paths:
+  - [us_snap_ny_self_employment_expense_option_refresh.yaml](../benchmarks/us_snap_ny_self_employment_expense_option_refresh.yaml)
+  - [test_evals.py](../tests/test_evals.py)
+  - [snap_self_employment_expense_based_deduction_applies_ny.txt](../../rac-us-ny/sources/slices/otda/snap/current-effective/snap_self_employment_expense_based_deduction_applies_ny.txt)
+  - [snap_self_employment_expense_based_deduction_applies_ny.meta.yaml](../../rac-us-ny/sources/slices/otda/snap/current-effective/snap_self_employment_expense_based_deduction_applies_ny.meta.yaml)
+  - [autorac-snap-self-employment-expense-based-deduction-applies-ny-20260413t153209](../artifacts/eval-suites/autorac-snap-self-employment-expense-based-deduction-applies-ny-20260413t153209)
+
 ## Open Documentation Debt
 
 - Add before/after metric snapshots for every kept harness change rather than relying on commit messages.
