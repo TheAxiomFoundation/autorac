@@ -5317,7 +5317,7 @@ cases:
         assert case.source_id == "North Carolina SNAP standard utility allowance under FNS 360.01(A)(1)"
         assert case.source_file == (
             repo_root.parent
-            / "rac-us"
+            / "rac-us-nc"
             / "sources"
             / "slices"
             / "ncdhhs"
@@ -5352,7 +5352,7 @@ cases:
         )
         assert case.source_file == (
             repo_root.parent
-            / "rac-us"
+            / "rac-us-nc"
             / "sources"
             / "slices"
             / "ncdhhs"
@@ -5391,7 +5391,7 @@ cases:
         )
         assert case.source_file == (
             repo_root.parent
-            / "rac-us"
+            / "rac-us-nc"
             / "sources"
             / "slices"
             / "ncdhhs"
@@ -6140,6 +6140,10 @@ class TestSourceEval:
         assert "assert a copied downstream output named by the oracle hint" in prompt
         assert (
             "do not assume a different jurisdiction implies zero unless the source text expressly says so"
+            in prompt
+        )
+        assert (
+            "preserve that threshold as a named scalar such as `*_five_or_more_threshold: 5`"
             in prompt
         )
         assert (

@@ -14,7 +14,7 @@ cases:
   - kind: source
     name: snap_standard_utility_allowance_nc
     source_id: North Carolina SNAP standard utility allowance under FNS 360.01(A)(1)
-    source_file: ../../rac-us/sources/slices/ncdhhs/fns/360/current-effective/snap_standard_utility_allowance_nc.txt
+    source_file: ../../rac-us-nc/sources/slices/ncdhhs/fns/360/current-effective/snap_standard_utility_allowance_nc.txt
     oracle: policyengine
     policyengine_country: auto
     policyengine_rac_var_hint: snap_standard_utility_allowance
