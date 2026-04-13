@@ -490,6 +490,35 @@ As of 2026-04-10:
   - [us-snap-tn-limited-utility-allowance-reorg1-ready-20260412](../artifacts/eval-suites/us-snap-tn-limited-utility-allowance-reorg1-ready-20260412)
   - [us-snap-tn-individual-utility-allowance-reorg1-ready-20260412](../artifacts/eval-suites/us-snap-tn-individual-utility-allowance-reorg1-ready-20260412)
 
+### 2026-04-13: North Carolina SNAP utility source corpus moved into rac-us-nc and revalidated
+
+- Primary commits:
+  - `195924d` `Initialize North Carolina SNAP utility source repo`
+  - `c5bc3d4` `Move North Carolina SNAP utility slices to rac-us-nc`
+  - `4062a97` `Route NC SNAP utility benchmarks to rac-us-nc`
+- Hypothesis:
+  - North Carolina SNAP utility overlays were already benchmark-clean locally, but the source slices still lived in `rac-us`, which violated the intended `repo == jurisdiction` boundary. Moving those sources into `rac-us-nc` should preserve benchmark behavior if AutoRAC routing and source-manifest handling are actually repo-aware rather than hard-coded to `rac-us`.
+- Effect:
+  - Created a new North Carolina jurisdiction repo, `rac-us-nc`, with minimal validation/docs scaffolding and `relation: sets` sidecars that anchor the state-set SNAP utility parameters to the delegated federal CFR slots.
+  - Removed the North Carolina utility source slices from `rac-us`, leaving the federal repo federal.
+  - Retargeted the checked-in NC AutoRAC manifests and manifest-load tests to source from `rac-us-nc`.
+  - The first NC standard rerun on the new repo path exposed one remaining harness issue: terminal table buckets like `5 or more` needed explicit threshold guidance, and delegated `sets` metadata still allowed the model to guess broken canonical imports when the target file was not copied into the workspace.
+  - After tightening those prompt rules and widening the schedule-index grounding filter for labels like `four_person_unit_size`, North Carolina standard, limited, and individual utility allowance reruns all reached clean ready states on the new jurisdiction-repo path.
+- Primary evidence paths:
+  - [us_snap_nc_standard_utility_allowance_refresh.yaml](../benchmarks/us_snap_nc_standard_utility_allowance_refresh.yaml)
+  - [us_snap_nc_limited_utility_allowance_refresh.yaml](../benchmarks/us_snap_nc_limited_utility_allowance_refresh.yaml)
+  - [us_snap_nc_individual_utility_allowance_refresh.yaml](../benchmarks/us_snap_nc_individual_utility_allowance_refresh.yaml)
+  - [test_evals.py](../tests/test_evals.py)
+  - [test_validator_pipeline.py](../tests/test_validator_pipeline.py)
+  - [rac-us-nc README](../../rac-us-nc/README.md)
+  - [snap_standard_utility_allowance_nc.txt](../../rac-us-nc/sources/slices/ncdhhs/fns/360/current-effective/snap_standard_utility_allowance_nc.txt)
+  - [snap_limited_utility_allowance_nc.txt](../../rac-us-nc/sources/slices/ncdhhs/fns/360/current-effective/snap_limited_utility_allowance_nc.txt)
+  - [snap_individual_utility_allowance_nc.txt](../../rac-us-nc/sources/slices/ncdhhs/fns/360/current-effective/snap_individual_utility_allowance_nc.txt)
+  - [us-snap-nc-standard-utility-allowance-reorg3-ready-20260413](../artifacts/eval-suites/us-snap-nc-standard-utility-allowance-reorg3-ready-20260413)
+  - [us-snap-nc-limited-utility-allowance-reorg1-ready-20260413](../artifacts/eval-suites/us-snap-nc-limited-utility-allowance-reorg1-ready-20260413)
+  - [us-snap-nc-individual-utility-allowance-reorg1-failed-20260413](../artifacts/eval-suites/us-snap-nc-individual-utility-allowance-reorg1-failed-20260413)
+  - [us-snap-nc-individual-utility-allowance-reorg2-ready-20260413](../artifacts/eval-suites/us-snap-nc-individual-utility-allowance-reorg2-ready-20260413)
+
 ## Open Documentation Debt
 
 - Add before/after metric snapshots for every kept harness change rather than relying on commit messages.

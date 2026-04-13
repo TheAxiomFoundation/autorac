@@ -6194,6 +6194,10 @@ class TestSourceEval:
         assert '"relation": "sets"' in prompt
         assert "setting the effective jurisdiction-specific value for that delegated slot" in prompt
         assert "cfr/7/273.9/d/6/iii#snap_standard_utility_allowance" in prompt
+        assert (
+            "do not add a top-level `imports:` entry to the bare canonical `cfr/...#...` or `usc/...#...` path"
+            in prompt
+        )
 
     def test_build_eval_prompt_single_amount_slice_disallows_speculative_future_tests(
         self, tmp_path

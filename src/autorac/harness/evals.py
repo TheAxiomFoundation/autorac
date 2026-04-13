@@ -2537,6 +2537,7 @@ are copied inline below and must be treated as the contents of that file.
 Structured source metadata is available in `./source-metadata.json`.
 It is not independent legal authority; it records how this source slice relates to canonical legal slots already anchored elsewhere in the corpus.
 If this metadata says the source `sets` a canonical target, treat the slice as setting the effective jurisdiction-specific value for that delegated slot rather than amending an upstream federal numeric baseline.
+If this metadata says the source `sets` a canonical target but the copied workspace context does not actually contain that target file, do not add a top-level `imports:` entry to the bare canonical `cfr/...#...` or `usc/...#...` path just because the metadata names it. Keep the canonical target identity in the local output or dated `amend` block instead of guessing a broken import.
 If this metadata says the source `uses` or `imports` a canonical target, prefer importing or reusing that canonical target instead of redefining it locally.
 
 === BEGIN SOURCE-METADATA.JSON ===
@@ -2761,6 +2762,7 @@ Rules:
 - If `./source-metadata.json` says this slice `sets` a canonical target, align the output to that canonical target under the cited jurisdiction instead of modeling it as a federal amendment unless the metadata or source text explicitly says `amends`.
 - When a `sets` relation points to a canonical CFR or USC slot such as `cfr/...#snap_standard_utility_allowance`, treat that absolute legal path as the delegated upstream anchor for the parameter identity.
 - A `sets` relation should usually produce the jurisdiction-specific effective value for that canonical output; a downstream rule that only consumes that value should `import` or `use` it instead of duplicating it.
+- If a `sets` relation names a canonical target but the copied workspace context above does not include that exact target file, do not add a top-level `imports:` entry to the bare canonical path solely because the metadata mentions it. Keep the target identity local and only import paths that are actually listed in copied workspace context.
 - If `./source.txt` explicitly cites another section or source for a definition, emit the upstream import instead of restating the concept locally.
 - When `./source.txt` says a value is determined `in accordance with section X`, `under section X`, or another cited upstream computation, and a copied precedent file from that cited section exports the matching computed concept, import that exported concept instead of inventing a fresh local `*_under_section_X` input or helper.
 - For example, if the source says an allotment is reduced by household income `as determined in accordance with section 2014(d) and (e)` and a copied precedent file exports `statute/7/2014/e#snap_net_income`, import `snap_net_income` rather than inventing a local input like `snap_household_income_under_2014_d_and_e`.
