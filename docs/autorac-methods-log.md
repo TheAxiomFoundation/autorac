@@ -579,6 +579,38 @@ As of 2026-04-10:
   - [us-snap-tn-child-support-deduction-option-refresh1-failed-20260413](../artifacts/eval-suites/us-snap-tn-child-support-deduction-option-refresh1-failed-20260413)
   - [us-snap-tn-child-support-deduction-option-refresh2-ready-20260413](../artifacts/eval-suites/us-snap-tn-child-support-deduction-option-refresh2-ready-20260413)
 
+### 2026-04-13: New York SNAP child-support treatment closes as the delegated false-state counterpart
+
+- Hypothesis:
+  - After Tennessee closed as a positive delegated child-support deduction option, the next check was whether the same `sets` pathway also works for the opposite state election: a jurisdiction that does not use the deduction because it excludes the payments from gross income instead.
+- Effect:
+  - Added a New York OTDA SNAP Source Book source slice plus `relation: sets` sidecar in `rac-us-ny`, anchored to `usc/7/2014/e/4#snap_state_uses_child_support_deduction`.
+  - Added a checked-in AutoRAC benchmark for the New York child-support deduction option.
+  - Generalized the PolicyEngine replay path so delegated state-option booleans no longer default to Tennessee when no explicit state input is present; replay now derives the state from eval source metadata jurisdiction when available.
+  - The first New York run already passed generation, generalist review, and PolicyEngine. Its only miss was CI counting the editorial header `Rev. 7/2025` as a substantive numeric. After teaching numeric extraction to ignore revision markers and revalidating the existing output, the lane closed fully ready.
+- Primary evidence paths:
+  - [us_snap_ny_child_support_deduction_option_refresh.yaml](../benchmarks/us_snap_ny_child_support_deduction_option_refresh.yaml)
+  - [test_evals.py](../tests/test_evals.py)
+  - [test_validator_pipeline.py](../tests/test_validator_pipeline.py)
+  - [snap_state_uses_child_support_deduction_ny.txt](../../rac-us-ny/sources/slices/otda/snap/current-effective/snap_state_uses_child_support_deduction_ny.txt)
+  - [snap_state_uses_child_support_deduction_ny.meta.yaml](../../rac-us-ny/sources/slices/otda/snap/current-effective/snap_state_uses_child_support_deduction_ny.meta.yaml)
+  - [autorac-us-snap-ny-child-support-deduction-option-refresh1-20260413](../artifacts/eval-suites/autorac-us-snap-ny-child-support-deduction-option-refresh1-20260413)
+
+### 2026-04-13: North Carolina SNAP child-support deduction election closes on the first replay
+
+- Hypothesis:
+  - With the delegated-boolean replay path repaired for jurisdiction inference, a second positive state-option lane should close without further harness work if the source slice is clean and current.
+- Effect:
+  - Added a North Carolina FNS 340 child-support deduction source slice plus `relation: sets` sidecar in `rac-us-nc`, anchored to `usc/7/2014/e/4#snap_state_uses_child_support_deduction`.
+  - Added a checked-in AutoRAC benchmark for the North Carolina child-support deduction option.
+  - The first run closed fully ready on compile, CI, generalist review, and PolicyEngine with no additional harness changes, confirming that the repaired delegated-boolean path generalizes to another jurisdiction that affirmatively elects the deduction.
+- Primary evidence paths:
+  - [us_snap_nc_child_support_deduction_option_refresh.yaml](../benchmarks/us_snap_nc_child_support_deduction_option_refresh.yaml)
+  - [test_evals.py](../tests/test_evals.py)
+  - [snap_state_uses_child_support_deduction_nc.txt](../../rac-us-nc/sources/slices/ncdhhs/fns/340/current-effective/snap_state_uses_child_support_deduction_nc.txt)
+  - [snap_state_uses_child_support_deduction_nc.meta.yaml](../../rac-us-nc/sources/slices/ncdhhs/fns/340/current-effective/snap_state_uses_child_support_deduction_nc.meta.yaml)
+  - [autorac-us-snap-nc-child-support-deduction-option-refresh1-20260413](../artifacts/eval-suites/autorac-us-snap-nc-child-support-deduction-option-refresh1-20260413)
+
 ## Open Documentation Debt
 
 - Add before/after metric snapshots for every kept harness change rather than relying on commit messages.

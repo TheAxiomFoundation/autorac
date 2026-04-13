@@ -801,6 +801,10 @@ _STRUCTURAL_SOURCE_BULLETIN_NUMBER_PATTERN = re.compile(
     r"\d+(?:\.\d+)+(?:-\d+)?\b",
     re.IGNORECASE,
 )
+_STRUCTURAL_SOURCE_REVISION_PATTERN = re.compile(
+    r"\b(?:Rev\.?|Revision)\s+\d{1,2}/\d{4}\b",
+    re.IGNORECASE,
+)
 _STRUCTURAL_SOURCE_QUOTE_CHARS = "\"'`“”‘’"
 _SYNTHETIC_MODELING_INSTRUCTION_PATTERN = re.compile(
     r"^\s*model\s+`[^`]+`\s+as\b",
@@ -1001,6 +1005,28 @@ def _source_metadata_sets_target_symbol(
         if target_symbol == symbol_name:
             return True
     return False
+
+
+def _source_metadata_jurisdiction(
+    source_metadata: dict[str, object] | None,
+) -> str | None:
+    """Return a jurisdiction code from source metadata when present."""
+    if not isinstance(source_metadata, dict):
+        return None
+    relations = source_metadata.get("relations")
+    if not isinstance(relations, list):
+        return None
+
+    for relation in relations:
+        if not isinstance(relation, dict):
+            continue
+        jurisdiction = relation.get("jurisdiction")
+        if jurisdiction is None:
+            continue
+        jurisdiction_str = str(jurisdiction).strip()
+        if jurisdiction_str:
+            return jurisdiction_str
+    return None
 
 
 def extract_grounding_values(content: str) -> list[tuple[int, str, float]]:
@@ -1364,6 +1390,7 @@ def _clean_source_text_for_numeric_extraction(text: str) -> str:
     cleaned = "\n".join(cleaned_lines)
     cleaned = _STRUCTURAL_SOURCE_MANUAL_NUMBER_PATTERN.sub(" ", cleaned)
     cleaned = _STRUCTURAL_SOURCE_BULLETIN_NUMBER_PATTERN.sub(" ", cleaned)
+    cleaned = _STRUCTURAL_SOURCE_REVISION_PATTERN.sub(" ", cleaned)
     cleaned = GROUNDING_DATE_PATTERN.sub(" ", cleaned)
     cleaned = _MONTH_NAME_DATE_PATTERN.sub(" ", cleaned)
     cleaned = _MONTH_NAME_DAY_PATTERN.sub(" ", cleaned)
@@ -3185,6 +3212,7 @@ Output ONLY valid JSON:
             rac_source_content = rac_file.read_text()
         except Exception:
             rac_source_content = ""
+        source_metadata = _load_nearby_eval_source_metadata(rac_file)
 
         country = self._detect_policyengine_country(rac_file, rac_source_content)
 
@@ -3280,6 +3308,10 @@ Output ONLY valid JSON:
 
             # Build and run PE scenario — include period in inputs for monthly detection
             inputs_with_period = {**inputs, "period": str(period)}
+            if country == "us" and "state_code_str" not in inputs_with_period:
+                source_jurisdiction = _source_metadata_jurisdiction(source_metadata)
+                if source_jurisdiction:
+                    inputs_with_period["state_code_str"] = source_jurisdiction
             scenario_script = self._build_pe_scenario_script(
                 pe_var,
                 inputs_with_period,
