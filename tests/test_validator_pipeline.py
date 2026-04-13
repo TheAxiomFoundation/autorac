@@ -722,6 +722,18 @@ The BUA is $162, effective October 1, 2025.
         assert 125.02 not in occurrences
         assert 162.0 in occurrences
 
+    def test_ignores_policy_label_number_references(self):
+        occurrences = extract_numeric_occurrences_from_text(
+            """
+Tennessee SNAP self-employment expense option under TDHS SNAP Income Policy 24.14
+for period 2026-01.
+
+The allowable cost of producing self-employment income is excluded from income.
+"""
+        )
+
+        assert 24.14 not in occurrences
+
     def test_ignores_manual_heading_number_references(self):
         occurrences = extract_numeric_occurrences_from_text(
             """

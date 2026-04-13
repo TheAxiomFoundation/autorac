@@ -6647,6 +6647,14 @@ class TestSourceEval:
             "use only positive/continuity cases rather than a fabricated out-of-jurisdiction false case"
             in prompt
         )
+        assert (
+            "encode the canonical boolean slot as a direct dated constant `true` or `false`"
+            in prompt
+        )
+        assert (
+            "omit an inapplicable false test unless `./source.txt` itself states a narrower in-jurisdiction condition"
+            in prompt
+        )
 
     def test_build_eval_prompt_single_amount_slice_disallows_speculative_future_tests(
         self, tmp_path

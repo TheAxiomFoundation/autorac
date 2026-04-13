@@ -807,6 +807,12 @@ _STRUCTURAL_SOURCE_MANUAL_NUMBER_PATTERN = re.compile(
     r"\d+(?:\.\d+)+(?:-\d+)?\b",
     re.IGNORECASE,
 )
+_STRUCTURAL_SOURCE_POLICY_LABEL_PATTERN = re.compile(
+    r"\b(?:[A-Z][A-Za-z&/-]*\s+){0,4}?"
+    r"(?:Policy|Procedure|Chapter)\s+"
+    r"\d+(?:\.\d+)+(?:-\d+)?\b",
+    re.IGNORECASE,
+)
 _STRUCTURAL_SOURCE_BULLETIN_NUMBER_PATTERN = re.compile(
     r"\b(?:Bulletin No\.?|Bulletin Number)\s+"
     r"\d+(?:\.\d+)+(?:-\d+)?\b",
@@ -1414,6 +1420,7 @@ def _clean_source_text_for_numeric_extraction(text: str) -> str:
 
     cleaned = "\n".join(cleaned_lines)
     cleaned = _STRUCTURAL_SOURCE_MANUAL_NUMBER_PATTERN.sub(" ", cleaned)
+    cleaned = _STRUCTURAL_SOURCE_POLICY_LABEL_PATTERN.sub(" ", cleaned)
     cleaned = _STRUCTURAL_SOURCE_BULLETIN_NUMBER_PATTERN.sub(" ", cleaned)
     cleaned = _STRUCTURAL_SOURCE_REVISION_PATTERN.sub(" ", cleaned)
     cleaned = _STRUCTURAL_SOURCE_CODE_CITATION_PATTERN.sub(" ", cleaned)
