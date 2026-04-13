@@ -11,6 +11,7 @@ Tests cover:
 """
 
 import json
+import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
@@ -651,6 +652,32 @@ Income earned by an eligible student under 2014(d)(7) remains excluded.
         assert 4.0 not in occurrences
         assert 6.0 not in occurrences
         assert 2014.0 not in occurrences
+
+    def test_ignores_policy_manual_number_references(self):
+        occurrences = extract_numeric_occurrences_from_text(
+            """
+TennCare Aged, Blind and Disabled Manual, Post Eligibility Treatment of Income,
+Policy Manual Number 125.020, October 1, 2025, section 3.d.ii.1.c:
+
+The BUA is $162, effective October 1, 2025.
+"""
+        )
+
+        assert 125.02 not in occurrences
+        assert 162.0 in occurrences
+
+    def test_ignores_manual_heading_number_references(self):
+        occurrences = extract_numeric_occurrences_from_text(
+            """
+Tennessee SNAP limited utility allowance under TennCare ABD Manual 125.020
+section 3.d.ii.1.c.ii for period 2026-01.
+
+The BUA is $162, effective October 1, 2025.
+"""
+        )
+
+        assert 125.02 not in occurrences
+        assert 162.0 in occurrences
 
     def test_collapses_repeated_schedule_row_values_with_size_labels(self):
         occurrences = extract_numeric_occurrences_from_text(
@@ -3395,6 +3422,29 @@ assessed_income_period_10_2_a_satisfied:
 
 
 class TestFindPePython:
+    def test_env_override_preferred_over_current_interpreter(self, pipeline, tmp_path):
+        env_python = tmp_path / "policyengine-us-python"
+        env_python.touch()
+
+        def mock_run_side_effect(args, **kwargs):
+            python_path = args[0]
+            if python_path == str(env_python):
+                return Mock(stdout="ok", stderr="", returncode=0)
+            if python_path == sys.executable:
+                pytest.fail("current interpreter should not be checked before env override")
+            return Mock(stdout="", stderr="error", returncode=1)
+
+        with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run:
+            mock_run.side_effect = mock_run_side_effect
+            with patch.dict(
+                "os.environ",
+                {"AUTORAC_POLICYENGINE_US_PYTHON": str(env_python)},
+                clear=False,
+            ):
+                result = pipeline._find_pe_python()
+
+        assert result == str(env_python)
+
     def test_current_interpreter_works(self, pipeline):
         """Returns sys.executable when PE is importable."""
         with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run:
@@ -3438,6 +3488,37 @@ class TestFindPePython:
                 return_value=tmp_path.parent,
             ):
                 pipeline._find_pe_python()
+
+    def test_worktree_venv_path_found_before_current_interpreter(
+        self, pipeline, tmp_path
+    ):
+        worktree_python = (
+            tmp_path
+            / "worktrees"
+            / "policyengine-us-main-view"
+            / ".venv"
+            / "bin"
+            / "python"
+        )
+        worktree_python.parent.mkdir(parents=True)
+        worktree_python.touch()
+
+        def mock_run_side_effect(args, **kwargs):
+            python_path = args[0]
+            if python_path == str(worktree_python):
+                return Mock(stdout="ok", stderr="", returncode=0)
+            if python_path == sys.executable:
+                pytest.fail(
+                    "current interpreter should not be checked before worktree venv"
+                )
+            return Mock(stdout="", stderr="error", returncode=1)
+
+        with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run:
+            mock_run.side_effect = mock_run_side_effect
+            with patch("autorac.harness.validator_pipeline.Path.home", return_value=tmp_path):
+                result = pipeline._find_pe_python()
+
+        assert result == str(worktree_python)
 
     def test_current_interpreter_exception(self, pipeline):
         """Handles exception when checking current interpreter."""

@@ -24,6 +24,7 @@ from autorac.harness.evals import (
     _materialize_eval_artifact,
     _normalize_legislation_gov_uk_source_ref,
     _normalize_nonannual_test_period_value,
+    _normalize_test_periods_to_effective_dates,
     _post_openai_eval_request,
     _resolve_akn_section_eid,
     _resolve_legislation_gov_uk_fetch_cache_root,
@@ -1654,6 +1655,39 @@ class TestGeneratedBundleCleaning:
         assert test_text.lstrip().startswith("- ")
         assert "name: case_branch_ii_applies" in test_text
         assert "case_branch_ii_applies:" not in test_text
+
+    def test_normalize_test_periods_drops_speculative_pre_effective_zero_case_for_monthly_update(
+        self,
+    ):
+        rac_text = (
+            "snap_standard_utility_allowance:\n"
+            "    entity: SnapUnit\n"
+            "    period: Month\n"
+            "    dtype: Money\n"
+            "    unit: USD\n"
+            "    from 2025-10-01: 451\n"
+        )
+        source_text = (
+            "Current-effective Tennessee utility allowance slice.\n\n"
+            "The Standard Utility Allowance (SUA) is used when the household is\n"
+            "responsible for heating or cooling costs.\n"
+            "The SUA is $451, effective October 1, 2025.\n"
+        )
+        test_text = _normalize_test_periods_to_effective_dates(
+            "- name: applies\n"
+            "  period: 2026-01\n"
+            "  output:\n"
+            "    snap_standard_utility_allowance: 451\n"
+            "- name: pre_effective_month_zero\n"
+            "  period: 2025-09\n"
+            "  output:\n"
+            "    snap_standard_utility_allowance: 0\n",
+            rac_content=rac_text,
+            source_text=source_text,
+        )
+
+        assert "pre_effective_month_zero" not in test_text
+        assert "period: 2026-01" in test_text
 
     def test_materialize_eval_artifact_rewrites_source_text_wrapper_to_docstring(
         self, tmp_path
@@ -3491,6 +3525,21 @@ is_individual_responsibility_contract:
         assert "make it a real rate-valued helper" in prompt
         assert "encode `50 percent` as `0.5` and `130 percent` as `1.3`" in prompt
         assert "do not collapse the principal output to an unconditional `true` or `false`" in prompt
+        assert (
+            'encode the SNAP category gate directly as `snap_utility_allowance_type == "SUA"` or `"BUA"`'
+            in prompt
+        )
+        assert (
+            "use the previous month (for example `2025-09` for a rule that starts `from 2025-10-01`)"
+            in prompt
+        )
+        assert (
+            "should not have a test like `period: 2025-10` expecting `0`" in prompt
+        )
+        assert (
+            "do not invent a `pre_effective_*` zero-output test unless `./source.txt` itself says the earlier period value was zero or unavailable"
+            in prompt
+        )
 
     def test_build_eval_prompt_includes_resolved_canonical_concept_guidance(
         self, tmp_path
@@ -5300,6 +5349,74 @@ cases:
         assert case.policyengine_country == "auto"
         assert case.policyengine_rac_var_hint == "snap_individual_utility_allowance"
 
+    def test_repo_us_snap_tn_standard_utility_allowance_refresh_manifest_loads_expected_case(
+        self,
+    ):
+        repo_root = Path(__file__).resolve().parents[1]
+        manifest = load_eval_suite_manifest(
+            repo_root / "benchmarks" / "us_snap_tn_standard_utility_allowance_refresh.yaml"
+        )
+
+        assert manifest.name == "Tennessee SNAP standard utility allowance refresh"
+        assert manifest.mode == "repo-augmented"
+        assert len(manifest.cases) == 1
+        assert manifest.gates.min_policyengine_pass_rate == 1.0
+        case = manifest.cases[0]
+        assert case.kind == "source"
+        assert case.name == "snap_standard_utility_allowance_tn"
+        assert (
+            case.source_id
+            == "Tennessee SNAP standard utility allowance under TennCare ABD Manual 125.020 section 3.d.ii.1.c.i"
+        )
+        assert case.source_file == (
+            repo_root.parent
+            / "rac-us"
+            / "sources"
+            / "slices"
+            / "tenncare"
+            / "post-eligibility"
+            / "current-effective"
+            / "snap_standard_utility_allowance_tn.txt"
+        ).resolve()
+        assert case.allow_context == []
+        assert case.oracle == "policyengine"
+        assert case.policyengine_country == "auto"
+        assert case.policyengine_rac_var_hint == "snap_standard_utility_allowance"
+
+    def test_repo_us_snap_tn_limited_utility_allowance_refresh_manifest_loads_expected_case(
+        self,
+    ):
+        repo_root = Path(__file__).resolve().parents[1]
+        manifest = load_eval_suite_manifest(
+            repo_root / "benchmarks" / "us_snap_tn_limited_utility_allowance_refresh.yaml"
+        )
+
+        assert manifest.name == "Tennessee SNAP limited utility allowance refresh"
+        assert manifest.mode == "repo-augmented"
+        assert len(manifest.cases) == 1
+        assert manifest.gates.min_policyengine_pass_rate == 1.0
+        case = manifest.cases[0]
+        assert case.kind == "source"
+        assert case.name == "snap_limited_utility_allowance_tn"
+        assert (
+            case.source_id
+            == "Tennessee SNAP limited utility allowance under TennCare ABD Manual 125.020 section 3.d.ii.1.c.ii"
+        )
+        assert case.source_file == (
+            repo_root.parent
+            / "rac-us"
+            / "sources"
+            / "slices"
+            / "tenncare"
+            / "post-eligibility"
+            / "current-effective"
+            / "snap_limited_utility_allowance_tn.txt"
+        ).resolve()
+        assert case.allow_context == []
+        assert case.oracle == "policyengine"
+        assert case.policyengine_country == "auto"
+        assert case.policyengine_rac_var_hint == "snap_limited_utility_allowance"
+
 
 class TestReadinessSummary:
     def test_summarize_readiness_applies_suite_gates(self):
@@ -5981,6 +6098,30 @@ class TestSourceEval:
                 granularity="Month",
             )
             == "2025-10"
+        )
+
+    def test_normalize_nonannual_test_period_value_preserves_prior_month_for_monthly_rules(
+        self,
+    ):
+        assert (
+            _normalize_nonannual_test_period_value(
+                "2025-09",
+                date(2025, 10, 1),
+                granularity="Month",
+            )
+            == "2025-09"
+        )
+
+    def test_normalize_nonannual_test_period_value_preserves_prior_day_month_for_monthly_rules(
+        self,
+    ):
+        assert (
+            _normalize_nonannual_test_period_value(
+                "2025-09-30",
+                date(2025, 10, 1),
+                granularity="Month",
+            )
+            == "2025-09"
         )
 
     def test_allows_relative_workspace_reads(self, tmp_path):

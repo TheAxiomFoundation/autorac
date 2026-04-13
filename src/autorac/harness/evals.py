@@ -2623,9 +2623,15 @@ Available precedent files:
 - When copied context includes a current-effective annual publication module that already exports the exact threshold or component test the oracle expects, import that copied current-effective symbol rather than jumping past it to an older base-statute symbol.
 - In repo-augmented workspaces, every import path must point to a file that is actually copied into the workspace. If the copied context file is `usda/snap/fy-2026-cola/2.rac`, import `usda/snap/fy-2026-cola/2#...` rather than an uncopied `statute/...` path unless that statute file is also copied explicitly.
 - For evergreen monthly rules whose source slice does not itself hinge on a dated annual table, prefer a contemporary monthly `.rac.test` period like `2022-01` or `2024-01` rather than the earliest statutory effective date, unless the source text itself makes a specific historical period legally necessary.
+- For monthly rules with an effective date on the first day of a month, treat that same `YYYY-MM` period as already effective. If you want a negative pre-effective test, use the previous month (for example `2025-09` for a rule that starts `from 2025-10-01`), not the effective month itself.
+- Wrong: a rule with `from 2025-10-01: 451` should not have a test like `period: 2025-10` expecting `0`.
+- Right: either test `period: 2025-09` expecting `0`, or test `period: 2025-10` expecting `451`.
+- For current-effective or annual-update parameter slices, do not invent a `pre_effective_*` zero-output test unless `./source.txt` itself says the earlier period value was zero or unavailable. If the source only tells you the new effective value, prefer testing the effective period and an inapplicable branch instead of guessing the prior month's amount.
 - When the source is an annual publication or current-effective table that updates copied canonical thresholds or limits, it is acceptable for `.rac.test` cases to assert a copied downstream output named by the oracle hint after your amendments apply, rather than testing only the amended parameter values in isolation.
 - For state- or jurisdiction-specific source slices that feed a nationwide oracle-backed variable, do not assume a different jurisdiction implies zero unless the source text expressly says so. Keep the cited jurisdiction fixed in negative tests and vary the local applicability condition instead.
 - For example, a North Carolina SNAP utility-allowance slice should prefer an inapplicable North Carolina case such as a non-SUA allowance type, rather than asserting that `snap_standard_utility_allowance` is zero in South Carolina just because the cited NC table does not govern SC.
+- For state SNAP utility-allowance slices, model applicability with SNAP allowance-category facts like `snap_utility_allowance_type` plus the cited state or utility region, rather than importing unrelated ontology from a surrounding Medicaid or long-term-care manual such as `community_spouse_*` facts.
+- For example, a Tennessee utility-allowance slice drawn from a TennCare manual should still encode the SNAP category gate directly as `snap_utility_allowance_type == "SUA"` or `"BUA"` with `snap_utility_region_str == "TN"`, instead of inventing a `community_spouse_is_responsible_for_heating_or_cooling_costs` input or collapsing the allowance to an unconditional state amount.
 """
 
     return f"""You are participating in an encoding eval for {citation}.
@@ -3916,15 +3922,13 @@ def _normalize_nonannual_test_period_value(
     effective_date: date,
     granularity: str | None = None,
 ) -> object:
-    """Convert non-annual periods to concrete dates on or after the effective date."""
+    """Normalize non-annual test periods while preserving explicit monthly boundary tests."""
     if granularity == "Month":
         effective_month = effective_date.strftime("%Y-%m")
         if period is None:
             return effective_month
         if isinstance(period, date):
             period_month = period.strftime("%Y-%m")
-            if period_month < effective_month:
-                return effective_month
             return period_month
         if isinstance(period, int):
             if period == effective_date.year:
@@ -3948,18 +3952,13 @@ def _normalize_nonannual_test_period_value(
                     return f"{week_year}-01"
                 return period
             if re.fullmatch(r"\d{4}-\d{2}", period):
-                if period < effective_month:
-                    return effective_month
                 return period
             if re.fullmatch(r"\d{4}-\d{2}-\d{2}", period):
                 try:
                     parsed = date.fromisoformat(period)
                 except ValueError:
                     return period
-                period_month = parsed.strftime("%Y-%m")
-                if period_month < effective_month:
-                    return effective_month
-                return period_month
+                return parsed.strftime("%Y-%m")
 
     if period is None:
         return effective_date.isoformat()
@@ -4080,6 +4079,53 @@ def _normalize_test_case_value(value: object) -> object:
     return normalized
 
 
+def _period_precedes_effective_month(period: object, effective_date: date) -> bool:
+    """Return True when an explicit period falls before the effective month."""
+    effective_month = effective_date.strftime("%Y-%m")
+    if isinstance(period, date):
+        return period.strftime("%Y-%m") < effective_month
+    if isinstance(period, str):
+        if re.fullmatch(r"\d{4}-\d{2}", period):
+            return period < effective_month
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", period):
+            with contextlib.suppress(ValueError):
+                return date.fromisoformat(period).strftime("%Y-%m") < effective_month
+    return False
+
+
+def _case_outputs_only_zero_values(case: object) -> bool:
+    """Return True when a test case only asserts zero/false-like outputs."""
+    if not isinstance(case, dict):
+        return False
+    output = case.get("output")
+    if not isinstance(output, dict) or not output:
+        return False
+    saw_value = False
+    for value in output.values():
+        if value is None:
+            continue
+        saw_value = True
+        if isinstance(value, bool):
+            if value:
+                return False
+            continue
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            if float(value) != 0.0:
+                return False
+            continue
+        return False
+    return saw_value
+
+
+def _case_output_keys(case: object) -> set[str]:
+    if not isinstance(case, dict):
+        return set()
+    output = case.get("output")
+    if not isinstance(output, dict):
+        return set()
+    return {str(key) for key in output.keys()}
+
+
 def _normalize_test_periods_to_effective_dates(
     content: str,
     rac_content: str | None = None,
@@ -4100,6 +4146,29 @@ def _normalize_test_periods_to_effective_dates(
 
     if payload is None:
         return normalized
+
+    cases = _coerce_test_payload_to_case_list(payload)
+    positive_output_keys: set[str] = set()
+    if cases is not None:
+        for case in cases:
+            if not isinstance(case, dict):
+                continue
+            output = case.get("output")
+            if not isinstance(output, dict):
+                continue
+            if any(
+                (
+                    isinstance(value, bool) and value
+                )
+                or (
+                    isinstance(value, (int, float))
+                    and not isinstance(value, bool)
+                    and float(value) != 0.0
+                )
+                for value in output.values()
+                if value is not None
+            ):
+                positive_output_keys.update(_case_output_keys(case))
 
     def normalize_case(case: object) -> object:
         if not isinstance(case, dict):
@@ -4124,15 +4193,27 @@ def _normalize_test_periods_to_effective_dates(
                     for child_key, child_value in normalized_case[key].items()
                 }
         if "expect" in normalized_case:
-            normalized_case["expect"] = _normalize_test_case_value(
-                normalized_case["expect"]
-            )
+                normalized_case["expect"] = _normalize_test_case_value(
+                    normalized_case["expect"]
+                )
         return normalized_case
 
-    cases = _coerce_test_payload_to_case_list(payload)
     if cases is not None:
+        filtered_cases: list[object] = []
+        for case in cases:
+            if (
+                granularity == "Month"
+                and effective_date is not None
+                and isinstance(case, dict)
+                and "pre_effective" in str(case.get("name", "")).lower()
+                and _period_precedes_effective_month(case.get("period"), effective_date)
+                and _case_outputs_only_zero_values(case)
+                and (_case_output_keys(case) & positive_output_keys)
+            ):
+                continue
+            filtered_cases.append(case)
         return yaml.safe_dump(
-            [normalize_case(case) for case in cases],
+            [normalize_case(case) for case in filtered_cases],
             sort_keys=False,
         ).strip() + "\n"
 

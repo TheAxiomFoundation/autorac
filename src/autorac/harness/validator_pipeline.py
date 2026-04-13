@@ -775,6 +775,18 @@ _STRUCTURAL_SOURCE_PREFIX_PATTERN = re.compile(
     r"^\s*(?:\d+(?:\.\d+){2,}\s+|\d+[A-Za-z]?\.\s+|\([0-9A-Za-zivxlcdm]+\)\s+)",
     re.IGNORECASE,
 )
+_STRUCTURAL_SOURCE_MANUAL_NUMBER_PATTERN = re.compile(
+    r"\b(?:(?:Policy|Procedure|Operations)\s+)?"
+    r"(?:[A-Z][A-Za-z&/-]*\s+){0,4}?"
+    r"Manual(?:\s+Number)?\s+"
+    r"\d+(?:\.\d+)+(?:-\d+)?\b",
+    re.IGNORECASE,
+)
+_STRUCTURAL_SOURCE_BULLETIN_NUMBER_PATTERN = re.compile(
+    r"\b(?:Bulletin No\.?|Bulletin Number)\s+"
+    r"\d+(?:\.\d+)+(?:-\d+)?\b",
+    re.IGNORECASE,
+)
 _STRUCTURAL_SOURCE_QUOTE_CHARS = "\"'`“”‘’"
 _SYNTHETIC_MODELING_INSTRUCTION_PATTERN = re.compile(
     r"^\s*model\s+`[^`]+`\s+as\b",
@@ -1293,6 +1305,8 @@ def _clean_source_text_for_numeric_extraction(text: str) -> str:
         cleaned_lines.append(_STRUCTURAL_SOURCE_PREFIX_PATTERN.sub("", normalized_line))
 
     cleaned = "\n".join(cleaned_lines)
+    cleaned = _STRUCTURAL_SOURCE_MANUAL_NUMBER_PATTERN.sub(" ", cleaned)
+    cleaned = _STRUCTURAL_SOURCE_BULLETIN_NUMBER_PATTERN.sub(" ", cleaned)
     cleaned = GROUNDING_DATE_PATTERN.sub(" ", cleaned)
     cleaned = _MONTH_NAME_DATE_PATTERN.sub(" ", cleaned)
     cleaned = _MONTH_NAME_DAY_PATTERN.sub(" ", cleaned)
@@ -2941,31 +2955,36 @@ Output ONLY valid JSON:
     def _find_pe_python(self, country: str = "us") -> Optional[str]:
         """Find a Python interpreter with the requested PolicyEngine package installed.
 
-        Checks: 1) current interpreter, 2) known PE venv paths.
+        Checks: 1) explicit env override, 2) known PE checkout/worktree venv paths,
+        3) current interpreter, 4) auto-install.
         Returns the path to a working Python, or None.
         """
         module_name = f"policyengine_{country}"
         package_name = f"policyengine-{country}"
         repo_name = f"policyengine-{country}"
+        env_var_name = f"AUTORAC_POLICYENGINE_{country.upper()}_PYTHON"
 
-        # Try current interpreter first
-        try:
-            result = subprocess.run(
-                [
-                    sys.executable,
-                    "-c",
-                    f"from {module_name} import Simulation; print('ok')",
-                ],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-            if result.returncode == 0 and "ok" in result.stdout:
-                return sys.executable
-        except Exception:
-            pass
+        def _python_imports_policyengine(python_path: str) -> bool:
+            try:
+                result = subprocess.run(
+                    [
+                        python_path,
+                        "-c",
+                        f"from {module_name} import Simulation; print('ok')",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+                return result.returncode == 0 and "ok" in result.stdout
+            except Exception:
+                return False
 
-        # Try known PE venv locations
+        env_python = os.getenv(env_var_name)
+        if env_python and Path(env_python).exists():
+            if _python_imports_policyengine(env_python):
+                return env_python
+
         pe_venv_paths = [
             Path.home() / repo_name / ".venv" / "bin" / "python",
             Path.home()
@@ -2980,24 +2999,17 @@ Output ONLY valid JSON:
             / ".venv"
             / "bin"
             / "python",
+            Path.home() / "worktrees" / f"{repo_name}-main-view" / ".venv" / "bin" / "python",
+            Path.home() / "worktrees" / repo_name / ".venv" / "bin" / "python",
         ]
         for pe_python in pe_venv_paths:
-            if pe_python.exists():
-                try:
-                    result = subprocess.run(
-                        [
-                            str(pe_python),
-                            "-c",
-                            f"from {module_name} import Simulation; print('ok')",
-                        ],
-                        capture_output=True,
-                        text=True,
-                        timeout=30,
-                    )
-                    if result.returncode == 0 and "ok" in result.stdout:
-                        return str(pe_python)
-                except Exception:  # pragma: no cover
-                    continue  # pragma: no cover
+            if pe_python.exists() and _python_imports_policyengine(str(pe_python)):
+                return str(pe_python)
+
+        # Try current interpreter after explicit checkout/worktree environments so
+        # local source trees win over stale globally-installed packages.
+        if _python_imports_policyengine(sys.executable):
+            return sys.executable
 
         # Try auto-installing into current venv as last resort
         try:
