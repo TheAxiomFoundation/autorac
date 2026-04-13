@@ -174,6 +174,8 @@ class EvalWorkspace:
     root: Path
     source_file: Path
     manifest_file: Path
+    source_metadata_file: Path | None = None
+    source_metadata: dict[str, object] | None = None
     context_files: list[EvalContextFile] = field(default_factory=list)
 
 
@@ -371,6 +373,7 @@ def run_source_eval(
     runner_specs: list[str],
     output_root: Path,
     policy_path: Path,
+    source_path: Path | None = None,
     runtime_rac_path: Path | None = None,
     mode: EvalMode = "repo-augmented",
     extra_context_paths: list[Path] | None = None,
@@ -389,6 +392,7 @@ def run_source_eval(
                 runner=runner,
                 output_root=output_root,
                 policy_path=policy_path,
+                source_path=source_path,
                 runtime_rac_path=runtime_rac_path or policy_path,
                 mode=mode,
                 extra_context_paths=extra_context_paths or [],
@@ -1180,6 +1184,7 @@ def run_eval_suite(
                             runner_specs=resolved_runners,
                             output_root=case_output_root,
                             policy_path=policy_repo_root,
+                            source_path=case.source_file,
                             runtime_rac_path=rac_path,
                             mode=case.mode,
                             extra_context_paths=extra_context,
@@ -1896,6 +1901,7 @@ def prepare_eval_workspace(
     source_text: str,
     rac_path: Path,
     mode: EvalMode,
+    source_path: Path | None = None,
     extra_context_paths: list[Path] | None = None,
 ) -> EvalWorkspace:
     """Create an isolated workspace bundle for a single eval."""
@@ -1909,6 +1915,13 @@ def prepare_eval_workspace(
 
     source_file = workspace_root / "source.txt"
     source_file.write_text(source_text.strip() + "\n")
+    source_metadata_path, source_metadata = _load_source_metadata_for_slice(source_path)
+    source_metadata_file: Path | None = None
+    if source_metadata is not None:
+        source_metadata_file = workspace_root / "source-metadata.json"
+        source_metadata_file.write_text(
+            json.dumps(source_metadata, indent=2, sort_keys=True) + "\n"
+        )
 
     context_files: list[EvalContextFile] = []
     context_root = workspace_root / "context"
@@ -1971,6 +1984,12 @@ def prepare_eval_workspace(
                 "citation": citation,
                 "mode": mode,
                 "source_file": str(source_file.relative_to(workspace_root)),
+                "source_metadata_file": (
+                    str(source_metadata_file.relative_to(workspace_root))
+                    if source_metadata_file is not None
+                    else None
+                ),
+                "source_metadata": source_metadata,
                 "context_files": [asdict(item) for item in context_files],
             },
             indent=2,
@@ -1982,8 +2001,37 @@ def prepare_eval_workspace(
         root=workspace_root,
         source_file=source_file,
         manifest_file=manifest_file,
+        source_metadata_file=source_metadata_file,
+        source_metadata=source_metadata,
         context_files=context_files,
     )
+
+
+def _load_source_metadata_for_slice(
+    source_path: Path | None,
+) -> tuple[Path | None, dict[str, object] | None]:
+    """Return companion source metadata for a source slice when present."""
+    if source_path is None:
+        return None, None
+
+    candidates = [
+        source_path.with_name(f"{source_path.stem}.meta.yaml"),
+        source_path.with_name(f"{source_path.stem}.meta.yml"),
+        source_path.with_suffix(source_path.suffix + ".meta.yaml"),
+        source_path.with_suffix(source_path.suffix + ".meta.yml"),
+    ]
+    metadata_path = next((path for path in candidates if path.exists()), None)
+    if metadata_path is None:
+        return None, None
+
+    payload = yaml.safe_load(metadata_path.read_text())
+    if payload is None:
+        return metadata_path, None
+    if not isinstance(payload, dict):
+        raise ValueError(
+            f"Source metadata sidecar must decode to a mapping: {metadata_path}"
+        )
+    return metadata_path, payload
 
 
 def _materialize_resolved_definition_stub(
@@ -2347,6 +2395,7 @@ def _run_single_source_eval(
     runner: EvalRunnerSpec,
     output_root: Path,
     policy_path: Path,
+    source_path: Path | None,
     runtime_rac_path: Path,
     mode: EvalMode,
     extra_context_paths: list[Path],
@@ -2362,6 +2411,7 @@ def _run_single_source_eval(
         source_text=source_text,
         rac_path=policy_path,
         mode=mode,
+        source_path=source_path,
         extra_context_paths=extra_context_paths,
     )
 
@@ -2476,6 +2526,22 @@ are copied inline below and must be treated as the contents of that file.
 === BEGIN SOURCE.TXT ===
 {source_text}
 === END SOURCE.TXT ===
+"""
+
+    source_metadata_section = ""
+    if workspace.source_metadata is not None:
+        source_metadata_json = json.dumps(
+            workspace.source_metadata, indent=2, sort_keys=True
+        )
+        source_metadata_section = f"""
+Structured source metadata is available in `./source-metadata.json`.
+It is not independent legal authority; it records how this source slice relates to canonical legal slots already anchored elsewhere in the corpus.
+If this metadata says the source `sets` a canonical target, treat the slice as setting the effective jurisdiction-specific value for that delegated slot rather than amending an upstream federal numeric baseline.
+If this metadata says the source `uses` or `imports` a canonical target, prefer importing or reusing that canonical target instead of redefining it locally.
+
+=== BEGIN SOURCE-METADATA.JSON ===
+{source_metadata_json}
+=== END SOURCE-METADATA.JSON ===
 """
 
     definition_section = ""
@@ -2663,6 +2729,8 @@ Available precedent files:
 - For example, a North Carolina SNAP utility-allowance slice should prefer an inapplicable North Carolina case such as a non-SUA allowance type, rather than asserting that `snap_standard_utility_allowance` is zero in South Carolina just because the cited NC table does not govern SC.
 - For state SNAP utility-allowance slices, model applicability with SNAP allowance-category facts like `snap_utility_allowance_type` plus the cited state or utility region, rather than importing unrelated ontology from a surrounding Medicaid or long-term-care manual such as `community_spouse_*` facts.
 - For example, a Tennessee utility-allowance slice drawn from a TennCare manual should still encode the SNAP category gate directly as `snap_utility_allowance_type == "SUA"` or `"BUA"` with `snap_utility_region_str == "TN"`, instead of inventing a `community_spouse_is_responsible_for_heating_or_cooling_costs` input or collapsing the allowance to an unconditional state amount.
+- For oracle-backed enum or category inputs, do not invent placeholder literals like `OTHER`, `NONE`, or `UNKNOWN` unless the copied canonical context or oracle actually defines them. Use a real in-domain alternate value for the negative test branch.
+- For example, a SNAP telephone utility-allowance slice should use a valid non-telephone category like `SUA` or `BUA` for an inapplicable branch test, not `OTHER`.
 """
 
     return f"""You are participating in an encoding eval for {citation}.
@@ -2672,7 +2740,7 @@ Primary legal authority:
 {inline_source_section}
 
 Context mode: `{mode}`
-{definition_section}{canonical_concept_section}{context_section}
+{source_metadata_section}{definition_section}{canonical_concept_section}{context_section}
 
 Rules:
 - Do not inspect or rely on any path outside this workspace.
@@ -2689,6 +2757,9 @@ Rules:
 - For phrases like `1st September following the person's 19th birthday`, keep the calendar-date portion semantic inside a boolean/fact helper; do not invent numeric `1`/`September` scalars, but do preserve the substantive `19` age threshold as a named scalar if your logic uses it.
 - Include the source text in a triple-quoted docstring.
 - Use RAC DSL conventions.
+- If `./source-metadata.json` says this slice `sets` a canonical target, align the output to that canonical target under the cited jurisdiction instead of modeling it as a federal amendment unless the metadata or source text explicitly says `amends`.
+- When a `sets` relation points to a canonical CFR or USC slot such as `cfr/...#snap_standard_utility_allowance`, treat that absolute legal path as the delegated upstream anchor for the parameter identity.
+- A `sets` relation should usually produce the jurisdiction-specific effective value for that canonical output; a downstream rule that only consumes that value should `import` or `use` it instead of duplicating it.
 - If `./source.txt` explicitly cites another section or source for a definition, emit the upstream import instead of restating the concept locally.
 - When `./source.txt` says a value is determined `in accordance with section X`, `under section X`, or another cited upstream computation, and a copied precedent file from that cited section exports the matching computed concept, import that exported concept instead of inventing a fresh local `*_under_section_X` input or helper.
 - For example, if the source says an allotment is reduced by household income `as determined in accordance with section 2014(d) and (e)` and a copied precedent file exports `statute/7/2014/e#snap_net_income`, import `snap_net_income` rather than inventing a local input like `snap_household_income_under_2014_d_and_e`.

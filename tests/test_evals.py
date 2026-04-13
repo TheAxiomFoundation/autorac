@@ -4391,6 +4391,7 @@ cases:
             )
 
         assert mock_run_source_eval.call_args.kwargs["policy_path"] == policy_repo
+        assert mock_run_source_eval.call_args.kwargs["source_path"] == source_file
         assert mock_run_source_eval.call_args.kwargs["runtime_rac_path"] == runtime_rac
 
     def test_run_eval_suite_retries_transient_exception(self, tmp_path):
@@ -5651,6 +5652,43 @@ class TestRepoAugmentedContext:
         copied = workspace.root / manifest["context_files"][0]["workspace_path"]
         assert copied.exists()
 
+    def test_prepare_eval_workspace_materializes_source_metadata_sidecar(self, tmp_path):
+        repo_root = tmp_path / "repos"
+        policy_repo = repo_root / "rac-us-tn"
+        policy_repo.mkdir(parents=True)
+        source_path = policy_repo / "sources" / "slices" / "tn" / "snap_sua.txt"
+        source_path.parent.mkdir(parents=True, exist_ok=True)
+        source_path.write_text("Tennessee source text")
+        source_metadata_path = source_path.with_name("snap_sua.meta.yaml")
+        source_metadata_path.write_text(
+            "version: 1\n"
+            "relations:\n"
+            "  - relation: sets\n"
+            "    target: cfr/7/273.9/d/6/iii#snap_standard_utility_allowance\n"
+            "    jurisdiction: TN\n"
+        )
+
+        runner = parse_runner_spec("openai:gpt-5.4")
+        workspace = prepare_eval_workspace(
+            citation="snap_sua_tn",
+            runner=runner,
+            output_root=tmp_path / "out",
+            source_text="Tennessee source text",
+            rac_path=repo_root / "rac",
+            mode="cold",
+            source_path=source_path,
+            extra_context_paths=[],
+        )
+
+        manifest = json.loads(workspace.manifest_file.read_text())
+        assert manifest["source_metadata_file"] == "source-metadata.json"
+        assert (
+            manifest["source_metadata"]["relations"][0]["target"]
+            == "cfr/7/273.9/d/6/iii#snap_standard_utility_allowance"
+        )
+        assert workspace.source_metadata_file is not None
+        assert workspace.source_metadata_file.exists()
+
     def test_build_eval_prompt_lists_canonical_context_import_target(self, tmp_path):
         repo_root = tmp_path / "repos"
         rac_root = repo_root / "rac"
@@ -6108,6 +6146,50 @@ class TestSourceEval:
             "prefer an inapplicable North Carolina case such as a non-SUA allowance type"
             in prompt
         )
+        assert "do not invent placeholder literals like `OTHER`, `NONE`, or `UNKNOWN`" in prompt
+        assert (
+            "should use a valid non-telephone category like `SUA` or `BUA`"
+            in prompt
+        )
+
+    def test_build_eval_prompt_includes_sets_source_metadata_guidance(self, tmp_path):
+        runner = parse_runner_spec("openai:gpt-5.4")
+        source_path = tmp_path / "snap_standard_utility_allowance_tn.txt"
+        source_path.write_text("The SUA is $451, effective October 1, 2025.")
+        source_path.with_name("snap_standard_utility_allowance_tn.meta.yaml").write_text(
+            "version: 1\n"
+            "relations:\n"
+            "  - relation: sets\n"
+            "    target: cfr/7/273.9/d/6/iii#snap_standard_utility_allowance\n"
+            "    jurisdiction: TN\n"
+        )
+        workspace = prepare_eval_workspace(
+            citation="snap_standard_utility_allowance_tn",
+            runner=runner,
+            output_root=tmp_path / "out",
+            source_text="The SUA is $451, effective October 1, 2025.",
+            rac_path=tmp_path / "rac",
+            mode="cold",
+            source_path=source_path,
+            extra_context_paths=[],
+        )
+
+        prompt = _build_eval_prompt(
+            "snap_standard_utility_allowance_tn",
+            "cold",
+            workspace,
+            [],
+            target_file_name="example.rac",
+            include_tests=True,
+            runner_backend="openai",
+            policyengine_rac_var_hint="snap_standard_utility_allowance",
+        )
+
+        assert "./source-metadata.json" in prompt
+        assert "relation: sets" not in prompt
+        assert '"relation": "sets"' in prompt
+        assert "setting the effective jurisdiction-specific value for that delegated slot" in prompt
+        assert "cfr/7/273.9/d/6/iii#snap_standard_utility_allowance" in prompt
 
     def test_build_eval_prompt_single_amount_slice_disallows_speculative_future_tests(
         self, tmp_path
