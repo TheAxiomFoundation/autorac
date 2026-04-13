@@ -5370,7 +5370,7 @@ cases:
         )
         assert case.source_file == (
             repo_root.parent
-            / "rac-us"
+            / "rac-us-tn"
             / "sources"
             / "slices"
             / "tenncare"
@@ -5404,7 +5404,7 @@ cases:
         )
         assert case.source_file == (
             repo_root.parent
-            / "rac-us"
+            / "rac-us-tn"
             / "sources"
             / "slices"
             / "tenncare"
@@ -5440,7 +5440,7 @@ cases:
         )
         assert case.source_file == (
             repo_root.parent
-            / "rac-us"
+            / "rac-us-tn"
             / "sources"
             / "slices"
             / "tenncare"
