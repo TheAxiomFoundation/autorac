@@ -728,6 +728,26 @@ As of 2026-04-10:
   - [autorac-snap-state-uses-child-support-deduction-co-20260413t213415](../artifacts/eval-suites/autorac-snap-state-uses-child-support-deduction-co-20260413t213415)
   - [autorac-snap-state-uses-child-support-deduction-co-20260413t214130](../artifacts/eval-suites/autorac-snap-state-uses-child-support-deduction-co-20260413t214130)
 
+### 2026-04-14: Florida delegated SNAP state-option lanes close cleanly on the first Codex queue pass
+
+- Hypothesis:
+  - Florida should transfer cleanly on the already-proven delegated SNAP boolean lanes for child-support deduction election and self-employment actual-expense treatment. The useful system check is whether a newly scaffolded jurisdiction repo plus checked-in benchmarks are enough for the event-driven Codex queue to discover and close both lanes without any new harness work.
+- Effect:
+  - Created `rac-us-fl` as a Florida jurisdiction repo for Florida-administered SNAP overlays, with exact Florida ESS manual source slices plus `relation: sets` sidecars for `snap_state_uses_child_support_deduction` and `snap_self_employment_expense_based_deduction_applies`.
+  - Added checked-in AutoRAC benchmarks for both Florida lanes and matching manifest-load coverage.
+  - Let the local event-driven Codex queue auto-discover both new benchmarks from `autorac/benchmarks` and process them end to end.
+  - Both Florida runs closed fully ready on the first pass, with success, compile, CI, zero ungrounded numerics, generalist review, and PolicyEngine all at 1.0. No harness or oracle repair was needed after the benchmarks landed.
+- Primary evidence paths:
+  - [us_snap_fl_child_support_deduction_option_refresh.yaml](../benchmarks/us_snap_fl_child_support_deduction_option_refresh.yaml)
+  - [us_snap_fl_self_employment_expense_option_refresh.yaml](../benchmarks/us_snap_fl_self_employment_expense_option_refresh.yaml)
+  - [test_evals.py](../tests/test_evals.py)
+  - [snap_state_uses_child_support_deduction_fl.txt](../../rac-us-fl/sources/slices/myflfamilies/ess/current-effective/snap_state_uses_child_support_deduction_fl.txt)
+  - [snap_state_uses_child_support_deduction_fl.meta.yaml](../../rac-us-fl/sources/slices/myflfamilies/ess/current-effective/snap_state_uses_child_support_deduction_fl.meta.yaml)
+  - [snap_self_employment_expense_based_deduction_applies_fl.txt](../../rac-us-fl/sources/slices/myflfamilies/ess/current-effective/snap_self_employment_expense_based_deduction_applies_fl.txt)
+  - [snap_self_employment_expense_based_deduction_applies_fl.meta.yaml](../../rac-us-fl/sources/slices/myflfamilies/ess/current-effective/snap_self_employment_expense_based_deduction_applies_fl.meta.yaml)
+  - [autorac-snap-state-uses-child-support-deduction-fl-20260413t220610](../artifacts/eval-suites/autorac-snap-state-uses-child-support-deduction-fl-20260413t220610)
+  - [autorac-snap-self-employment-expense-based-deduction-applies-fl-20260413t220911](../artifacts/eval-suites/autorac-snap-self-employment-expense-based-deduction-applies-fl-20260413t220911)
+
 ## Open Documentation Debt
 
 - Add before/after metric snapshots for every kept harness change rather than relying on commit messages.
