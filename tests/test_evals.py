@@ -6148,6 +6148,78 @@ cases:
         assert case.policyengine_country == "auto"
         assert case.policyengine_rac_var_hint == "snap_individual_utility_allowance"
 
+    def test_repo_us_snap_tx_child_support_deduction_option_refresh_manifest_loads_expected_case(
+        self,
+    ):
+        repo_root = Path(__file__).resolve().parents[1]
+        manifest = load_eval_suite_manifest(
+            repo_root
+            / "benchmarks"
+            / "us_snap_tx_child_support_deduction_option_refresh.yaml"
+        )
+
+        assert manifest.name == "Texas SNAP child support deduction option refresh"
+        assert manifest.mode == "repo-augmented"
+        assert len(manifest.cases) == 1
+        assert manifest.gates.min_policyengine_pass_rate == 1.0
+        case = manifest.cases[0]
+        assert case.kind == "source"
+        assert case.name == "snap_state_uses_child_support_deduction_tx"
+        assert (
+            case.source_id
+            == "Texas SNAP child support deduction election under Texas Works Handbook A-1421.1 and A-1421.2"
+        )
+        assert case.source_file == (
+            repo_root.parent
+            / "rac-us-tx"
+            / "sources"
+            / "slices"
+            / "txhhs"
+            / "twh"
+            / "current-effective"
+            / "snap_state_uses_child_support_deduction_tx.txt"
+        ).resolve()
+        assert case.allow_context == []
+        assert case.oracle == "policyengine"
+        assert case.policyengine_country == "auto"
+        assert case.policyengine_rac_var_hint == "snap_state_uses_child_support_deduction"
+
+    def test_repo_us_snap_tx_self_employment_expense_option_refresh_manifest_loads_expected_case(
+        self,
+    ):
+        repo_root = Path(__file__).resolve().parents[1]
+        manifest = load_eval_suite_manifest(
+            repo_root
+            / "benchmarks"
+            / "us_snap_tx_self_employment_expense_option_refresh.yaml"
+        )
+
+        assert manifest.name == "Texas SNAP self-employment expense option refresh"
+        assert manifest.mode == "repo-augmented"
+        assert len(manifest.cases) == 1
+        assert manifest.gates.min_policyengine_pass_rate == 1.0
+        case = manifest.cases[0]
+        assert case.kind == "source"
+        assert case.name == "snap_self_employment_expense_based_deduction_applies_tx"
+        assert (
+            case.source_id
+            == "Texas SNAP self-employment expense option under Texas Works Handbook A-1323.4.5 and A-1323.4.7"
+        )
+        assert case.source_file == (
+            repo_root.parent
+            / "rac-us-tx"
+            / "sources"
+            / "slices"
+            / "txhhs"
+            / "twh"
+            / "current-effective"
+            / "snap_self_employment_expense_based_deduction_applies_tx.txt"
+        ).resolve()
+        assert case.allow_context == []
+        assert case.oracle == "policyengine"
+        assert case.policyengine_country == "auto"
+        assert case.policyengine_rac_var_hint == "snap_self_employment_expense_based_deduction_applies"
+
 
 class TestReadinessSummary:
     def test_summarize_readiness_applies_suite_gates(self):
