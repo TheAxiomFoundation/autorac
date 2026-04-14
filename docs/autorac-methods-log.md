@@ -848,6 +848,26 @@ As of 2026-04-10:
   - [autorac-snap-self-employment-expense-based-deduction-applies-al-20260414t084945](../artifacts/eval-suites/autorac-snap-self-employment-expense-based-deduction-applies-al-20260414t084945)
   - [autorac-snap-self-employment-simplified-deduction-rate-al-20260414t081937](../artifacts/eval-suites/autorac-snap-self-employment-simplified-deduction-rate-al-20260414t081937)
 
+### 2026-04-14: Arkansas delegated SNAP option lanes close on the first pass
+
+- Hypothesis:
+  - Arkansas should transfer on the already-proven delegated SNAP state-option shapes for child-support deduction election and actual self-employment expense treatment. The official DHS SNAP Certification Manual states both rules directly, and because neither slice carries schedule numerics or multi-branch tables, the expected outcome was a first-pass closeout without new harness work.
+- Effect:
+  - Created `rac-us-ar` as an Arkansas jurisdiction repo with exact DHS source slices plus `relation: sets` sidecars for `snap_state_uses_child_support_deduction` and `snap_self_employment_expense_based_deduction_applies`.
+  - Added checked-in AutoRAC benchmarks for both Arkansas lanes and matching manifest-load coverage.
+  - Let the local event-driven Codex queue auto-discover both new benchmarks from `autorac/benchmarks` and process them end to end.
+  - Both Arkansas runs closed fully ready on the first pass, with success, compile, CI, zero ungrounded numerics, generalist review, and PolicyEngine all at 1.0. No harness or oracle repair was needed after the benchmarks landed.
+- Primary evidence paths:
+  - [us_snap_ar_child_support_deduction_option_refresh.yaml](../benchmarks/us_snap_ar_child_support_deduction_option_refresh.yaml)
+  - [us_snap_ar_self_employment_expense_option_refresh.yaml](../benchmarks/us_snap_ar_self_employment_expense_option_refresh.yaml)
+  - [test_evals.py](../tests/test_evals.py)
+  - [snap_state_uses_child_support_deduction_ar.txt](../../rac-us-ar/sources/slices/ardhs/snap/current-effective/snap_state_uses_child_support_deduction_ar.txt)
+  - [snap_state_uses_child_support_deduction_ar.meta.yaml](../../rac-us-ar/sources/slices/ardhs/snap/current-effective/snap_state_uses_child_support_deduction_ar.meta.yaml)
+  - [snap_self_employment_expense_based_deduction_applies_ar.txt](../../rac-us-ar/sources/slices/ardhs/snap/current-effective/snap_self_employment_expense_based_deduction_applies_ar.txt)
+  - [snap_self_employment_expense_based_deduction_applies_ar.meta.yaml](../../rac-us-ar/sources/slices/ardhs/snap/current-effective/snap_self_employment_expense_based_deduction_applies_ar.meta.yaml)
+  - [autorac-snap-state-uses-child-support-deduction-ar-20260414t091035](../artifacts/eval-suites/autorac-snap-state-uses-child-support-deduction-ar-20260414t091035)
+  - [autorac-snap-self-employment-expense-based-deduction-applies-ar-20260414t091446](../artifacts/eval-suites/autorac-snap-self-employment-expense-based-deduction-applies-ar-20260414t091446)
+
 ## Open Documentation Debt
 
 - Add before/after metric snapshots for every kept harness change rather than relying on commit messages.
