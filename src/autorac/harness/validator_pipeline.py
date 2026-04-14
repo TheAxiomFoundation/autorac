@@ -164,6 +164,7 @@ class _PolicyEngineUSVarAdapter:
     default_state_code: str | None = None
     state_code_from_boolean_input: tuple[str, str, str] | None = None
     parameter_path: str | None = None
+    parameter_value_mode: str = "bool"
 
 
 def _normalize_state_code_from_utility_region(region: str) -> str:
@@ -369,6 +370,13 @@ _PE_US_VAR_ADAPTERS = (
             "gov.usda.snap.income.deductions.self_employment."
             "expense_based_deduction_applies"
         ),
+    ),
+    _PolicyEngineUSVarAdapter(
+        rac_vars=("snap_self_employment_simplified_deduction_rate",),
+        pe_var="snap_self_employment_simplified_deduction_rate",
+        default_state_code="MD",
+        parameter_path="gov.usda.snap.income.deductions.self_employment.rate",
+        parameter_value_mode="float",
     ),
     _PolicyEngineUSVarAdapter(
         rac_vars=("meets_snap_asset_test",),
@@ -5223,12 +5231,22 @@ print("BENCHMARK:" + json.dumps(result))
             parameter_period = self._normalize_monthly_pe_period(
                 inputs.get("period"), year, "01"
             )
+            value_expr = f"params.{adapter.parameter_path}[{repr(household_state)}]"
+            if adapter.parameter_value_mode == "float":
+                return f"""
+from policyengine_us import CountryTaxBenefitSystem
+
+system = CountryTaxBenefitSystem()
+params = system.parameters('{parameter_period}')
+val = float({value_expr})
+print(f'RESULT:{{val}}')
+"""
             return f"""
 from policyengine_us import CountryTaxBenefitSystem
 
 system = CountryTaxBenefitSystem()
 params = system.parameters('{parameter_period}')
-val = 1.0 if bool(params.{adapter.parameter_path}[{repr(household_state)}]) else 0.0
+val = 1.0 if bool({value_expr}) else 0.0
 print(f'RESULT:{{val}}')
 """
 
