@@ -6849,6 +6849,81 @@ cases:
             == "snap_self_employment_simplified_deduction_rate"
         )
 
+    def test_repo_us_snap_ar_child_support_deduction_option_refresh_manifest_loads_expected_case(
+        self,
+    ):
+        repo_root = Path(__file__).resolve().parents[1]
+        manifest = load_eval_suite_manifest(
+            repo_root
+            / "benchmarks"
+            / "us_snap_ar_child_support_deduction_option_refresh.yaml"
+        )
+
+        assert manifest.name == "Arkansas SNAP child support deduction option refresh"
+        assert manifest.mode == "repo-augmented"
+        assert len(manifest.cases) == 1
+        assert manifest.gates.min_policyengine_pass_rate == 1.0
+        case = manifest.cases[0]
+        assert case.kind == "source"
+        assert case.name == "snap_state_uses_child_support_deduction_ar"
+        assert (
+            case.source_id
+            == "Arkansas SNAP child support deduction under DHS SNAP Certification Manual section 6550 Child Support Deductions"
+        )
+        assert case.source_file == (
+            repo_root.parent
+            / "rac-us-ar"
+            / "sources"
+            / "slices"
+            / "ardhs"
+            / "snap"
+            / "current-effective"
+            / "snap_state_uses_child_support_deduction_ar.txt"
+        ).resolve()
+        assert case.allow_context == []
+        assert case.oracle == "policyengine"
+        assert case.policyengine_country == "auto"
+        assert case.policyengine_rac_var_hint == "snap_state_uses_child_support_deduction"
+
+    def test_repo_us_snap_ar_self_employment_expense_option_refresh_manifest_loads_expected_case(
+        self,
+    ):
+        repo_root = Path(__file__).resolve().parents[1]
+        manifest = load_eval_suite_manifest(
+            repo_root
+            / "benchmarks"
+            / "us_snap_ar_self_employment_expense_option_refresh.yaml"
+        )
+
+        assert manifest.name == "Arkansas SNAP self-employment expense option refresh"
+        assert manifest.mode == "repo-augmented"
+        assert len(manifest.cases) == 1
+        assert manifest.gates.min_policyengine_pass_rate == 1.0
+        case = manifest.cases[0]
+        assert case.kind == "source"
+        assert case.name == "snap_self_employment_expense_based_deduction_applies_ar"
+        assert (
+            case.source_id
+            == "Arkansas SNAP self-employment expense option under DHS SNAP Certification Manual section 5663 Costs of Producing Self-Employment Income"
+        )
+        assert case.source_file == (
+            repo_root.parent
+            / "rac-us-ar"
+            / "sources"
+            / "slices"
+            / "ardhs"
+            / "snap"
+            / "current-effective"
+            / "snap_self_employment_expense_based_deduction_applies_ar.txt"
+        ).resolve()
+        assert case.allow_context == []
+        assert case.oracle == "policyengine"
+        assert case.policyengine_country == "auto"
+        assert (
+            case.policyengine_rac_var_hint
+            == "snap_self_employment_expense_based_deduction_applies"
+        )
+
 
 class TestReadinessSummary:
     def test_summarize_readiness_applies_suite_gates(self):
