@@ -5740,6 +5740,45 @@ cases:
             == "snap_self_employment_expense_based_deduction_applies"
         )
 
+    def test_repo_us_snap_ca_child_support_deduction_option_refresh_manifest_loads_expected_case(
+        self,
+    ):
+        repo_root = Path(__file__).resolve().parents[1]
+        manifest = load_eval_suite_manifest(
+            repo_root
+            / "benchmarks"
+            / "us_snap_ca_child_support_deduction_option_refresh.yaml"
+        )
+
+        assert manifest.name == "California SNAP child support deduction option refresh"
+        assert manifest.mode == "repo-augmented"
+        assert len(manifest.cases) == 1
+        assert manifest.gates.min_policyengine_pass_rate == 1.0
+        case = manifest.cases[0]
+        assert case.kind == "source"
+        assert case.name == "snap_state_uses_child_support_deduction_ca"
+        assert (
+            case.source_id
+            == "California CalFresh child support exclusion under MPP 63-502.2(p)"
+        )
+        assert case.source_file == (
+            repo_root.parent
+            / "rac-us-ca"
+            / "sources"
+            / "slices"
+            / "cdss"
+            / "calfresh"
+            / "current-effective"
+            / "snap_state_uses_child_support_deduction_ca.txt"
+        ).resolve()
+        assert case.allow_context == []
+        assert case.oracle == "policyengine"
+        assert case.policyengine_country == "auto"
+        assert (
+            case.policyengine_rac_var_hint
+            == "snap_state_uses_child_support_deduction"
+        )
+
     def test_repo_us_snap_co_self_employment_expense_option_refresh_manifest_loads_expected_case(
         self,
     ):

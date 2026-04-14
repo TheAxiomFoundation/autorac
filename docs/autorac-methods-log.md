@@ -691,6 +691,22 @@ As of 2026-04-10:
   - [autorac-snap-state-uses-child-support-deduction-tx-20260413t210425](../artifacts/eval-suites/autorac-snap-state-uses-child-support-deduction-tx-20260413t210425)
   - [autorac-snap-self-employment-expense-based-deduction-applies-tx-20260413t210753](../artifacts/eval-suites/autorac-snap-self-employment-expense-based-deduction-applies-tx-20260413t210753)
 
+### 2026-04-14: California delegated SNAP child-support option closes on the auto-synced Codex queue
+
+- Hypothesis:
+  - California should transfer on the already-proven delegated SNAP child-support state-option lane without any new harness work. The useful system check is whether the manifest-driven queue seeding path discovers and runs the new California benchmark automatically.
+- Effect:
+  - Added a California CalFresh current-effective source slice plus `relation: sets` sidecar for `snap_state_uses_child_support_deduction`, anchored to `usc/7/2014/e/4#snap_state_uses_child_support_deduction`.
+  - Added a checked-in AutoRAC benchmark for the California child-support option and matching manifest-load coverage.
+  - Let the local event-driven Codex queue auto-discover the new benchmark from the checked-in `autorac/benchmarks` directory and process it end to end without a manual queue edit.
+  - The first California run closed fully ready on success, compile, CI, zero ungrounded numerics, generalist review, and PolicyEngine, with no harness change required after the benchmark landed.
+- Primary evidence paths:
+  - [us_snap_ca_child_support_deduction_option_refresh.yaml](../benchmarks/us_snap_ca_child_support_deduction_option_refresh.yaml)
+  - [test_evals.py](../tests/test_evals.py)
+  - [snap_state_uses_child_support_deduction_ca.txt](../../rac-us-ca/sources/slices/cdss/calfresh/current-effective/snap_state_uses_child_support_deduction_ca.txt)
+  - [snap_state_uses_child_support_deduction_ca.meta.yaml](../../rac-us-ca/sources/slices/cdss/calfresh/current-effective/snap_state_uses_child_support_deduction_ca.meta.yaml)
+  - [autorac-snap-state-uses-child-support-deduction-ca-20260413t212724](../artifacts/eval-suites/autorac-snap-state-uses-child-support-deduction-ca-20260413t212724)
+
 ## Open Documentation Debt
 
 - Add before/after metric snapshots for every kept harness change rather than relying on commit messages.
