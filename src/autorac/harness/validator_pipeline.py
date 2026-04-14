@@ -820,8 +820,8 @@ _STRUCTURAL_SOURCE_PREFIX_PATTERN = re.compile(
 _STRUCTURAL_SOURCE_MANUAL_NUMBER_PATTERN = re.compile(
     r"\b(?:(?:Policy|Procedure|Operations)\s+)?"
     r"(?:[A-Z][A-Za-z&/-]*\s+){0,4}?"
-    r"Manual(?:\s+Number)?\s+"
-    r"\d+(?:\.\d+)+(?:-\d+)?\b",
+    r"Manual(?:\s+Number)?(?:\s*,)?\s+"
+    r"(?:\d+(?:\.\d+)+(?:-\d+)?|\d{3,5})\b",
     re.IGNORECASE,
 )
 _STRUCTURAL_SOURCE_POLICY_LABEL_PATTERN = re.compile(

@@ -916,6 +916,24 @@ The BUA is $162, effective October 1, 2025.
         assert 125.02 not in occurrences
         assert 162.0 in occurrences
 
+    def test_ignores_integer_manual_heading_numbers(self):
+        occurrences = extract_numeric_occurrences_from_text(
+            """
+Georgia SNAP child support deduction election under DFCS SNAP Manual 3035
+Verification for period 2026-01.
+
+Georgia Division of Family and Children Services, SNAP Policy Manual, 3035
+Verification, effective May 2024:
+
+Verify the legal obligation to pay child support, the obligated amount of
+support, and the actual monthly amount that is paid.
+"""
+        )
+
+        assert 3035.0 not in occurrences
+        assert 2026.0 not in occurrences
+        assert 2024.0 not in occurrences
+
     def test_collapses_repeated_schedule_row_values_with_size_labels(self):
         occurrences = extract_numeric_occurrences_from_text(
             """
