@@ -907,7 +907,7 @@ def extract_akn_section_text(
 
 def run_akn_section_eval(
     source_id: str,
-    akn_file: Path,
+    akn_file: Path | None,
     section_eid: str | None,
     runner_specs: list[str],
     output_root: Path,
@@ -924,29 +924,10 @@ def run_akn_section_eval(
     source_metadata_path: Path | None = None,
 ) -> list[EvalResult]:
     """Run a deterministic comparison on one section extracted from AKN XML."""
-    raw_section_eids = [item for item in (section_eids or []) if item]
-    if section_eid:
-        raw_section_eids = [section_eid, *raw_section_eids]
-    if not raw_section_eids:
-        raise ValueError("run_akn_section_eval requires at least one section eId")
-
-    resolved_section_eids = [
-        _resolve_akn_section_eid(
-            akn_file,
-            raw_section_eid,
-            allow_parent=allow_parent,
-        )
-        for raw_section_eid in raw_section_eids
-    ]
-    extracted_source_text = "\n\n".join(
-        extract_akn_section_text(
-            akn_file,
-            resolved_section_eid,
-            table_row_query=table_row_query,
-        ).strip()
-        for resolved_section_eid in resolved_section_eids
-    ).strip()
     metadata_payload = None
+    resolved_akn_file = akn_file
+    resolved_table_row_query = table_row_query
+    metadata_section_eids: list[str] = []
     if source_metadata_path is not None:
         payload = yaml.safe_load(source_metadata_path.read_text())
         if payload is not None and not isinstance(payload, dict):
@@ -954,6 +935,44 @@ def run_akn_section_eval(
                 f"AKN section metadata sidecar must decode to a mapping: {source_metadata_path}"
             )
         metadata_payload = payload
+        (
+            metadata_akn_file,
+            metadata_section_eids,
+            metadata_table_row_query,
+        ) = _resolve_source_akn_backing(source_metadata_path, metadata_payload)
+        if resolved_akn_file is None:
+            resolved_akn_file = metadata_akn_file
+        if resolved_table_row_query is None:
+            resolved_table_row_query = metadata_table_row_query
+
+    raw_section_eids = [item for item in (section_eids or []) if item]
+    if section_eid:
+        raw_section_eids = [section_eid, *raw_section_eids]
+    if not raw_section_eids:
+        raw_section_eids = metadata_section_eids
+    if not raw_section_eids:
+        raise ValueError("run_akn_section_eval requires at least one section eId")
+    if resolved_akn_file is None:
+        raise ValueError(
+            "run_akn_section_eval requires either akn_file or source metadata with source_backing"
+        )
+
+    resolved_section_eids = [
+        _resolve_akn_section_eid(
+            resolved_akn_file,
+            raw_section_eid,
+            allow_parent=allow_parent,
+        )
+        for raw_section_eid in raw_section_eids
+    ]
+    extracted_source_text = "\n\n".join(
+        extract_akn_section_text(
+            resolved_akn_file,
+            resolved_section_eid,
+            table_row_query=resolved_table_row_query,
+        ).strip()
+        for resolved_section_eid in resolved_section_eids
+    ).strip()
     return run_source_eval(
         source_id=source_id,
         source_text=extracted_source_text,
@@ -1250,13 +1269,13 @@ def run_eval_suite(
                         )
                     elif case.kind == "akn_section":
                         policy_repo_root = (
-                            find_policy_repo_root(case.akn_file)
-                            if case.akn_file is not None
+                            find_policy_repo_root(case.metadata_file or case.akn_file)
+                            if (case.metadata_file is not None or case.akn_file is not None)
                             else None
                         ) or rac_path
                         case_results = run_akn_section_eval(
                             source_id=case.source_id or case.name,
-                            akn_file=case.akn_file or Path(),
+                            akn_file=case.akn_file,
                             section_eid=case.section_eid,
                             runner_specs=resolved_runners,
                             output_root=case_output_root,
@@ -1872,9 +1891,11 @@ def _validate_eval_suite_case(case: EvalSuiteCase, index: int) -> None:
     if case.kind == "akn_section":
         if not case.source_id:
             raise ValueError(f"Eval suite case #{index} is missing 'source_id'")
-        if case.akn_file is None:
-            raise ValueError(f"Eval suite case #{index} is missing 'akn_file'")
-        if not case.section_eid and not case.section_eids:
+        if case.akn_file is None and case.metadata_file is None:
+            raise ValueError(
+                f"Eval suite case #{index} is missing 'akn_file' or 'metadata_file'"
+            )
+        if not case.section_eid and not case.section_eids and case.metadata_file is None:
             raise ValueError(
                 f"Eval suite case #{index} is missing 'section_eid' or 'section_eids'"
             )
@@ -2119,11 +2140,27 @@ def _load_source_metadata_for_path(
     return metadata_path, payload
 
 
+def _autorac_archive_root() -> Path:
+    """Return the local Atlas archive root used for raw and normalized documents."""
+    override = os.environ.get("AUTORAC_ARCH_ROOT")
+    if override:
+        return Path(override).expanduser().resolve()
+    return (Path.home() / ".arch").resolve()
+
+
+def _resolve_archive_relative_path(value: object) -> Path:
+    """Resolve an archive-relative or absolute path into a concrete local file path."""
+    path = Path(str(value)).expanduser()
+    if path.is_absolute():
+        return path.resolve()
+    return (_autorac_archive_root() / path).resolve()
+
+
 def _resolve_source_akn_backing(
     source_path: Path,
     source_metadata: dict[str, object] | None,
 ) -> tuple[Path | None, list[str], str | None]:
-    """Resolve optional AKN backing metadata for a source file."""
+    """Resolve optional AKN backing metadata for a source file or metadata sidecar."""
     if source_metadata is None:
         return None, [], None
 
@@ -2136,13 +2173,18 @@ def _resolve_source_akn_backing(
         return None, [], None
 
     akn_value = backing.get("akn_file")
-    if akn_value is None:
+    arch_value = backing.get("arch_path")
+    if akn_value is None and arch_value is None:
         raise ValueError(
-            f"AKN-backed source file is missing source_backing.akn_file: {source_path}"
+            "AKN-backed source file is missing source_backing.akn_file "
+            f"or source_backing.arch_path: {source_path}"
         )
-    akn_file = Path(str(akn_value))
-    if not akn_file.is_absolute():
-        akn_file = (source_path.parent / akn_file).resolve()
+    if arch_value is not None:
+        akn_file = _resolve_archive_relative_path(arch_value)
+    else:
+        akn_file = Path(str(akn_value))
+        if not akn_file.is_absolute():
+            akn_file = (source_path.parent / akn_file).resolve()
     if not akn_file.exists():
         raise ValueError(f"AKN backing file not found for source file: {akn_file}")
 

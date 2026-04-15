@@ -2335,8 +2335,13 @@ class TestAknSectionEval:
         assert mock_run_source_eval.call_args.kwargs["oracle"] == "none"
         assert mock_run_source_eval.call_args.kwargs["policyengine_country"] == "auto"
 
-    def test_run_akn_section_eval_passes_source_metadata_sidecar(self, tmp_path):
-        akn_file = tmp_path / "doc.xml"
+    def test_run_akn_section_eval_passes_source_metadata_sidecar(
+        self, tmp_path, monkeypatch
+    ):
+        arch_root = tmp_path / "arch"
+        monkeypatch.setenv("AUTORAC_ARCH_ROOT", str(arch_root))
+        akn_file = arch_root / "us-tx" / "txhhs" / "twh" / "current-effective" / "akn" / "source.akn.xml"
+        akn_file.parent.mkdir(parents=True, exist_ok=True)
         akn_file.write_text(
             """
 <akomaNtoso xmlns="http://docs.oasis-open.org/legaldocml/ns/akn/3.0">
@@ -2356,7 +2361,7 @@ class TestAknSectionEval:
             "version: 1\n"
             "source_backing:\n"
             "  kind: akn_section\n"
-            "  akn_file: source.akn.xml\n"
+            "  arch_path: us-tx/txhhs/twh/current-effective/akn/source.akn.xml\n"
             "  section_eid: sec_sua\n"
             "relations:\n"
             "  - relation: sets\n"
@@ -2370,8 +2375,8 @@ class TestAknSectionEval:
         ) as mock_run_source_eval:
             results = run_akn_section_eval(
                 source_id="snap_standard_utility_allowance_tx",
-                akn_file=akn_file,
-                section_eid="sec_sua",
+                akn_file=None,
+                section_eid=None,
                 runner_specs=["codex:gpt-5.4"],
                 output_root=tmp_path / "out",
                 rac_path=tmp_path / "rac",
@@ -4599,7 +4604,9 @@ cases:
         assert mock_run_source_eval.call_args.kwargs["source_path"] == source_file
         assert mock_run_source_eval.call_args.kwargs["runtime_rac_path"] == runtime_rac
 
-    def test_run_eval_suite_uses_akn_backed_source_text(self, tmp_path):
+    def test_run_eval_suite_uses_akn_backed_source_text(self, tmp_path, monkeypatch):
+        arch_root = tmp_path / "arch"
+        monkeypatch.setenv("AUTORAC_ARCH_ROOT", str(arch_root))
         policy_repo = tmp_path / "rac-us-tx"
         source_file = (
             policy_repo
@@ -4613,12 +4620,12 @@ cases:
         source_file.parent.mkdir(parents=True, exist_ok=True)
         source_file.write_text("outdated slice text")
         akn_file = (
-            policy_repo
-            / "sources"
-            / "official"
+            arch_root
+            / "us-tx"
             / "txhhs"
             / "twh"
             / "current-effective"
+            / "akn"
             / "source.akn.xml"
         )
         akn_file.parent.mkdir(parents=True, exist_ok=True)
@@ -4640,7 +4647,7 @@ cases:
             "version: 1\n"
             "source_backing:\n"
             "  kind: akn_section\n"
-            "  akn_file: ../../../../akn/txhhs/twh/current-effective/source.akn.xml\n"
+            "  arch_path: us-tx/txhhs/twh/current-effective/akn/source.akn.xml\n"
             "  section_eid: sec_bulletin_25_15_section_2_sua\n"
             "relations:\n"
             "  - relation: sets\n"
@@ -6322,11 +6329,11 @@ cases:
         assert manifest.mode == "repo-augmented"
         assert len(manifest.cases) == 1
         assert manifest.gates.min_policyengine_pass_rate == 1.0
-        tx_akn_root = (
+        tx_target_root = (
             repo_root.parent
             / "rac-us-tx"
             / "sources"
-            / "akn"
+            / "targets"
             / "txhhs"
             / "twh"
             / "current-effective"
@@ -6338,8 +6345,11 @@ cases:
             case.source_id
             == "Texas SNAP standard utility allowance under MEPD and TW Bulletin 25-15 section 2"
         )
-        assert case.akn_file == tx_akn_root / "source.akn.xml"
-        assert case.metadata_file == tx_akn_root / "snap_standard_utility_allowance_tx.meta.yaml"
+        assert case.akn_file is None
+        assert (
+            case.metadata_file
+            == tx_target_root / "snap_standard_utility_allowance_tx.meta.yaml"
+        )
         assert case.section_eid == "sec_bulletin_25_15_section_2_sua"
         assert case.section_eids == []
         assert case.allow_context == []
@@ -6359,11 +6369,11 @@ cases:
         assert manifest.mode == "repo-augmented"
         assert len(manifest.cases) == 1
         assert manifest.gates.min_policyengine_pass_rate == 1.0
-        tx_akn_root = (
+        tx_target_root = (
             repo_root.parent
             / "rac-us-tx"
             / "sources"
-            / "akn"
+            / "targets"
             / "txhhs"
             / "twh"
             / "current-effective"
@@ -6375,8 +6385,11 @@ cases:
             case.source_id
             == "Texas SNAP basic utility allowance under MEPD and TW Bulletin 25-15 section 2"
         )
-        assert case.akn_file == tx_akn_root / "source.akn.xml"
-        assert case.metadata_file == tx_akn_root / "snap_limited_utility_allowance_tx.meta.yaml"
+        assert case.akn_file is None
+        assert (
+            case.metadata_file
+            == tx_target_root / "snap_limited_utility_allowance_tx.meta.yaml"
+        )
         assert case.section_eid == "sec_bulletin_25_15_section_2_bua"
         assert case.section_eids == []
         assert case.allow_context == []
@@ -6398,11 +6411,11 @@ cases:
         assert manifest.mode == "repo-augmented"
         assert len(manifest.cases) == 1
         assert manifest.gates.min_policyengine_pass_rate == 1.0
-        tx_akn_root = (
+        tx_target_root = (
             repo_root.parent
             / "rac-us-tx"
             / "sources"
-            / "akn"
+            / "targets"
             / "txhhs"
             / "twh"
             / "current-effective"
@@ -6414,8 +6427,11 @@ cases:
             case.source_id
             == "Texas SNAP telephone standard under MEPD and TW Bulletin 25-15 section 2"
         )
-        assert case.akn_file == tx_akn_root / "source.akn.xml"
-        assert case.metadata_file == tx_akn_root / "snap_individual_utility_allowance_tx.meta.yaml"
+        assert case.akn_file is None
+        assert (
+            case.metadata_file
+            == tx_target_root / "snap_individual_utility_allowance_tx.meta.yaml"
+        )
         assert case.section_eid == "sec_bulletin_25_15_section_2_tua"
         assert case.section_eids == []
         assert case.allow_context == []
@@ -6437,11 +6453,11 @@ cases:
         assert manifest.mode == "repo-augmented"
         assert len(manifest.cases) == 1
         assert manifest.gates.min_policyengine_pass_rate == 1.0
-        tx_akn_root = (
+        tx_target_root = (
             repo_root.parent
             / "rac-us-tx"
             / "sources"
-            / "akn"
+            / "targets"
             / "txhhs"
             / "twh"
             / "current-effective"
@@ -6453,8 +6469,11 @@ cases:
             case.source_id
             == "Texas SNAP child support deduction election under Texas Works Handbook A-1421.1 and A-1421.2"
         )
-        assert case.akn_file == tx_akn_root / "source.akn.xml"
-        assert case.metadata_file == tx_akn_root / "snap_state_uses_child_support_deduction_tx.meta.yaml"
+        assert case.akn_file is None
+        assert (
+            case.metadata_file
+            == tx_target_root / "snap_state_uses_child_support_deduction_tx.meta.yaml"
+        )
         assert case.section_eid is None
         assert case.section_eids == ["sec_a_1421_1", "sec_a_1421_2"]
         assert case.allow_context == []
@@ -6476,11 +6495,11 @@ cases:
         assert manifest.mode == "repo-augmented"
         assert len(manifest.cases) == 1
         assert manifest.gates.min_policyengine_pass_rate == 1.0
-        tx_akn_root = (
+        tx_target_root = (
             repo_root.parent
             / "rac-us-tx"
             / "sources"
-            / "akn"
+            / "targets"
             / "txhhs"
             / "twh"
             / "current-effective"
@@ -6492,10 +6511,11 @@ cases:
             case.source_id
             == "Texas SNAP self-employment expense option under Texas Works Handbook A-1323.4.5 and A-1323.4.7"
         )
-        assert case.akn_file == tx_akn_root / "source.akn.xml"
+        assert case.akn_file is None
         assert (
             case.metadata_file
-            == tx_akn_root / "snap_self_employment_expense_based_deduction_applies_tx.meta.yaml"
+            == tx_target_root
+            / "snap_self_employment_expense_based_deduction_applies_tx.meta.yaml"
         )
         assert case.section_eid is None
         assert case.section_eids == ["sec_a_1323_4_5", "sec_a_1323_4_7"]
@@ -6746,11 +6766,11 @@ cases:
         assert manifest.mode == "repo-augmented"
         assert len(manifest.cases) == 1
         assert manifest.gates.min_policyengine_pass_rate == 1.0
-        tx_akn_root = (
+        tx_target_root = (
             repo_root.parent
             / "rac-us-tx"
             / "sources"
-            / "akn"
+            / "targets"
             / "txhhs"
             / "twh"
             / "current-effective"
@@ -6762,8 +6782,11 @@ cases:
             case.source_id
             == "Texas SNAP standard medical expense deduction under MEPD and TW Bulletin 25-15 section 2"
         )
-        assert case.akn_file == tx_akn_root / "source.akn.xml"
-        assert case.metadata_file == tx_akn_root / "snap_standard_medical_expense_deduction_tx.meta.yaml"
+        assert case.akn_file is None
+        assert (
+            case.metadata_file
+            == tx_target_root / "snap_standard_medical_expense_deduction_tx.meta.yaml"
+        )
         assert (
             case.section_eid
             == "sec_bulletin_25_15_section_2_standard_medical_expense_deduction"
@@ -6794,11 +6817,11 @@ cases:
         assert manifest.mode == "repo-augmented"
         assert len(manifest.cases) == 1
         assert manifest.gates.min_policyengine_pass_rate == 1.0
-        tx_akn_root = (
+        tx_target_root = (
             repo_root.parent
             / "rac-us-tx"
             / "sources"
-            / "akn"
+            / "targets"
             / "txhhs"
             / "twh"
             / "current-effective"
@@ -6810,8 +6833,11 @@ cases:
             case.source_id
             == "Texas SNAP homeless shelter deduction availability under MEPD and TW Bulletin 25-15 section 2"
         )
-        assert case.akn_file == tx_akn_root / "source.akn.xml"
-        assert case.metadata_file == tx_akn_root / "snap_homeless_shelter_deduction_available_tx.meta.yaml"
+        assert case.akn_file is None
+        assert (
+            case.metadata_file
+            == tx_target_root / "snap_homeless_shelter_deduction_available_tx.meta.yaml"
+        )
         assert case.section_eid == "sec_bulletin_25_15_section_2_homeless_shelter_deduction"
         assert case.section_eids == []
         assert case.allow_context == []
@@ -6836,11 +6862,11 @@ cases:
         assert manifest.mode == "repo-augmented"
         assert len(manifest.cases) == 1
         assert manifest.gates.min_policyengine_pass_rate == 1.0
-        tx_akn_root = (
+        tx_target_root = (
             repo_root.parent
             / "rac-us-tx"
             / "sources"
-            / "akn"
+            / "targets"
             / "txhhs"
             / "twh"
             / "current-effective"
@@ -6852,10 +6878,10 @@ cases:
             case.source_id
             == "Texas SNAP TANF-NC gross income limit ratio under the Texas Works Handbook, B-471 Eligibility Criteria"
         )
-        assert case.akn_file == tx_akn_root / "source.akn.xml"
+        assert case.akn_file is None
         assert (
             case.metadata_file
-            == tx_akn_root / "snap_tanf_non_cash_gross_income_limit_fpg_ratio_tx.meta.yaml"
+            == tx_target_root / "snap_tanf_non_cash_gross_income_limit_fpg_ratio_tx.meta.yaml"
         )
         assert case.section_eid == "sec_b_471"
         assert case.section_eids == []
@@ -6881,11 +6907,11 @@ cases:
         assert manifest.mode == "repo-augmented"
         assert len(manifest.cases) == 1
         assert manifest.gates.min_policyengine_pass_rate == 1.0
-        tx_akn_root = (
+        tx_target_root = (
             repo_root.parent
             / "rac-us-tx"
             / "sources"
-            / "akn"
+            / "targets"
             / "txhhs"
             / "twh"
             / "current-effective"
@@ -6897,8 +6923,11 @@ cases:
             case.source_id
             == "Texas SNAP TANF-NC asset limit under the Texas Works Handbook, A-1210 General Policy"
         )
-        assert case.akn_file == tx_akn_root / "source.akn.xml"
-        assert case.metadata_file == tx_akn_root / "snap_tanf_non_cash_asset_limit_tx.meta.yaml"
+        assert case.akn_file is None
+        assert (
+            case.metadata_file
+            == tx_target_root / "snap_tanf_non_cash_asset_limit_tx.meta.yaml"
+        )
         assert case.section_eid == "sec_a_1210"
         assert case.section_eids == []
         assert case.allow_context == []
@@ -7443,11 +7472,13 @@ class TestRepoAugmentedContext:
         assert workspace.source_metadata_file is not None
         assert workspace.source_metadata_file.exists()
 
-    def test_load_source_text_for_eval_prefers_akn_backing(self, tmp_path):
+    def test_load_source_text_for_eval_prefers_akn_backing(self, tmp_path, monkeypatch):
+        arch_root = tmp_path / "arch"
+        monkeypatch.setenv("AUTORAC_ARCH_ROOT", str(arch_root))
         source_path = tmp_path / "sources" / "slices" / "tx" / "snap_sua.txt"
         source_path.parent.mkdir(parents=True, exist_ok=True)
         source_path.write_text("stale loose slice text")
-        akn_file = tmp_path / "sources" / "akn" / "tx" / "source.akn.xml"
+        akn_file = arch_root / "us-tx" / "tx" / "akn" / "source.akn.xml"
         akn_file.parent.mkdir(parents=True, exist_ok=True)
         akn_file.write_text(
             """
@@ -7468,7 +7499,7 @@ class TestRepoAugmentedContext:
             "version: 1\n"
             "source_backing:\n"
             "  kind: akn_section\n"
-            "  akn_file: ../../akn/tx/source.akn.xml\n"
+            "  arch_path: us-tx/tx/akn/source.akn.xml\n"
             "  section_eid: sec_sua\n"
             "relations:\n"
             "  - relation: sets\n"
@@ -7480,11 +7511,15 @@ class TestRepoAugmentedContext:
         assert "SUA - $445" in loaded
         assert "stale loose slice text" not in loaded
 
-    def test_load_source_text_for_eval_supports_multiple_akn_sections(self, tmp_path):
+    def test_load_source_text_for_eval_supports_multiple_akn_sections(
+        self, tmp_path, monkeypatch
+    ):
+        arch_root = tmp_path / "arch"
+        monkeypatch.setenv("AUTORAC_ARCH_ROOT", str(arch_root))
         source_path = tmp_path / "sources" / "slices" / "tx" / "child_support.txt"
         source_path.parent.mkdir(parents=True, exist_ok=True)
         source_path.write_text("old combined slice")
-        akn_file = tmp_path / "sources" / "akn" / "tx" / "source.akn.xml"
+        akn_file = arch_root / "us-tx" / "tx" / "akn" / "source.akn.xml"
         akn_file.parent.mkdir(parents=True, exist_ok=True)
         akn_file.write_text(
             """
@@ -7506,7 +7541,7 @@ class TestRepoAugmentedContext:
             "version: 1\n"
             "source_backing:\n"
             "  kind: akn_sections\n"
-            "  akn_file: ../../akn/tx/source.akn.xml\n"
+            "  arch_path: us-tx/tx/akn/source.akn.xml\n"
             "  section_eids:\n"
             "    - sec_one\n"
             "    - sec_two\n"
@@ -7517,11 +7552,15 @@ class TestRepoAugmentedContext:
         assert "Allowable child support payments may be deducted." in loaded
         assert "A child support deduction is allowed." in loaded
 
-    def test_load_source_text_for_eval_includes_block_list_items(self, tmp_path):
+    def test_load_source_text_for_eval_includes_block_list_items(
+        self, tmp_path, monkeypatch
+    ):
+        arch_root = tmp_path / "arch"
+        monkeypatch.setenv("AUTORAC_ARCH_ROOT", str(arch_root))
         source_path = tmp_path / "sources" / "slices" / "tx" / "telephone_standard.txt"
         source_path.parent.mkdir(parents=True, exist_ok=True)
         source_path.write_text("stale text")
-        akn_file = tmp_path / "sources" / "akn" / "tx" / "source.akn.xml"
+        akn_file = arch_root / "us-tx" / "tx" / "akn" / "source.akn.xml"
         akn_file.parent.mkdir(parents=True, exist_ok=True)
         akn_file.write_text(
             """
@@ -7546,7 +7585,7 @@ class TestRepoAugmentedContext:
             "version: 1\n"
             "source_backing:\n"
             "  kind: akn_section\n"
-            "  akn_file: ../../akn/tx/source.akn.xml\n"
+            "  arch_path: us-tx/tx/akn/source.akn.xml\n"
             "  section_eid: sec_tua\n"
         )
 
@@ -8034,7 +8073,7 @@ class TestSourceEval:
             "version: 1\n"
             "source_backing:\n"
             "  kind: akn_section\n"
-            "  akn_file: ../../akn/tn/source.akn.xml\n"
+            "  arch_path: us-tn/tn/akn/source.akn.xml\n"
             "  section_eid: sec_sua\n"
             "relations:\n"
             "  - relation: sets\n"

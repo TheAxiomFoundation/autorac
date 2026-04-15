@@ -2908,7 +2908,9 @@ class TestCmdValidateEdgeCases:
         assert call_kwargs["rac_us_path"] == tmp_path / "rac-us-tn"
         assert call_kwargs["rac_path"] == tmp_path / "rac"
 
-    def test_eval_source_prefers_akn_backed_slice_text(self, tmp_path):
+    def test_eval_source_prefers_akn_backed_slice_text(self, tmp_path, monkeypatch):
+        arch_root = tmp_path / "arch"
+        monkeypatch.setenv("AUTORAC_ARCH_ROOT", str(arch_root))
         policy_repo = tmp_path / "rac-us-tx"
         source_file = (
             policy_repo
@@ -2922,12 +2924,12 @@ class TestCmdValidateEdgeCases:
         source_file.parent.mkdir(parents=True, exist_ok=True)
         source_file.write_text("stale slice text")
         akn_file = (
-            policy_repo
-            / "sources"
-            / "akn"
+            arch_root
+            / "us-tx"
             / "txhhs"
             / "twh"
             / "current-effective"
+            / "akn"
             / "source.akn.xml"
         )
         akn_file.parent.mkdir(parents=True, exist_ok=True)
@@ -2949,7 +2951,7 @@ class TestCmdValidateEdgeCases:
             "version: 1\n"
             "source_backing:\n"
             "  kind: akn_section\n"
-            "  akn_file: ../../../../akn/txhhs/twh/current-effective/source.akn.xml\n"
+            "  arch_path: us-tx/txhhs/twh/current-effective/akn/source.akn.xml\n"
             "  section_eid: sec_sua\n"
             "relations:\n"
             "  - relation: sets\n"
