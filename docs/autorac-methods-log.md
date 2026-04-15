@@ -914,6 +914,24 @@ As of 2026-04-10:
   - [autorac-snap-tanf-non-cash-asset-limit-tx-20260414t154707](../artifacts/eval-suites/autorac-snap-tanf-non-cash-asset-limit-tx-20260414t154707)
   - [autorac-snap-tanf-non-cash-gross-income-limit-fpg-ratio-tx-20260414t155013](../artifacts/eval-suites/autorac-snap-tanf-non-cash-gross-income-limit-fpg-ratio-tx-20260414t155013)
 
+### 2026-04-14: Correct manual-source truth to AKN-backed documents before AutoRAC
+
+- Hypothesis:
+  - The slice-first SNAP manual lane had drifted from the intended stack. The correct architecture is to keep full policy documents in `sources/official/.../source.akn.xml`, then let AutoRAC consume AKN-backed section extracts rather than treating loose `sources/slices/*.txt` files as primary legal authority.
+- Effect:
+  - Added `load_source_text_for_eval()` to AutoRAC so both `eval-suite` source cases and direct `eval-source` calls prefer `source_backing` AKN metadata from slice sidecars over raw text-file reads.
+  - Extended prompt guidance so `source-metadata.json` explicitly tells the model that `source.txt` may be a derived extraction from authoritative AKN sections and should not be widened beyond that scope.
+  - Added targeted eval and CLI tests for single-section and multi-section AKN-backed slices.
+  - Added a canonical Texas current-effective AKN document under `rac-us-tx/sources/official/.../source.akn.xml` and pointed every active Texas SNAP manual slice sidecar back to that document with `source_backing` eIds.
+- Primary evidence paths:
+  - [evals.py](../src/autorac/harness/evals.py)
+  - [cli.py](../src/autorac/cli.py)
+  - [test_evals.py](../tests/test_evals.py)
+  - [test_cli.py](../tests/test_cli.py)
+  - [source.akn.xml](../../rac-us-tx/sources/official/txhhs/twh/current-effective/source.akn.xml)
+  - [README.md](../../rac-us-tx/README.md)
+  - [CLAUDE.md](../../rac-us-tx/CLAUDE.md)
+
 ## Open Documentation Debt
 
 - Add before/after metric snapshots for every kept harness change rather than relying on commit messages.

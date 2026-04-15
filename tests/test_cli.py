@@ -22,6 +22,7 @@ from autorac.cli import (
     cmd_compile,
     cmd_coverage,
     cmd_encode,
+    cmd_eval_source,
     cmd_eval_suite,
     cmd_eval_suite_archive,
     cmd_eval_suite_report,
@@ -2906,6 +2907,75 @@ class TestCmdValidateEdgeCases:
         call_kwargs = mock_pipeline_cls.call_args[1]
         assert call_kwargs["rac_us_path"] == tmp_path / "rac-us-tn"
         assert call_kwargs["rac_path"] == tmp_path / "rac"
+
+    def test_eval_source_prefers_akn_backed_slice_text(self, tmp_path):
+        policy_repo = tmp_path / "rac-us-tx"
+        source_file = (
+            policy_repo
+            / "sources"
+            / "slices"
+            / "txhhs"
+            / "twh"
+            / "current-effective"
+            / "snap_standard_utility_allowance_tx.txt"
+        )
+        source_file.parent.mkdir(parents=True, exist_ok=True)
+        source_file.write_text("stale slice text")
+        akn_file = (
+            policy_repo
+            / "sources"
+            / "official"
+            / "txhhs"
+            / "twh"
+            / "current-effective"
+            / "source.akn.xml"
+        )
+        akn_file.parent.mkdir(parents=True, exist_ok=True)
+        akn_file.write_text(
+            """
+<akomaNtoso xmlns="http://docs.oasis-open.org/legaldocml/ns/akn/3.0">
+  <doc name="doc">
+    <mainBody>
+      <hcontainer name="section" eId="sec_sua">
+        <heading>Utility allowances</heading>
+        <content><p>SUA - $445</p></content>
+      </hcontainer>
+    </mainBody>
+  </doc>
+</akomaNtoso>
+            """.strip()
+        )
+        source_file.with_name("snap_standard_utility_allowance_tx.meta.yaml").write_text(
+            "version: 1\n"
+            "source_backing:\n"
+            "  kind: akn_section\n"
+            "  akn_file: ../../../../official/txhhs/twh/current-effective/source.akn.xml\n"
+            "  section_eid: sec_sua\n"
+            "relations:\n"
+            "  - relation: sets\n"
+            "    target: cfr/7/273.9/d/6/iii#snap_standard_utility_allowance\n"
+            "    jurisdiction: TX\n"
+        )
+        (tmp_path / "rac").mkdir()
+
+        args = SimpleNamespace(
+            runner=[],
+            gpt_backend=None,
+            rac_path=None,
+            source_file=source_file,
+            source_id="snap_standard_utility_allowance_tx",
+            output=tmp_path / "out",
+            mode="cold",
+            allow_context=[],
+            policyengine_rac_var_hint="snap_standard_utility_allowance",
+            json=True,
+        )
+
+        with patch("autorac.cli.run_source_eval", return_value=[]) as mock_run:
+            cmd_eval_source(args)
+
+        assert "SUA - $445" in mock_run.call_args.kwargs["source_text"]
+        assert "stale slice text" not in mock_run.call_args.kwargs["source_text"]
 
     def test_validate_fallback_prefers_workspace_repo_roots(self, tmp_path):
         rac_file = tmp_path / "generated" / "test.rac"

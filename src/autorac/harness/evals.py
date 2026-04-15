@@ -1190,7 +1190,9 @@ def run_eval_suite(
                         ) or rac_path
                         case_results = run_source_eval(
                             source_id=case.source_id or case.name,
-                            source_text=(case.source_file or Path()).read_text(),
+                            source_text=load_source_text_for_eval(
+                                case.source_file or Path()
+                            ),
                             runner_specs=resolved_runners,
                             output_root=case_output_root,
                             policy_path=policy_repo_root,
@@ -2049,6 +2051,94 @@ def _load_source_metadata_for_slice(
     return metadata_path, payload
 
 
+def _resolve_slice_akn_backing(
+    source_path: Path,
+    source_metadata: dict[str, object] | None,
+) -> tuple[Path | None, list[str], str | None]:
+    """Resolve optional AKN backing metadata for a source slice."""
+    if source_metadata is None:
+        return None, [], None
+
+    backing = source_metadata.get("source_backing")
+    if not isinstance(backing, dict):
+        return None, [], None
+
+    kind = str(backing.get("kind", "")).strip()
+    if kind not in {"akn_section", "akn_sections"}:
+        return None, [], None
+
+    akn_value = backing.get("akn_file")
+    if akn_value is None:
+        raise ValueError(
+            f"AKN-backed source slice is missing source_backing.akn_file: {source_path}"
+        )
+    akn_file = Path(str(akn_value))
+    if not akn_file.is_absolute():
+        akn_file = (source_path.parent / akn_file).resolve()
+    if not akn_file.exists():
+        raise ValueError(f"AKN backing file not found for source slice: {akn_file}")
+
+    section_eids: list[str] = []
+    if backing.get("section_eid") is not None:
+        section_eids = [str(backing.get("section_eid")).strip()]
+    else:
+        raw_eids = backing.get("section_eids")
+        if raw_eids is None:
+            raise ValueError(
+                "AKN-backed source slice must declare source_backing.section_eid "
+                f"or source_backing.section_eids: {source_path}"
+            )
+        if not isinstance(raw_eids, list):
+            raise ValueError(
+                "AKN-backed source slice source_backing.section_eids must be a list: "
+                f"{source_path}"
+            )
+        section_eids = [str(item).strip() for item in raw_eids]
+
+    if not section_eids or any(not eid for eid in section_eids):
+        raise ValueError(
+            f"AKN-backed source slice has empty source_backing section eIds: {source_path}"
+        )
+
+    table_row_query = (
+        str(backing.get("table_row_query")).strip()
+        if backing.get("table_row_query") is not None
+        else None
+    )
+    return akn_file, section_eids, table_row_query
+
+
+def load_source_text_for_eval(source_path: Path) -> str:
+    """Load authoritative eval text for a source slice, preferring AKN backing."""
+    source_path = Path(source_path)
+    metadata_path, source_metadata = _load_source_metadata_for_slice(source_path)
+    del metadata_path
+    akn_file, section_eids, table_row_query = _resolve_slice_akn_backing(
+        source_path,
+        source_metadata,
+    )
+    if akn_file is None:
+        return source_path.read_text()
+
+    extracted_sections: list[str] = []
+    for section_eid in section_eids:
+        resolved_section_eid = _resolve_akn_section_eid(akn_file, section_eid)
+        section_text = extract_akn_section_text(
+            akn_file,
+            resolved_section_eid,
+            table_row_query=table_row_query,
+        ).strip()
+        if section_text:
+            extracted_sections.append(section_text)
+
+    if not extracted_sections:
+        raise ValueError(
+            f"AKN-backed source slice did not yield any extracted text: {source_path}"
+        )
+
+    return "\n\n".join(extracted_sections) + "\n"
+
+
 def _materialize_resolved_definition_stub(
     *,
     context_root: Path,
@@ -2559,6 +2649,7 @@ It is not independent legal authority; it records how this source slice relates 
 If this metadata says the source `sets` a canonical target, treat the slice as setting the effective jurisdiction-specific value for that delegated slot rather than amending an upstream federal numeric baseline.
 If this metadata says the source `sets` a canonical target but the copied workspace context does not actually contain that target file, do not add a top-level `imports:` entry to the bare canonical `cfr/...#...` or `usc/...#...` path just because the metadata names it. Keep the canonical target identity in the local output or dated `amend` block instead of guessing a broken import.
 If this metadata says the source `uses` or `imports` a canonical target, prefer importing or reusing that canonical target instead of redefining it locally.
+If this metadata includes `source_backing`, then `./source.txt` is a derived extraction from the listed authoritative AKN section or sections. Preserve that section-level scope; do not widen the rule beyond what those backed sections say.
 
 === BEGIN SOURCE-METADATA.JSON ===
 {source_metadata_json}

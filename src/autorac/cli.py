@@ -36,6 +36,7 @@ from .harness.evals import (
     _eval_result_from_payload,
     evaluate_artifact,
     load_eval_suite_manifest,
+    load_source_text_for_eval,
     run_akn_section_eval,
     run_eval_suite,
     run_legislation_gov_uk_section_eval,
@@ -2076,7 +2077,7 @@ def cmd_eval_source(args):
         print(f"Source file not found: {args.source_file}")
         sys.exit(1)
 
-    source_text = args.source_file.read_text()
+    source_text = load_source_text_for_eval(args.source_file)
     results = run_source_eval(
         source_id=args.source_id,
         source_text=source_text,
@@ -2598,7 +2599,7 @@ def cmd_eval_suite_revalidate(args):
             and case.source_file is not None
             and case.source_file.exists()
         ):
-            source_text = case.source_file.read_text()
+            source_text = load_source_text_for_eval(case.source_file)
 
         result.metrics = evaluate_artifact(
             rac_file=rac_file,
