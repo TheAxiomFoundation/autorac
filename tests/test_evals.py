@@ -8093,6 +8093,15 @@ class TestSourceEval:
             "avoid pre-2015 historical periods that PolicyEngine US cannot evaluate"
             in prompt
         )
+        assert "keep oracle-comparable tests threshold-invariant" in prompt
+        assert (
+            "Do not put local threshold helpers such as `snap_asset_limit`, `snap_asset_limit_with_elderly_or_disabled_member`, `snap_applicable_asset_limit`, or `snap_statutory_asset_limit`"
+            in prompt
+        )
+        assert (
+            "such as the two separate `12-month` phrases in 7 USC 2014(g)(1)(B)"
+            in prompt
+        )
         assert (
             "do not assume a different jurisdiction implies zero unless the source text expressly says so"
             in prompt
