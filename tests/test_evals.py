@@ -2786,6 +2786,11 @@ class TestEvalPrompt:
         assert "dtype:" in prompt
         assert "Avoid `match ...:` in generated RAC" in prompt
         assert "Use chained `if ...: value else:` expressions" in prompt
+        assert "encode the rate scalar itself" in prompt
+        assert "direct assertion requirement is a hard gate" in prompt
+        assert "`170 - 35`" in prompt
+        assert "do not use `0001`" in prompt
+        assert "value `1.65`" in prompt
 
     def test_build_eval_prompt_includes_supported_schema_enums(self, tmp_path):
         workspace = prepare_eval_workspace(
