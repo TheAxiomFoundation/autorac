@@ -1397,11 +1397,18 @@ def _call_body_contains_any(
 
 def extract_numbers_from_text(text: str) -> set[float]:
     """Extract numeric values from embedded statute text."""
+    original_text = text
     text = _clean_source_text_for_numeric_extraction(text)
     schedule_occurrences, text = _extract_collapsed_schedule_row_occurrences(text)
     numbers = set()
     occupied_spans: list[tuple[int, int]] = []
     numbers.update(schedule_occurrences)
+
+    for match in re.finditer(
+        r"\b(?:age|aged)\s+(\d{1,3})(?=\b)", original_text, re.IGNORECASE
+    ):
+        with contextlib.suppress(ValueError):
+            numbers.add(float(match.group(1)))
 
     for span, value in _iter_normalized_special_numeric_matches(text):
         numbers.add(value)
@@ -5219,11 +5226,23 @@ print("BENCHMARK:" + json.dumps(result))
             ) in adapter.annual_derived_spm_overrides:
                 if target_key in annual_override_values:
                     continue
-                if not all(source_key in inputs for source_key in source_keys):
-                    continue
+                missing_as_zero = (
+                    target_key == "snap_assets"
+                    and source_keys
+                    and source_keys[0] == "snap_total_resources_before_exclusions"
+                    and source_keys[0] in inputs
+                )
                 try:
-                    source_values = [float(inputs[source_key]) for source_key in source_keys]
+                    source_values = [
+                        float(inputs[source_key])
+                        if source_key in inputs
+                        else 0.0
+                        for source_key in source_keys
+                        if source_key in inputs or missing_as_zero
+                    ]
                 except (TypeError, ValueError):
+                    continue
+                if len(source_values) != len(source_keys):
                     continue
                 derived_value = derive_override_value(operation, source_values)
                 if derived_value is None:

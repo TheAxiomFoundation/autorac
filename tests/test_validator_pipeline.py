@@ -882,6 +882,25 @@ Households with at least one person age 60 or older or disabled: $4,500
         assert 3000.0 in occurrences
         assert 4500.0 in occurrences
 
+    def test_allows_table_label_age_values_for_grounding_without_requiring_scalars(self):
+        numbers = extract_numbers_from_text(
+            """
+Table 5: Maximum Asset Limits
+All other households: $3,000
+Households with at least one person age 60 or older or disabled: $4,500
+"""
+        )
+        occurrences = extract_numeric_occurrences_from_text(
+            """
+Table 5: Maximum Asset Limits
+All other households: $3,000
+Households with at least one person age 60 or older or disabled: $4,500
+"""
+        )
+
+        assert 60.0 in numbers
+        assert 60.0 not in occurrences
+
     def test_ignores_inline_usc_citation_references(self):
         occurrences = extract_numeric_occurrences_from_text(
             """
@@ -6174,6 +6193,23 @@ class TestBuildPeScenarioScript:
             True,
         )
         assert "'snap_assets': {'2024': 3000}" in script
+
+    def test_snap_asset_test_defaults_omitted_resource_exclusions_to_zero(
+        self, pipeline
+    ):
+        script = pipeline._build_pe_scenario_script(
+            "meets_snap_asset_test",
+            {
+                "snap_total_resources_before_exclusions": 4500,
+                "snap_household_has_elderly_or_disabled_member": False,
+                "period": "2026-01",
+            },
+            "2026",
+            False,
+        )
+
+        assert "'snap_assets': {'2026': 4500}" in script
+        assert "'has_usda_elderly_disabled': {'2026': False}" in script
 
     def test_snap_monthly_overrides_use_normalized_month_period(self, pipeline):
         script = pipeline._build_pe_scenario_script(
