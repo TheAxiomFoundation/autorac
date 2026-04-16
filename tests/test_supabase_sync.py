@@ -30,18 +30,14 @@ from autorac.supabase_sync import (
 class TestGetSupabaseClient:
     def test_missing_url(self):
         with patch.dict(os.environ, {}, clear=True):
-            with pytest.raises(
-                ValueError, match="Missing Supabase write credentials"
-            ):
+            with pytest.raises(ValueError, match="Missing Supabase write credentials"):
                 get_supabase_client()
 
     def test_missing_key(self):
         with patch.dict(
             os.environ, {"RAC_SUPABASE_URL": "https://example.supabase.co"}, clear=True
         ):
-            with pytest.raises(
-                ValueError, match="Missing Supabase write credentials"
-            ):
+            with pytest.raises(ValueError, match="Missing Supabase write credentials"):
                 get_supabase_client()
 
     def test_with_secret_key(self):
@@ -85,9 +81,7 @@ class TestGetSupabaseClient:
             },
             clear=True,
         ):
-            with pytest.raises(
-                ValueError, match="Missing Supabase write credentials"
-            ):
+            with pytest.raises(ValueError, match="Missing Supabase write credentials"):
                 get_supabase_client()
 
 

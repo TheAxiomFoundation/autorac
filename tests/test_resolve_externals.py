@@ -202,7 +202,9 @@ class TestResolveExternalDependencies:
         self, orchestrator, dir_21
     ):
         """Resolver should not clobber an existing file just because a variable is missing."""
-        (dir_21 / "a.rac").write_text("x:\n    imports:\n        - 26/21/b#missing_var\n")
+        (dir_21 / "a.rac").write_text(
+            "x:\n    imports:\n        - 26/21/b#missing_var\n"
+        )
         existing_target = dir_21 / "b.rac"
         existing_target.write_text(
             "# 26 USC 21(b)\nstatus: encoded\nexisting_var:\n    entity: TaxUnit\n"

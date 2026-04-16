@@ -84,7 +84,9 @@ class TestParseRunnerSpec:
 
 
 class TestCodexPromptEval:
-    def test_wait_for_codex_process_terminates_after_stable_last_message(self, tmp_path):
+    def test_wait_for_codex_process_terminates_after_stable_last_message(
+        self, tmp_path
+    ):
         last_message = tmp_path / ".codex-last-message.txt"
         last_message.write_text("ready\n")
 
@@ -246,7 +248,9 @@ def test_eval_result_payload_round_trips_prompt_digests():
 
         assert process.terminated is True
 
-    def test_run_codex_prompt_eval_accepts_stable_last_message_on_termination(self, tmp_path):
+    def test_run_codex_prompt_eval_accepts_stable_last_message_on_termination(
+        self, tmp_path
+    ):
         runner = parse_runner_spec("codex:gpt-5.4")
         workspace = prepare_eval_workspace(
             citation="uksi/2002/1792/regulation/6/3/a",
@@ -258,10 +262,7 @@ def test_eval_result_payload_round_trips_prompt_digests():
             extra_context_paths=[],
         )
 
-        bundle = (
-            "=== FILE: example.rac ===\n"
-            "status: encoded\n"
-        )
+        bundle = "=== FILE: example.rac ===\nstatus: encoded\n"
         event_lines = "\n".join(
             [
                 json.dumps(
@@ -317,9 +318,12 @@ def test_eval_result_payload_round_trips_prompt_digests():
             process.wait()
             return True
 
-        with patch("autorac.harness.evals.subprocess.Popen", FakePopen), patch(
-            "autorac.harness.evals._wait_for_codex_process",
-            side_effect=fake_wait,
+        with (
+            patch("autorac.harness.evals.subprocess.Popen", FakePopen),
+            patch(
+                "autorac.harness.evals._wait_for_codex_process",
+                side_effect=fake_wait,
+            ),
         ):
             response = _run_codex_prompt_eval(runner, workspace, "prompt")
 
@@ -341,10 +345,7 @@ def test_eval_result_payload_round_trips_prompt_digests():
             extra_context_paths=[],
         )
 
-        bundle = (
-            "=== FILE: example.rac ===\n"
-            "status: encoded\n"
-        )
+        bundle = "=== FILE: example.rac ===\nstatus: encoded\n"
 
         class FakePopen:
             def __init__(self, cmd, stdout, stderr, text, cwd):
@@ -364,9 +365,14 @@ def test_eval_result_payload_round_trips_prompt_digests():
             def kill(self):
                 self.returncode = -9
 
-        with patch("autorac.harness.evals.subprocess.Popen", FakePopen), patch(
-            "autorac.harness.evals._wait_for_codex_process",
-            side_effect=subprocess.TimeoutExpired(cmd=["codex", "exec"], timeout=600),
+        with (
+            patch("autorac.harness.evals.subprocess.Popen", FakePopen),
+            patch(
+                "autorac.harness.evals._wait_for_codex_process",
+                side_effect=subprocess.TimeoutExpired(
+                    cmd=["codex", "exec"], timeout=600
+                ),
+            ),
         ):
             response = _run_codex_prompt_eval(runner, workspace, "prompt")
 
@@ -418,9 +424,12 @@ def test_eval_result_payload_round_trips_prompt_digests():
             process.returncode = 0
             return False
 
-        with patch("autorac.harness.evals.subprocess.Popen", FakePopen), patch(
-            "autorac.harness.evals._wait_for_codex_process",
-            side_effect=fake_wait,
+        with (
+            patch("autorac.harness.evals.subprocess.Popen", FakePopen),
+            patch(
+                "autorac.harness.evals._wait_for_codex_process",
+                side_effect=fake_wait,
+            ),
         ):
             response = _run_codex_prompt_eval(runner, workspace, "prompt")
 
@@ -436,7 +445,7 @@ class TestEvaluateArtifact:
             '"""\n(a) Allowance of credit There shall be allowed a credit of $1,000.\n"""\n'
             "status: encoded\n\n"
             "ctc_amount:\n"
-            "    description: \"Child tax credit amount\"\n"
+            '    description: "Child tax credit amount"\n'
             "    unit: USD\n"
             "    from 2018-01-01: 1000\n"
             "    from 2025-01-01: 2200\n"
@@ -445,12 +454,15 @@ class TestEvaluateArtifact:
         compile_result = ValidationResult("compile", passed=True)
         ci_result = ValidationResult("ci", passed=True)
 
-        with patch(
-            "autorac.harness.validator_pipeline.ValidatorPipeline._run_compile_check",
-            return_value=compile_result,
-        ), patch(
-            "autorac.harness.validator_pipeline.ValidatorPipeline._run_ci",
-            return_value=ci_result,
+        with (
+            patch(
+                "autorac.harness.validator_pipeline.ValidatorPipeline._run_compile_check",
+                return_value=compile_result,
+            ),
+            patch(
+                "autorac.harness.validator_pipeline.ValidatorPipeline._run_ci",
+                return_value=ci_result,
+            ),
         ):
             metrics = evaluate_artifact(
                 rac_file=rac_file,
@@ -619,9 +631,14 @@ example_amount:
         mock_reviewer.assert_called_once()
         assert mock_reviewer.call_args.args[0] == "generalist-reviewer"
         assert "atomic source slice" in mock_reviewer.call_args.kwargs["review_context"]
-        assert "stale, generic, or misleading" in mock_reviewer.call_args.kwargs["review_context"]
+        assert (
+            "stale, generic, or misleading"
+            in mock_reviewer.call_args.kwargs["review_context"]
+        )
 
-    def test_timing_clause_review_context_mentions_boolean_day_predicate(self, tmp_path):
+    def test_timing_clause_review_context_mentions_boolean_day_predicate(
+        self, tmp_path
+    ):
         rac_file = tmp_path / "example.rac"
         rac_file.write_text(
             '''"""
@@ -763,10 +780,18 @@ example_timing_rule:
         assert "one_month_threshold = 1" in prompt
         assert "the `one month` comparator is not a standalone numeric scalar" in prompt
         assert "do not invent `1`-valued threshold/count helpers" in prompt
-        assert "branch-specific output is a `Count` or other non-Boolean basis selector" in prompt
+        assert (
+            "branch-specific output is a `Count` or other non-Boolean basis selector"
+            in prompt
+        )
         assert "do not write an inline conditional without `else`" in prompt
-        assert "negative tests should usually assert only the `_applies` boolean" in prompt
-        assert "expect the principal basis-count output to remain the active legal basis" in prompt
+        assert (
+            "negative tests should usually assert only the `_applies` boolean" in prompt
+        )
+        assert (
+            "expect the principal basis-count output to remain the active legal basis"
+            in prompt
+        )
         assert "trigger decomposed-date CI failures" in prompt
 
     def test_build_eval_prompt_for_single_payment_period_discourages_parallel_units(
@@ -795,10 +820,15 @@ example_timing_rule:
             runner_backend="openai",
         )
 
-        assert "keep one canonical fact or classification for that single period" in prompt
+        assert (
+            "keep one canonical fact or classification for that single period" in prompt
+        )
         assert "parallel free inputs like `*_in_weeks` and `*_in_months`" in prompt
         assert "do not require a second independent duration input" in prompt
-        assert "do not feed the same legal period through contradictory units or categories" in prompt
+        assert (
+            "do not feed the same legal period through contradictory units or categories"
+            in prompt
+        )
 
     def test_build_eval_prompt_for_amount_included_determination_requires_applicability_bound_money_output(
         self, tmp_path
@@ -829,7 +859,10 @@ example_timing_rule:
 
         assert "do not leave that money output unconditional" in prompt
         assert "typically with an explicit `else: 0`" in prompt
-        assert "paragraph-level exceptions or a different payment period displace the limb" in prompt
+        assert (
+            "paragraph-level exceptions or a different payment period displace the limb"
+            in prompt
+        )
 
     def test_build_eval_prompt_for_subject_to_includes_leaf_discourages_blanket_negation(
         self, tmp_path
@@ -839,7 +872,7 @@ example_timing_rule:
             runner=parse_runner_spec("openai:gpt-5.4"),
             output_root=tmp_path / "out",
             source_text=(
-                "Subject to paragraphs (3), (4) and (4A), \"earnings\" in the case "
+                'Subject to paragraphs (3), (4) and (4A), "earnings" in the case '
                 "of employment as an employed earner, means any remuneration or "
                 "profit derived from that employment and includes—\n\n"
                 "(a)\n\n"
@@ -865,8 +898,13 @@ example_timing_rule:
         assert "Do not make a composite `subject_to_*_satisfied`" in prompt
         assert "branch-specific fact gate" in prompt
         assert "permits this branch to count" in prompt
-        assert "do not collapse all cited qualifications into one opaque helper" in prompt
-        assert "one paragraph-specific qualification input or import per cited paragraph" in prompt
+        assert (
+            "do not collapse all cited qualifications into one opaque helper" in prompt
+        )
+        assert (
+            "one paragraph-specific qualification input or import per cited paragraph"
+            in prompt
+        )
 
     def test_build_eval_prompt_for_payment_level_slice_discourages_blind_unsupported_fallback(
         self, tmp_path
@@ -933,8 +971,13 @@ example_timing_rule:
         )
 
         assert "Except where paragraph (2) and (4) apply" in prompt
-        assert "do not assume the exception is displaced only when both cited paragraphs apply simultaneously" in prompt
-        assert "treat the slice as inoperative when any cited paragraph applies" in prompt
+        assert (
+            "do not assume the exception is displaced only when both cited paragraphs apply simultaneously"
+            in prompt
+        )
+        assert (
+            "treat the slice as inoperative when any cited paragraph applies" in prompt
+        )
 
     def test_build_eval_prompt_for_payable_phrase_preserves_payability_fact(
         self, tmp_path
@@ -1055,7 +1098,10 @@ example_timing_rule:
             runner_backend="openai",
         )
 
-        assert "distinguish mere placement context from binding lead-in conjuncts" in prompt
+        assert (
+            "distinguish mere placement context from binding lead-in conjuncts"
+            in prompt
+        )
         assert "preserve both conjuncts" in prompt
         assert "do not drop the same-length requirement" in prompt
 
@@ -1089,7 +1135,10 @@ example_timing_rule:
 
         assert "treat `X` and `Y` as a positive conjunction for this branch" in prompt
         assert "Do not rewrite that as material implication like `not X or Y`" in prompt
-        assert "if the branch-triggering condition itself is false, the branch-specific output should usually be `false`" in prompt
+        assert (
+            "if the branch-triggering condition itself is false, the branch-specific output should usually be `false`"
+            in prompt
+        )
 
     def test_build_eval_prompt_for_disjunctive_payment_description_preserves_qualifier_scope(
         self, tmp_path
@@ -1125,8 +1174,14 @@ example_timing_rule:
             runner_backend="openai",
         )
 
-        assert "preserve the scope of the first qualifier across every antecedent payment type it grammatically modifies" in prompt
-        assert "do not narrow the first `where ...` clause to only the later-mentioned category" in prompt
+        assert (
+            "preserve the scope of the first qualifier across every antecedent payment type it grammatically modifies"
+            in prompt
+        )
+        assert (
+            "do not narrow the first `where ...` clause to only the later-mentioned category"
+            in prompt
+        )
         assert "preserve the paragraph-(a) path for retired pay and pension" in prompt
 
     def test_build_eval_prompt_for_royalties_slice_preserves_consideration_scope(
@@ -1160,7 +1215,10 @@ example_timing_rule:
             runner_backend="openai",
         )
 
-        assert "preserve the consideration-for-use/right-to-use qualifier across both `royalties` and `other sums`" in prompt
+        assert (
+            "preserve the consideration-for-use/right-to-use qualifier across both `royalties` and `other sums`"
+            in prompt
+        )
         assert "do not model `royalty` as a free-standing qualifying limb" in prompt
         assert "a bare `payment_is_royalty` fact is too broad" in prompt
 
@@ -1194,9 +1252,18 @@ example_timing_rule:
             runner_backend="openai",
         )
 
-        assert "preserve the shared qualifying employment/office across each alternative limb" in prompt
-        assert "do not decompose the rule into one free-standing `person_is_X` fact plus separate `under_A` and `in_B` facts" in prompt
-        assert "distribute the shared qualifier across the alternatives with branch-specific combined facts" in prompt
+        assert (
+            "preserve the shared qualifying employment/office across each alternative limb"
+            in prompt
+        )
+        assert (
+            "do not decompose the rule into one free-standing `person_is_X` fact plus separate `under_A` and `in_B` facts"
+            in prompt
+        )
+        assert (
+            "distribute the shared qualifier across the alternatives with branch-specific combined facts"
+            in prompt
+        )
 
     def test_build_eval_prompt_for_complete_capital_bands_discourages_fractional_division(
         self, tmp_path
@@ -1227,9 +1294,15 @@ example_timing_rule:
             runner_backend="openai",
         )
 
-        assert "treat `for each £500` as counting complete bands, not proportional fractions" in prompt
+        assert (
+            "treat `for each £500` as counting complete bands, not proportional fractions"
+            in prompt
+        )
         assert "derive the band count with `floor(excess / band_size)`" in prompt
-        assert "include a non-exact-multiple excess case like `£750` above threshold" in prompt
+        assert (
+            "include a non-exact-multiple excess case like `£750` above threshold"
+            in prompt
+        )
 
 
 class TestGeneratedBundleCleaning:
@@ -1246,9 +1319,7 @@ class TestGeneratedBundleCleaning:
         cleaned = _clean_generated_file_content(content)
 
         assert cleaned == (
-            "- name: base\n"
-            "  output:\n"
-            "    child_benefit_enhanced_rate: 26.05\n"
+            "- name: base\n  output:\n    child_benefit_enhanced_rate: 26.05\n"
         )
 
     def test_clean_generated_file_content_strips_inline_currency_suffixes(self):
@@ -1369,7 +1440,10 @@ class TestGeneratedBundleCleaning:
 
         assert wrote is True
         test_payload = yaml.safe_load(expected.with_suffix(".rac.test").read_text())
-        assert test_payload[0]["output"]["snap_homeless_shelter_deduction_available"] is True
+        assert (
+            test_payload[0]["output"]["snap_homeless_shelter_deduction_available"]
+            is True
+        )
 
     def test_materialize_eval_artifact_normalizes_test_arithmetic_literals(
         self, tmp_path
@@ -1491,9 +1565,7 @@ class TestGeneratedBundleCleaning:
             "    dtype: Money\n"
         )
         assert output_file.with_suffix(".rac.test").read_text() == (
-            "- name: base\n"
-            "  output:\n"
-            "    child_benefit_enhanced_rate: 26.05\n"
+            "- name: base\n  output:\n    child_benefit_enhanced_rate: 26.05\n"
         )
 
     def test_materialize_eval_artifact_salvages_workspace_files_when_response_is_summary(
@@ -1600,7 +1672,9 @@ class TestGeneratedBundleCleaning:
     def test_materialize_eval_artifact_normalizes_single_row_block_conditional_and_tests(
         self, tmp_path
     ):
-        output_file = tmp_path / "source" / "uksi-2002-2005-schedule-2-second-adult-element.rac"
+        output_file = (
+            tmp_path / "source" / "uksi-2002-2005-schedule-2-second-adult-element.rac"
+        )
         source_text = (
             "Editorial note: current text valid from 2024-04-06.\n\n"
             "Structured table:\n"
@@ -1652,7 +1726,9 @@ class TestGeneratedBundleCleaning:
     def test_materialize_eval_artifact_drops_annual_effective_date_boundary_for_single_row(
         self, tmp_path
     ):
-        output_file = tmp_path / "source" / "uksi-2002-2005-schedule-2-worker-element.rac"
+        output_file = (
+            tmp_path / "source" / "uksi-2002-2005-schedule-2-worker-element.rac"
+        )
         source_text = (
             "Editorial note: text valid from 2021-04-06.\n\n"
             "Structured table:\n"
@@ -1693,7 +1769,9 @@ class TestGeneratedBundleCleaning:
     def test_materialize_eval_artifact_infers_annual_base_period_when_missing(
         self, tmp_path
     ):
-        output_file = tmp_path / "source" / "uksi-2002-2005-schedule-2-worker-element.rac"
+        output_file = (
+            tmp_path / "source" / "uksi-2002-2005-schedule-2-worker-element.rac"
+        )
         source_text = (
             "Editorial note: text valid from 2021-04-06.\n\n"
             "Structured table:\n"
@@ -1729,8 +1807,7 @@ class TestGeneratedBundleCleaning:
     ):
         output_file = tmp_path / "source" / "uksi-2002-1792-regulation-9-a.rac"
         source_text = (
-            "Editorial note: current text valid from 2025-03-21.\n\n"
-            "working tax credit;"
+            "Editorial note: current text valid from 2025-03-21.\n\nworking tax credit;"
         )
         llm_response = (
             "=== FILE: uksi-2002-1792-regulation-9-a.rac ===\n"
@@ -1793,8 +1870,8 @@ class TestGeneratedBundleCleaning:
             output_file,
             source_text=(
                 "Current-effective Alabama SNAP rule excerpt:\n\n"
-                "\"The standard will be used for all food assistance households "
-                "reporting self-employment income. This procedure is automated.\""
+                '"The standard will be used for all food assistance households '
+                'reporting self-employment income. This procedure is automated."'
             ),
         )
 
@@ -1889,9 +1966,9 @@ class TestGeneratedBundleCleaning:
             "    period: Day\n"
             "    dtype: String\n"
             "    from 2025-03-21:\n"
-            "        \"\"\"\n"
+            '        """\n'
             "        Example source line.\n"
-            "        \"\"\"\n\n"
+            '        """\n\n'
             "example_fact:\n"
             "    entity: Person\n"
             "    period: Day\n"
@@ -2060,16 +2137,20 @@ class TestGeneratedBundleCleaning:
             issues=[],
         )
 
-        with patch(
-            "autorac.harness.validator_pipeline.ValidatorPipeline._run_compile_check",
-            return_value=compile_result,
-        ), patch(
-            "autorac.harness.validator_pipeline.ValidatorPipeline._run_ci",
-            return_value=ci_result,
-        ), patch(
-            "autorac.harness.validator_pipeline.ValidatorPipeline._run_policyengine",
-            return_value=pe_result,
-        ) as mock_policyengine:
+        with (
+            patch(
+                "autorac.harness.validator_pipeline.ValidatorPipeline._run_compile_check",
+                return_value=compile_result,
+            ),
+            patch(
+                "autorac.harness.validator_pipeline.ValidatorPipeline._run_ci",
+                return_value=ci_result,
+            ),
+            patch(
+                "autorac.harness.validator_pipeline.ValidatorPipeline._run_policyengine",
+                return_value=pe_result,
+            ) as mock_policyengine,
+        ):
             metrics = evaluate_artifact(
                 rac_file=rac_file,
                 rac_root=tmp_path,
@@ -2088,7 +2169,9 @@ class TestGeneratedBundleCleaning:
 
 
 class TestAknSectionEval:
-    def test_extract_akn_section_text_supports_standard_akn_subsection_tags(self, tmp_path):
+    def test_extract_akn_section_text_supports_standard_akn_subsection_tags(
+        self, tmp_path
+    ):
         akn_file = tmp_path / "doc.xml"
         akn_file.write_text(
             """
@@ -2117,7 +2200,9 @@ class TestAknSectionEval:
         assert "(1)" in text
         assert "Example subsection text." in text
 
-    def test_extract_akn_section_text_includes_parent_intro_for_leaf_levels(self, tmp_path):
+    def test_extract_akn_section_text_includes_parent_intro_for_leaf_levels(
+        self, tmp_path
+    ):
         akn_file = tmp_path / "doc.xml"
         akn_file.write_text(
             """
@@ -2229,7 +2314,9 @@ class TestAknSectionEval:
         assert "Standard allowance" in text
         assert "single claimant aged under 25 | £316.98" in text
         assert "single claimant aged 25 or over" not in text
-        assert "the amounts are those shown in the table for a single claimant" not in text
+        assert (
+            "the amounts are those shown in the table for a single claimant" not in text
+        )
 
     def test_extract_akn_section_text_matches_table_row_query_despite_inline_spacing_edits(
         self, tmp_path
@@ -2262,7 +2349,10 @@ class TestAknSectionEval:
             table_row_query="second and each subsequent each child or qualifying young person",
         )
 
-        assert "second and each subsequenteach child or qualifying young person | £292.81" in text
+        assert (
+            "second and each subsequenteach child or qualifying young person | £292.81"
+            in text
+        )
         assert "Child element—" in text
         assert "Element | Amount" in text
         assert "single claimant aged under 25" not in text
@@ -2294,7 +2384,9 @@ class TestAknSectionEval:
         assert "Effective date: 2024-07-01" in text
         assert "Grant table text." in text
 
-    def test_extract_akn_section_text_includes_expression_valid_from_date(self, tmp_path):
+    def test_extract_akn_section_text_includes_expression_valid_from_date(
+        self, tmp_path
+    ):
         akn_file = tmp_path / "doc.xml"
         akn_file.write_text(
             """
@@ -2375,7 +2467,15 @@ class TestAknSectionEval:
     ):
         arch_root = tmp_path / "arch"
         monkeypatch.setenv("AUTORAC_ARCH_ROOT", str(arch_root))
-        akn_file = arch_root / "us-tx" / "txhhs" / "twh" / "current-effective" / "akn" / "source.akn.xml"
+        akn_file = (
+            arch_root
+            / "us-tx"
+            / "txhhs"
+            / "twh"
+            / "current-effective"
+            / "akn"
+            / "source.akn.xml"
+        )
         akn_file.parent.mkdir(parents=True, exist_ok=True)
         akn_file.write_text(
             """
@@ -2421,9 +2521,14 @@ class TestAknSectionEval:
             )
 
         assert results == ["ok"]
-        assert mock_run_source_eval.call_args.kwargs["source_metadata_path"] == metadata_file
         assert (
-            mock_run_source_eval.call_args.kwargs["source_metadata_payload"]["relations"][0]["target"]
+            mock_run_source_eval.call_args.kwargs["source_metadata_path"]
+            == metadata_file
+        )
+        assert (
+            mock_run_source_eval.call_args.kwargs["source_metadata_payload"][
+                "relations"
+            ][0]["target"]
             == "cfr/7/273.9/d/6/iii#snap_standard_utility_allowance"
         )
 
@@ -2504,7 +2609,9 @@ class TestAknSectionEval:
             == "sec_3_606_1"
         )
 
-    def test_resolve_akn_section_eid_rejects_standard_akn_parent_sections(self, tmp_path):
+    def test_resolve_akn_section_eid_rejects_standard_akn_parent_sections(
+        self, tmp_path
+    ):
         akn_file = tmp_path / "doc.xml"
         akn_file.write_text(
             """
@@ -2627,14 +2734,18 @@ class TestUkLegislationFetch:
         assert str(first.akn_file).startswith(str(shared_cache_root))
         assert mock_get.call_count == 2
 
-    def test_resolve_legislation_gov_uk_fetch_cache_root_prefers_override(self, tmp_path):
+    def test_resolve_legislation_gov_uk_fetch_cache_root_prefers_override(
+        self, tmp_path
+    ):
         override = tmp_path / "shared-cache"
         with patch.dict(
             "os.environ",
             {"AUTORAC_SHARED_LEGISLATION_CACHE": str(override)},
             clear=False,
         ):
-            resolved = _resolve_legislation_gov_uk_fetch_cache_root(tmp_path / "run-root")
+            resolved = _resolve_legislation_gov_uk_fetch_cache_root(
+                tmp_path / "run-root"
+            )
 
         assert resolved == override.resolve()
 
@@ -2651,16 +2762,20 @@ class TestUkLegislationFetch:
         fetched.akn_file.write_text("<akomaNtoso/>")
         fetched.clml_file.write_text("<Legislation/>")
 
-        with patch(
-            "autorac.harness.evals._resolve_legislation_gov_uk_fetch_cache_root",
-            return_value=shared_root,
-        ), patch(
-            "autorac.harness.evals._fetch_legislation_gov_uk_document",
-            return_value=fetched,
-        ) as mock_fetch, patch(
-            "autorac.harness.evals.run_akn_section_eval",
-            return_value=[],
-        ) as mock_run:
+        with (
+            patch(
+                "autorac.harness.evals._resolve_legislation_gov_uk_fetch_cache_root",
+                return_value=shared_root,
+            ),
+            patch(
+                "autorac.harness.evals._fetch_legislation_gov_uk_document",
+                return_value=fetched,
+            ) as mock_fetch,
+            patch(
+                "autorac.harness.evals.run_akn_section_eval",
+                return_value=[],
+            ) as mock_run,
+        ):
             results = run_legislation_gov_uk_section_eval(
                 source_ref="https://www.legislation.gov.uk/uksi/2002/1792",
                 section_eid="regulation-1",
@@ -2686,14 +2801,17 @@ class TestUkLegislationFetch:
                     raise requests.HTTPError(response=self)
                 return None
 
-        with patch(
-            "requests.get",
-            side_effect=[
-                FakeResponse("bad gateway", 502),
-                FakeResponse("<akomaNtoso/>"),
-                FakeResponse("<Legislation/>"),
-            ],
-        ) as mock_get, patch("time.sleep"):
+        with (
+            patch(
+                "requests.get",
+                side_effect=[
+                    FakeResponse("bad gateway", 502),
+                    FakeResponse("<akomaNtoso/>"),
+                    FakeResponse("<Legislation/>"),
+                ],
+            ) as mock_get,
+            patch("time.sleep"),
+        ):
             fetched = _fetch_legislation_gov_uk_document(
                 "https://www.legislation.gov.uk/ukpga/2010/1/section/1",
                 tmp_path,
@@ -2716,18 +2834,21 @@ class TestUkLegislationFetch:
                     raise requests.HTTPError(response=self)
                 return None
 
-        with patch(
-            "requests.get",
-            side_effect=[
-                FakeResponse("<akomaNtoso/>"),
-                requests.exceptions.ReadTimeout("timed out"),
-                requests.exceptions.ReadTimeout("timed out"),
-                requests.exceptions.ReadTimeout("timed out"),
-                requests.exceptions.ReadTimeout("timed out"),
-                requests.exceptions.ReadTimeout("timed out"),
-                requests.exceptions.ReadTimeout("timed out"),
-            ],
-        ) as mock_get, patch("time.sleep"):
+        with (
+            patch(
+                "requests.get",
+                side_effect=[
+                    FakeResponse("<akomaNtoso/>"),
+                    requests.exceptions.ReadTimeout("timed out"),
+                    requests.exceptions.ReadTimeout("timed out"),
+                    requests.exceptions.ReadTimeout("timed out"),
+                    requests.exceptions.ReadTimeout("timed out"),
+                    requests.exceptions.ReadTimeout("timed out"),
+                    requests.exceptions.ReadTimeout("timed out"),
+                ],
+            ) as mock_get,
+            patch("time.sleep"),
+        ):
             fetched = _fetch_legislation_gov_uk_document(
                 "https://www.legislation.gov.uk/ukpga/2010/1/section/1",
                 tmp_path,
@@ -2764,12 +2885,15 @@ class TestUkLegislationFetch:
         )
         clml_file.write_text("<Legislation/>")
 
-        with patch(
-            "autorac.harness.evals._fetch_legislation_gov_uk_document"
-        ) as mock_fetch, patch(
-            "autorac.harness.evals.run_akn_section_eval",
-            return_value=["ok"],
-        ) as mock_run:
+        with (
+            patch(
+                "autorac.harness.evals._fetch_legislation_gov_uk_document"
+            ) as mock_fetch,
+            patch(
+                "autorac.harness.evals.run_akn_section_eval",
+                return_value=["ok"],
+            ) as mock_run,
+        ):
             mock_fetch.return_value.source_id = "ukpga/2010/1/section/1"
             mock_fetch.return_value.content_url = (
                 "https://www.legislation.gov.uk/ukpga/2010/1/section/1"
@@ -2815,7 +2939,10 @@ class TestEvalPrompt:
             include_tests=True,
         )
 
-        assert "Do not invent schema keys like `namespace:`, `parameter`, `variable`, or `rule:`." in prompt
+        assert (
+            "Do not invent schema keys like `namespace:`, `parameter`, `variable`, or `rule:`."
+            in prompt
+        )
         assert "entity:" in prompt
         assert "period:" in prompt
         assert "dtype:" in prompt
@@ -2880,7 +3007,10 @@ class TestEvalPrompt:
             include_tests=True,
         )
 
-        assert "If the source cannot be represented faithfully with the supported schema" in prompt
+        assert (
+            "If the source cannot be represented faithfully with the supported schema"
+            in prompt
+        )
         assert "`status: entity_not_supported`" in prompt
         assert "`status: deferred`" in prompt
         assert "leave `.rac.test` empty" in prompt
@@ -2915,7 +3045,10 @@ class TestEvalPrompt:
 
         assert "omitted/repealed text shown only by ellipses" in prompt
         assert "keep the embedded source/docstring showing that omission" in prompt
-        assert "editorially omitted or repealed text shown by ellipses or dotted placeholders" in prompt
+        assert (
+            "editorially omitted or repealed text shown by ellipses or dotted placeholders"
+            in prompt
+        )
         assert "leave `.rac.test` empty" in prompt
 
     def test_build_eval_prompt_forbids_python_inline_ternaries(self, tmp_path):
@@ -2965,7 +3098,10 @@ class TestEvalPrompt:
 
         assert "`if condition: value else: other_value`" in prompt
         assert "Do not use YAML-style `if:` / `then:` / `else:` blocks." in prompt
-        assert "Do not append a multiline conditional directly onto another expression" in prompt
+        assert (
+            "Do not append a multiline conditional directly onto another expression"
+            in prompt
+        )
 
     def test_build_eval_prompt_requires_decimal_ratios_for_rate_dtype(self, tmp_path):
         workspace = prepare_eval_workspace(
@@ -2987,23 +3123,41 @@ class TestEvalPrompt:
             include_tests=True,
         )
 
-        assert "For `dtype: Rate`, encode percentages as decimal ratios like `0.60` or `0.40`, never as `%` literals." in prompt
+        assert (
+            "For `dtype: Rate`, encode percentages as decimal ratios like `0.60` or `0.40`, never as `%` literals."
+            in prompt
+        )
         assert "Do not respond with summaries like `Both files written`" in prompt
-        assert "Do not use inline assignment syntax like `:=` inside `from` blocks" in prompt
-        assert "model truncation toward zero rather than toward negative infinity" in prompt
+        assert (
+            "Do not use inline assignment syntax like `:=` inside `from` blocks"
+            in prompt
+        )
+        assert (
+            "model truncation toward zero rather than toward negative infinity"
+            in prompt
+        )
         assert "rounded to the nearest whole dollar" in prompt
         assert "Model explicit half-up rounding instead" in prompt
         assert "keep that rounding on the downstream output" in prompt
         assert "Do not push it upstream into an intermediate component" in prompt
-        assert "Wrong for a clause like `allotment equals the thrifty food plan reduced by 30 per centum of income" in prompt
+        assert (
+            "Wrong for a clause like `allotment equals the thrifty food plan reduced by 30 per centum of income"
+            in prompt
+        )
         assert "keep `snap_expected_contribution = snap_net_income * 0.3`" in prompt
-        assert "Do not fabricate an `imports:` target from a cited section unless that exact `path#symbol` import target is listed" in prompt
+        assert (
+            "Do not fabricate an `imports:` target from a cited section unless that exact `path#symbol` import target is listed"
+            in prompt
+        )
         assert "instead of guessing a broken import like `statute/...#symbol`" in prompt
         assert "compute the pre-rounding amount exactly" in prompt
         assert "`251 * 0.08 = 20.08`, which still rounds to `20`, not `21`" in prompt
         assert "floor(amount + 0.5)" in prompt
         assert "if amount >= 0: floor(amount) else: ceil(amount)" in prompt
-        assert "Reserve bare `floor(...)` for instructions that explicitly say `round down`" in prompt
+        assert (
+            "Reserve bare `floor(...)` for instructions that explicitly say `round down`"
+            in prompt
+        )
         assert "unsupported operators such as `%`" in prompt
         assert "include a `.rac.test` case with a negative fractional amount" in prompt
 
@@ -3033,8 +3187,13 @@ class TestEvalPrompt:
             include_tests=True,
         )
 
-        assert 'Prefer `Person` when the source states an amount or condition "in respect of"' in prompt
-        assert "do not collapse it into an unconditional family-level constant" in prompt
+        assert (
+            'Prefer `Person` when the source states an amount or condition "in respect of"'
+            in prompt
+        )
+        assert (
+            "do not collapse it into an unconditional family-level constant" in prompt
+        )
 
     def test_build_eval_prompt_for_uk_pence_threshold_requires_gbp_decimal_and_weekly_cadence(
         self, tmp_path
@@ -3097,11 +3256,20 @@ class TestEvalPrompt:
         )
 
         assert "positive conditional leaves" in prompt
-        assert "the inapplicable case should usually be `0` for `dtype: Money` or `false` for `dtype: Boolean`" in prompt
+        assert (
+            "the inapplicable case should usually be `0` for `dtype: Money` or `false` for `dtype: Boolean`"
+            in prompt
+        )
         assert "do not use an unconditional amount or `else: true`" in prompt
-        assert "fixed supplement, allowance, or addition is payable only while an eligibility condition holds" in prompt
+        assert (
+            "fixed supplement, allowance, or addition is payable only while an eligibility condition holds"
+            in prompt
+        )
         assert "do not leave that money output unconditional" in prompt
-        assert "do not collapse those facts into an opaque local input like `*_eligible_for_*`" in prompt
+        assert (
+            "do not collapse those facts into an opaque local input like `*_eligible_for_*`"
+            in prompt
+        )
         assert "prefer direct facts like `client_is_pregnant_parent`" in prompt
 
     def test_build_eval_prompt_for_determination_limb_discourages_invented_fallback(
@@ -3132,19 +3300,46 @@ class TestEvalPrompt:
             runner_backend="openai",
         )
 
-        assert "do not invent sibling outcomes for non-applicable cases with `else: 0`" in prompt
+        assert (
+            "do not invent sibling outcomes for non-applicable cases with `else: 0`"
+            in prompt
+        )
         assert "leave other cases to sibling limbs" in prompt
         assert "keep a branch-specific money or rate output for that basis" in prompt
-        assert "do not invent sibling outcomes for inapplicable cases with `else: 0`" in prompt
-        assert "pair the branch-specific money or rate output with a separate applicability boolean" in prompt
-        assert "omit assertions about the branch-specific money or rate output" in prompt
-        assert "qualifies its averaging basis with operative parenthetical text" in prompt
-        assert "includes periods in which the claimant does no work but disregards other absences" in prompt
+        assert (
+            "do not invent sibling outcomes for inapplicable cases with `else: 0`"
+            in prompt
+        )
+        assert (
+            "pair the branch-specific money or rate output with a separate applicability boolean"
+            in prompt
+        )
+        assert (
+            "omit assertions about the branch-specific money or rate output" in prompt
+        )
+        assert (
+            "qualifies its averaging basis with operative parenthetical text" in prompt
+        )
+        assert (
+            "includes periods in which the claimant does no work but disregards other absences"
+            in prompt
+        )
         assert "generic `average_weekly_income_*` input" in prompt
-        assert "`such other payments as may ... enable the claimant's average weekly income to be determined more accurately`" in prompt
-        assert "do not leave the branch money output unconditionally equal to the input average" in prompt
-        assert "do not reuse the parent provision's generic final-amount phrase" in prompt
-        assert "name the principal money or rate output after this limb's own basis or method" in prompt
+        assert (
+            "`such other payments as may ... enable the claimant's average weekly income to be determined more accurately`"
+            in prompt
+        )
+        assert (
+            "do not leave the branch money output unconditionally equal to the input average"
+            in prompt
+        )
+        assert (
+            "do not reuse the parent provision's generic final-amount phrase" in prompt
+        )
+        assert (
+            "name the principal money or rate output after this limb's own basis or method"
+            in prompt
+        )
 
     def test_build_eval_prompt_for_purpose_limited_deeming_discourages_unsupported_fallback(
         self, tmp_path
@@ -3175,7 +3370,10 @@ class TestEvalPrompt:
 
         assert "purpose-limited deeming clauses" in prompt
         assert "do not use `status: entity_not_supported`" in prompt
-        assert "paragraph-(5) amounts treated as earnings for paragraph-(9)(b) only" in prompt
+        assert (
+            "paragraph-(5) amounts treated as earnings for paragraph-(9)(b) only"
+            in prompt
+        )
 
     def test_build_eval_prompt_for_uk_residual_determination_limb_requires_other_case_condition(
         self, tmp_path
@@ -3209,7 +3407,10 @@ class TestEvalPrompt:
         assert "Do not treat the shared parent triggers alone as sufficient" in prompt
         assert "model a local residual-case fact or applicability helper" in prompt
         assert "no more specific sibling case applies" in prompt
-        assert "include a case where the parent conditions hold but the residual `other case` condition is false" in prompt
+        assert (
+            "include a case where the parent conditions hold but the residual `other case` condition is false"
+            in prompt
+        )
 
     def test_build_eval_prompt_for_shall_be_treated_discourages_fact_input_and_vacuous_true(
         self, tmp_path
@@ -3240,9 +3441,18 @@ class TestEvalPrompt:
 
         assert "do not introduce a `*_fact` input" in prompt
         assert "do not use vacuous `else: true`" in prompt
-        assert "do not replace the amount-level legal effect with a `Person`/`Day` boolean stand-in" in prompt
-        assert "prefer `status: entity_not_supported` over a pseudo-boolean approximation" in prompt
-        assert "If the current ontology cannot faithfully tie the deeming effect to the same payment amount" in prompt
+        assert (
+            "do not replace the amount-level legal effect with a `Person`/`Day` boolean stand-in"
+            in prompt
+        )
+        assert (
+            "prefer `status: entity_not_supported` over a pseudo-boolean approximation"
+            in prompt
+        )
+        assert (
+            "If the current ontology cannot faithfully tie the deeming effect to the same payment amount"
+            in prompt
+        )
 
     def test_build_eval_prompt_for_claimant_incurred_expenses_preserves_claimant_predicate(
         self, tmp_path
@@ -3270,7 +3480,10 @@ class TestEvalPrompt:
             runner_backend="openai",
         )
 
-        assert "If an expenses limb says the expenses are `incurred by the claimant`" in prompt
+        assert (
+            "If an expenses limb says the expenses are `incurred by the claimant`"
+            in prompt
+        )
         assert "preserve that claimant-incurred predicate explicitly" in prompt
         assert "Do not collapse it into only an employer-made-payment fact" in prompt
 
@@ -3304,8 +3517,14 @@ class TestEvalPrompt:
 
         assert "preserve a single legally operative reference day" in prompt
         assert "model one canonical operative claim-date fact" in prompt
-        assert "do not encode separate `day_is_date_claim_was_made` and `day_is_date_claim_was_treated_as_made` facts and then combine them with `or`" in prompt
-        assert "include one no-supersession case for the operative claim date and one supersession case for the supersession date" in prompt
+        assert (
+            "do not encode separate `day_is_date_claim_was_made` and `day_is_date_claim_was_treated_as_made` facts and then combine them with `or`"
+            in prompt
+        )
+        assert (
+            "include one no-supersession case for the operative claim date and one supersession case for the supersession date"
+            in prompt
+        )
 
     def test_build_eval_prompt_for_subject_to_override_discourages_permission_gate(
         self, tmp_path
@@ -3334,9 +3553,14 @@ class TestEvalPrompt:
             runner_backend="openai",
         )
 
-        assert "treat the cited provision as a possible override or displacement" in prompt
+        assert (
+            "treat the cited provision as a possible override or displacement" in prompt
+        )
         assert "model a local override/displacement boolean" in prompt
-        assert "Do not encode those `Subject to ...` qualifiers as helper names like `*_permits_*`" in prompt
+        assert (
+            "Do not encode those `Subject to ...` qualifiers as helper names like `*_permits_*`"
+            in prompt
+        )
 
     def test_build_eval_prompt_for_subject_to_unavailable_imports_allows_paragraph_specific_inputs(
         self, tmp_path
@@ -3365,9 +3589,18 @@ class TestEvalPrompt:
             runner_backend="openai",
         )
 
-        assert "When canonical imports for those cited paragraphs are available in the workspace, import them." in prompt
-        assert "paragraph-specific local inputs are acceptable for an isolated slice artifact" in prompt
-        assert "preserve the cited paragraph numbers and the branch-specific legal effect" in prompt
+        assert (
+            "When canonical imports for those cited paragraphs are available in the workspace, import them."
+            in prompt
+        )
+        assert (
+            "paragraph-specific local inputs are acceptable for an isolated slice artifact"
+            in prompt
+        )
+        assert (
+            "preserve the cited paragraph numbers and the branch-specific legal effect"
+            in prompt
+        )
 
     def test_build_eval_prompt_for_pure_cross_reference_computation_preserves_distinct_cited_alternatives(
         self, tmp_path
@@ -3398,27 +3631,55 @@ class TestEvalPrompt:
             runner_backend="openai",
         )
 
-        assert "do not replace the cited computation with local boolean `*_route_is_satisfied` or `*_fact` placeholders" in prompt
+        assert (
+            "do not replace the cited computation with local boolean `*_route_is_satisfied` or `*_fact` placeholders"
+            in prompt
+        )
         assert "do not emit a top-level `status: deferred` stub" in prompt
-        assert "do not collapse those cited alternatives into one generic treatment gate" in prompt
-        assert "preserve the distinct cited alternatives with paragraph-specific imports or local facts/amounts" in prompt
+        assert (
+            "do not collapse those cited alternatives into one generic treatment gate"
+            in prompt
+        )
+        assert (
+            "preserve the distinct cited alternatives with paragraph-specific imports or local facts/amounts"
+            in prompt
+        )
         assert "do not invent an extra `no treatment applies` branch" in prompt
-        assert "do not make the cited route-selection flags part of whether the paragraph itself applies" in prompt
-        assert "do not encode the consequence as an unqualified `if paragraph_4_route: paragraph_4_amount else: paragraph_10_amount`" in prompt
-        assert "Paragraph (10) must be selected by a paragraph-(10) route fact/import or by a derived paragraph-(10) route helper" in prompt
+        assert (
+            "do not make the cited route-selection flags part of whether the paragraph itself applies"
+            in prompt
+        )
+        assert (
+            "do not encode the consequence as an unqualified `if paragraph_4_route: paragraph_4_amount else: paragraph_10_amount`"
+            in prompt
+        )
+        assert (
+            "Paragraph (10) must be selected by a paragraph-(10) route fact/import or by a derived paragraph-(10) route helper"
+            in prompt
+        )
         assert "prefer a single mutually exclusive route selector" in prompt
-        assert "Do not expose two independent route booleans that allow both routes or neither route to be selected" in prompt
+        assert (
+            "Do not expose two independent route booleans that allow both routes or neither route to be selected"
+            in prompt
+        )
         assert "a safe local-placeholder shape is" in prompt
-        assert "paragraph-(10) route is derived as the applicable paragraph with not paragraph-(4) route" in prompt
+        assert (
+            "paragraph-(10) route is derived as the applicable paragraph with not paragraph-(4) route"
+            in prompt
+        )
         assert "Do not create an invalid-route output branch that returns `0`" in prompt
         assert "self-employed earnings trigger the paragraph" in prompt
-        assert "regulation 13 paragraph (4) or paragraph (10) chooses the accounting route" in prompt
-        assert "avoid a false case that makes a self-employed-earner branch fail merely because neither local route flag was selected" in prompt
+        assert (
+            "regulation 13 paragraph (4) or paragraph (10) chooses the accounting route"
+            in prompt
+        )
+        assert (
+            "avoid a false case that makes a self-employed-earner branch fail merely because neither local route flag was selected"
+            in prompt
+        )
         assert "include separate cases for the distinct cited alternatives" in prompt
 
-    def test_build_eval_prompt_requires_calendar_date_test_periods(
-        self, tmp_path
-    ):
+    def test_build_eval_prompt_requires_calendar_date_test_periods(self, tmp_path):
         workspace = prepare_eval_workspace(
             citation="uksi/2002/1792/regulation/13A/3/b",
             runner=parse_runner_spec("openai:gpt-5.4"),
@@ -3472,7 +3733,10 @@ class TestEvalPrompt:
         assert "The `.rac.test` file must contain YAML only" in prompt
         assert "must be a YAML list of cases beginning with `- name:`" in prompt
         assert "Do not add speculative future-period tests" in prompt
-        assert "must contain factual predicates or quantities, not the output variable" in prompt
+        assert (
+            "must contain factual predicates or quantities, not the output variable"
+            in prompt
+        )
         assert "use concrete numeric literals in inputs and outputs" in prompt
         assert "Use `output:` mappings in `.rac.test` cases" in prompt
 
@@ -3600,7 +3864,9 @@ class TestEvalPrompt:
         assert "Do not invent sample ages like `2`, `3`, `24`, or `25`" in prompt
         assert "keep `.rac.test` outputs scalar" in prompt
         assert "keep the row-defining conditions satisfied" in prompt
-        assert "principal amount variable should usually be a grounded constant" in prompt
+        assert (
+            "principal amount variable should usually be a grounded constant" in prompt
+        )
         assert "Do not include `alternate_branch_*` tests" in prompt
         assert "write `2500`, not `2,500`" in prompt
 
@@ -3633,13 +3899,30 @@ class TestEvalPrompt:
             runner_backend="openai",
         )
 
-        assert "Every substantive numeric occurrence in `./source.txt` must be represented by a named scalar definition in RAC" in prompt
-        assert "If the same numeric value appears twice in materially different legal roles" in prompt
-        assert "reuse that named scalar everywhere the rule compares against or computes with that number" in prompt
-        assert 'If `./source.txt` says someone is "aged 18 or over", "under 25"' in prompt
+        assert (
+            "Every substantive numeric occurrence in `./source.txt` must be represented by a named scalar definition in RAC"
+            in prompt
+        )
+        assert (
+            "If the same numeric value appears twice in materially different legal roles"
+            in prompt
+        )
+        assert (
+            "reuse that named scalar everywhere the rule compares against or computes with that number"
+            in prompt
+        )
+        assert (
+            'If `./source.txt` says someone is "aged 18 or over", "under 25"' in prompt
+        )
         assert "Do not create scalar variables for citation numbers" in prompt
-        assert "Do not invent `dtype: String` variables just to restate the effective date" in prompt
-        assert "Do not decompose legal dates into numeric `year`, `month`, or `day` scalar variables" in prompt
+        assert (
+            "Do not invent `dtype: String` variables just to restate the effective date"
+            in prompt
+        )
+        assert (
+            "Do not decompose legal dates into numeric `year`, `month`, or `day` scalar variables"
+            in prompt
+        )
         assert "1st September following the person's 19th birthday" in prompt
         assert "Use `==` for equality comparisons inside RAC expressions" in prompt
 
@@ -3663,8 +3946,7 @@ class TestEvalPrompt:
             == "context/legislation/ukpga/2002/16/section/3ZA/3.rac"
         )
         assert (
-            definition_files[0].import_path
-            == "legislation/ukpga/2002/16/section/3ZA/3"
+            definition_files[0].import_path == "legislation/ukpga/2002/16/section/3ZA/3"
         )
         stub_path = workspace.root / definition_files[0].workspace_path
         assert stub_path.exists()
@@ -3732,7 +4014,16 @@ is_individual_responsibility_contract:
 
         _hydrate_eval_root(runner_root, workspace)
 
-        hydrated = runner_root / "legislation" / "ukpga" / "2002" / "16" / "section" / "3ZA" / "3.rac"
+        hydrated = (
+            runner_root
+            / "legislation"
+            / "ukpga"
+            / "2002"
+            / "16"
+            / "section"
+            / "3ZA"
+            / "3.rac"
+        )
         assert hydrated.exists()
         assert "is_member_of_mixed_age_couple" in hydrated.read_text()
 
@@ -3759,26 +4050,65 @@ is_individual_responsibility_contract:
 
         assert "Resolved definition files are available below." in prompt
         assert "mixed-age couple" in prompt
-        assert "legislation/ukpga/2002/16/section/3ZA/3#is_member_of_mixed_age_couple" in prompt
-        assert "import that canonical definition instead of inventing a leaf-local helper" in prompt
+        assert (
+            "legislation/ukpga/2002/16/section/3ZA/3#is_member_of_mixed_age_couple"
+            in prompt
+        )
+        assert (
+            "import that canonical definition instead of inventing a leaf-local helper"
+            in prompt
+        )
         assert "Exact RAC import syntax for a resolved definition:" in prompt
         assert "imports:" in prompt
         assert "Do not replace that import with a local deferred stub" in prompt
-        assert "Do not encode such local factual predicates as placeholder constants like `true` or `false`." in prompt
-        assert "Do not encode such local factual predicates as `status: deferred`" in prompt
-        assert "preserve that post-adjustment quantity directly as an input/helper" in prompt
-        assert "prefer an input like `countable_gross_earned_income_after_disregards` over raw `gross_earned_income`" in prompt
+        assert (
+            "Do not encode such local factual predicates as placeholder constants like `true` or `false`."
+            in prompt
+        )
+        assert (
+            "Do not encode such local factual predicates as `status: deferred`"
+            in prompt
+        )
+        assert (
+            "preserve that post-adjustment quantity directly as an input/helper"
+            in prompt
+        )
+        assert (
+            "prefer an input like `countable_gross_earned_income_after_disregards` over raw `gross_earned_income`"
+            in prompt
+        )
         assert "after all other applicable deductions have been allowed" in prompt
-        assert "do not truncate the logic to only the deduction categories exercised by the example tests" in prompt
-        assert "import those exact symbols instead of inventing renamed locals that overlap with the copied file" in prompt
-        assert "import that helper and alias the requested target to it instead of rebuilding the same arithmetic locally" in prompt
-        assert "alias `snap_net_income_pre_shelter` to `snap_income_after_non_shelter_deductions`" in prompt
+        assert (
+            "do not truncate the logic to only the deduction categories exercised by the example tests"
+            in prompt
+        )
+        assert (
+            "import those exact symbols instead of inventing renamed locals that overlap with the copied file"
+            in prompt
+        )
+        assert (
+            "import that helper and alias the requested target to it instead of rebuilding the same arithmetic locally"
+            in prompt
+        )
+        assert (
+            "alias `snap_net_income_pre_shelter` to `snap_income_after_non_shelter_deductions`"
+            in prompt
+        )
         assert "preserve that helper's nearest input surface in tests" in prompt
-        assert "prefer test inputs like `snap_gross_income` plus the applicable deduction symbols" in prompt
-        assert "creating near-duplicate locals such as `snap_excess_medical_deduction`" in prompt
+        assert (
+            "prefer test inputs like `snap_gross_income` plus the applicable deduction symbols"
+            in prompt
+        )
+        assert (
+            "creating near-duplicate locals such as `snap_excess_medical_deduction`"
+            in prompt
+        )
         assert "make it a real rate-valued helper" in prompt
         assert "encode `50 percent` as `0.5` and `130 percent` as `1.3`" in prompt
-        assert "do not collapse the principal output to an unconditional `true` or `false`" in prompt
+        assert (
+            "do not collapse the principal output to an unconditional `true` or `false`"
+            in prompt
+        )
         assert (
             'encode the SNAP category gate directly as `snap_utility_allowance_type == "SUA"` or `"BUA"`'
             in prompt
@@ -3787,9 +4117,7 @@ is_individual_responsibility_contract:
             "use the previous month (for example `2025-09` for a rule that starts `from 2025-10-01`)"
             in prompt
         )
-        assert (
-            "should not have a test like `period: 2025-10` expecting `0`" in prompt
-        )
+        assert "should not have a test like `period: 2025-10` expecting `0`" in prompt
         assert (
             "do not invent a `pre_effective_*` zero-output test unless `./source.txt` itself says the earlier period value was zero or unavailable"
             in prompt
@@ -3837,14 +4165,18 @@ is_individual_responsibility_contract:
             runner_backend="openai",
         )
 
-        assert "Resolved canonical concept files from this corpus are available below." in prompt
+        assert (
+            "Resolved canonical concept files from this corpus are available below."
+            in prompt
+        )
         assert "individual responsibility contract" in prompt
         assert "statute/crs/26-2-703/12#is_individual_responsibility_contract" in prompt
-        assert "import or re-export that exact canonical concept instead of duplicating it locally" in prompt
+        assert (
+            "import or re-export that exact canonical concept instead of duplicating it locally"
+            in prompt
+        )
 
-    def test_build_eval_prompt_includes_import_vs_local_helper_protocol(
-        self, tmp_path
-    ):
+    def test_build_eval_prompt_includes_import_vs_local_helper_protocol(self, tmp_path):
         workspace = prepare_eval_workspace(
             citation="26 USC 24(c)",
             runner=parse_runner_spec("codex:gpt-5.4"),
@@ -3864,15 +4196,27 @@ is_individual_responsibility_contract:
             include_tests=True,
         )
 
-        assert "emit the upstream import instead of restating the concept locally" in prompt
+        assert (
+            "emit the upstream import instead of restating the concept locally"
+            in prompt
+        )
         assert "says a value is determined `in accordance with section X`" in prompt
         assert "statute/7/2014/e#snap_net_income" in prompt
         assert "snap_household_income_under_2014_d_and_e" in prompt
-        assert "author it as an amendment layer targeting those canonical symbols" in prompt
+        assert (
+            "author it as an amendment layer targeting those canonical symbols"
+            in prompt
+        )
         assert "emit dated `amend` blocks for those canonical symbols" in prompt
-        assert "Do not import a canonical output like `snap_one_person_thrifty_food_plan_cost`" in prompt
+        assert (
+            "Do not import a canonical output like `snap_one_person_thrifty_food_plan_cost`"
+            in prompt
+        )
         assert "Wrong for annual parameter tables" in prompt
-        assert "do not create documentary scalar constants like `snap_household_size_four: 4`" in prompt
+        assert (
+            "do not create documentary scalar constants like `snap_household_size_four: 4`"
+            in prompt
+        )
         assert "Right pattern for the USDA SNAP FY2026 table" in prompt
         assert "amend snap_one_person_thrifty_food_plan_cost:" in prompt
         assert "amend snap_minimum_allotment:" in prompt
@@ -3880,8 +4224,13 @@ is_individual_responsibility_contract:
         assert "after the 15th day of a month" in prompt
         assert "do not decompose it into separate numeric `*_day`" in prompt
         assert "Do not add a documentary scalar like `*_cutoff_day: 15`" in prompt
-        assert "include at least one `.rac.test` case that exercises the positive non-zero path" in prompt
-        assert "Do not write only zero-output tests for a thresholded deduction" in prompt
+        assert (
+            "include at least one `.rac.test` case that exercises the positive non-zero path"
+            in prompt
+        )
+        assert (
+            "Do not write only zero-output tests for a thresholded deduction" in prompt
+        )
         assert "still emit the unresolved import path" in prompt
         assert "otherwise keep the helper local to this leaf" in prompt
 
@@ -3975,8 +4324,9 @@ class TestOpenAIEvalRequest:
         ok_response = Mock()
         ok_response.status_code = 200
 
-        with patch("autorac.harness.evals.requests.post") as mock_post, patch(
-            "autorac.harness.evals.time.sleep"
+        with (
+            patch("autorac.harness.evals.requests.post") as mock_post,
+            patch("autorac.harness.evals.time.sleep"),
         ):
             mock_post.side_effect = [error_response, ok_response]
 
@@ -3992,8 +4342,9 @@ class TestOpenAIEvalRequest:
         ok_response = Mock()
         ok_response.status_code = 200
 
-        with patch("autorac.harness.evals.requests.post") as mock_post, patch(
-            "autorac.harness.evals.time.sleep"
+        with (
+            patch("autorac.harness.evals.requests.post") as mock_post,
+            patch("autorac.harness.evals.time.sleep"),
         ):
             mock_post.side_effect = [
                 requests.exceptions.ReadTimeout("timed out"),
@@ -4070,9 +4421,7 @@ cases:
                     atlas_path=None,
                 )
 
-    def test_run_eval_suite_allows_complete_repeated_scalar_sibling_set(
-        self, tmp_path
-    ):
+    def test_run_eval_suite_allows_complete_repeated_scalar_sibling_set(self, tmp_path):
         akn_file = tmp_path / "source.akn"
         akn_file.write_text(
             """
@@ -4119,17 +4468,20 @@ cases:
         first = _fake_eval_result("claude-opus", "taper-no-work-allowance")
         second = _fake_eval_result("claude-opus", "taper-with-work-allowance")
 
-        with patch(
-            "autorac.harness.evals._fetch_legislation_gov_uk_document",
-            return_value=FetchedLegislationGovUkDocument(
-                source_id="uksi/2013/376/2025-04-07",
-                content_url="https://www.legislation.gov.uk/uksi/2013/376/2025-04-07",
-                akn_file=akn_file,
-                clml_file=clml_file,
+        with (
+            patch(
+                "autorac.harness.evals._fetch_legislation_gov_uk_document",
+                return_value=FetchedLegislationGovUkDocument(
+                    source_id="uksi/2013/376/2025-04-07",
+                    content_url="https://www.legislation.gov.uk/uksi/2013/376/2025-04-07",
+                    akn_file=akn_file,
+                    clml_file=clml_file,
+                ),
             ),
-        ), patch(
-            "autorac.harness.evals.run_legislation_gov_uk_section_eval",
-            side_effect=[[first], [second]],
+            patch(
+                "autorac.harness.evals.run_legislation_gov_uk_section_eval",
+                side_effect=[[first], [second]],
+            ),
         ):
             results = run_eval_suite(
                 manifest=manifest,
@@ -4266,16 +4618,20 @@ cases:
         uk_result = _fake_eval_result("codex-gpt-5.4", "child-benefit-enhanced")
         source_result = _fake_eval_result("codex-gpt-5.4", "co-tanf-f")
 
-        with patch(
-            "autorac.harness.evals._validate_uk_shared_scalar_sibling_sets",
-            return_value=None,
-        ), patch(
-            "autorac.harness.evals.run_legislation_gov_uk_section_eval",
-            return_value=[uk_result],
-        ) as mock_uk, patch(
-            "autorac.harness.evals.run_source_eval",
-            return_value=[source_result],
-        ) as mock_source:
+        with (
+            patch(
+                "autorac.harness.evals._validate_uk_shared_scalar_sibling_sets",
+                return_value=None,
+            ),
+            patch(
+                "autorac.harness.evals.run_legislation_gov_uk_section_eval",
+                return_value=[uk_result],
+            ) as mock_uk,
+            patch(
+                "autorac.harness.evals.run_source_eval",
+                return_value=[source_result],
+            ) as mock_source,
+        ):
             results = run_eval_suite(
                 manifest=manifest,
                 output_root=tmp_path / "out",
@@ -4303,15 +4659,20 @@ cases:
             """.strip()
         )
         manifest = load_eval_suite_manifest(manifest_file)
-        uk_result = _fake_eval_result("openai-gpt-5.4", "uc-standard-allowance-single-young")
+        uk_result = _fake_eval_result(
+            "openai-gpt-5.4", "uc-standard-allowance-single-young"
+        )
 
-        with patch(
-            "autorac.harness.evals._validate_uk_shared_scalar_sibling_sets",
-            return_value=None,
-        ), patch(
-            "autorac.harness.evals.run_legislation_gov_uk_section_eval",
-            return_value=[uk_result],
-        ) as mock_uk:
+        with (
+            patch(
+                "autorac.harness.evals._validate_uk_shared_scalar_sibling_sets",
+                return_value=None,
+            ),
+            patch(
+                "autorac.harness.evals.run_legislation_gov_uk_section_eval",
+                return_value=[uk_result],
+            ) as mock_uk,
+        ):
             results = run_eval_suite(
                 manifest=manifest,
                 output_root=tmp_path / "out",
@@ -4320,7 +4681,10 @@ cases:
             )
 
         assert results == [uk_result]
-        assert mock_uk.call_args.kwargs["table_row_query"] == "single claimant aged under 25"
+        assert (
+            mock_uk.call_args.kwargs["table_row_query"]
+            == "single claimant aged under 25"
+        )
 
     def test_run_eval_suite_passes_oracle_settings_to_uk_runner(self, tmp_path):
         manifest_file = tmp_path / "suite.yaml"
@@ -4341,13 +4705,16 @@ cases:
         manifest = load_eval_suite_manifest(manifest_file)
         uk_result = _fake_eval_result("openai-gpt-5.4", "regulation-2-1-a")
 
-        with patch(
-            "autorac.harness.evals._validate_uk_shared_scalar_sibling_sets",
-            return_value=None,
-        ), patch(
-            "autorac.harness.evals.run_legislation_gov_uk_section_eval",
-            return_value=[uk_result],
-        ) as mock_uk:
+        with (
+            patch(
+                "autorac.harness.evals._validate_uk_shared_scalar_sibling_sets",
+                return_value=None,
+            ),
+            patch(
+                "autorac.harness.evals.run_legislation_gov_uk_section_eval",
+                return_value=[uk_result],
+            ) as mock_uk,
+        ):
             results = run_eval_suite(
                 manifest=manifest,
                 output_root=tmp_path / "out",
@@ -4359,9 +4726,7 @@ cases:
         assert mock_uk.call_args.kwargs["oracle"] == "none"
         assert mock_uk.call_args.kwargs["policyengine_country"] == "auto"
 
-    def test_run_eval_suite_passes_shared_fetch_cache_root_to_uk_runner(
-        self, tmp_path
-    ):
+    def test_run_eval_suite_passes_shared_fetch_cache_root_to_uk_runner(self, tmp_path):
         manifest_file = tmp_path / "suite.yaml"
         manifest_file.write_text(
             """
@@ -4379,13 +4744,16 @@ cases:
         uk_result = _fake_eval_result("openai-gpt-5.4", "child-benefit-enhanced")
         output_root = tmp_path / "out"
 
-        with patch(
-            "autorac.harness.evals._validate_uk_shared_scalar_sibling_sets",
-            return_value=None,
-        ), patch(
-            "autorac.harness.evals.run_legislation_gov_uk_section_eval",
-            return_value=[uk_result],
-        ) as mock_uk:
+        with (
+            patch(
+                "autorac.harness.evals._validate_uk_shared_scalar_sibling_sets",
+                return_value=None,
+            ),
+            patch(
+                "autorac.harness.evals.run_legislation_gov_uk_section_eval",
+                return_value=[uk_result],
+            ) as mock_uk,
+        ):
             run_eval_suite(
                 manifest=manifest,
                 output_root=output_root,
@@ -4458,15 +4826,19 @@ cases:
 
         source_result = _fake_eval_result("openai-gpt-5.4", "co-tanf-f")
 
-        with patch(
-            "autorac.harness.evals._validate_uk_shared_scalar_sibling_sets",
-            return_value=None,
-        ), patch(
-            "autorac.harness.evals.run_legislation_gov_uk_section_eval",
-            side_effect=RuntimeError("502 Server Error"),
-        ), patch(
-            "autorac.harness.evals.run_source_eval",
-            return_value=[source_result],
+        with (
+            patch(
+                "autorac.harness.evals._validate_uk_shared_scalar_sibling_sets",
+                return_value=None,
+            ),
+            patch(
+                "autorac.harness.evals.run_legislation_gov_uk_section_eval",
+                side_effect=RuntimeError("502 Server Error"),
+            ),
+            patch(
+                "autorac.harness.evals.run_source_eval",
+                return_value=[source_result],
+            ),
         ):
             results = run_eval_suite(
                 manifest=manifest,
@@ -4507,15 +4879,19 @@ cases:
 
         source_result = _fake_eval_result("openai-gpt-5.4", "co-tanf-f")
 
-        with patch(
-            "autorac.harness.evals._validate_uk_shared_scalar_sibling_sets",
-            return_value=None,
-        ), patch(
-            "autorac.harness.evals.run_legislation_gov_uk_section_eval",
-            side_effect=RuntimeError("502 Server Error"),
-        ), patch(
-            "autorac.harness.evals.run_source_eval",
-            return_value=[source_result],
+        with (
+            patch(
+                "autorac.harness.evals._validate_uk_shared_scalar_sibling_sets",
+                return_value=None,
+            ),
+            patch(
+                "autorac.harness.evals.run_legislation_gov_uk_section_eval",
+                side_effect=RuntimeError("502 Server Error"),
+            ),
+            patch(
+                "autorac.harness.evals.run_source_eval",
+                return_value=[source_result],
+            ),
         ):
             run_eval_suite(
                 manifest=manifest,
@@ -4564,12 +4940,15 @@ cases:
             snapshots.append(json.loads((output_root / "suite-run.json").read_text()))
             return [source_result]
 
-        with patch(
-            "autorac.harness.evals.run_source_eval",
-            side_effect=fake_run_source_eval,
-        ), patch(
-            "autorac.harness.evals._validate_uk_shared_scalar_sibling_sets",
-            return_value=None,
+        with (
+            patch(
+                "autorac.harness.evals.run_source_eval",
+                side_effect=fake_run_source_eval,
+            ),
+            patch(
+                "autorac.harness.evals._validate_uk_shared_scalar_sibling_sets",
+                return_value=None,
+            ),
         ):
             run_eval_suite(
                 manifest=manifest,
@@ -4628,12 +5007,15 @@ cases:
         )
         source_result = _fake_eval_result("openai-gpt-5.4", "snap-tn-sua")
 
-        with patch(
-            "autorac.harness.evals.run_source_eval",
-            return_value=[source_result],
-        ) as mock_run_source_eval, patch(
-            "autorac.harness.evals._validate_uk_shared_scalar_sibling_sets",
-            return_value=None,
+        with (
+            patch(
+                "autorac.harness.evals.run_source_eval",
+                return_value=[source_result],
+            ) as mock_run_source_eval,
+            patch(
+                "autorac.harness.evals._validate_uk_shared_scalar_sibling_sets",
+                return_value=None,
+            ),
         ):
             run_eval_suite(
                 manifest=manifest,
@@ -4685,7 +5067,9 @@ cases:
 </akomaNtoso>
             """.strip()
         )
-        source_file.with_name("snap_standard_utility_allowance_tx.meta.yaml").write_text(
+        source_file.with_name(
+            "snap_standard_utility_allowance_tx.meta.yaml"
+        ).write_text(
             "version: 1\n"
             "source_backing:\n"
             "  kind: akn_section\n"
@@ -4719,12 +5103,15 @@ cases:
         )
         source_result = _fake_eval_result("openai-gpt-5.4", "snap-tx-sua")
 
-        with patch(
-            "autorac.harness.evals.run_source_eval",
-            return_value=[source_result],
-        ) as mock_run_source_eval, patch(
-            "autorac.harness.evals._validate_uk_shared_scalar_sibling_sets",
-            return_value=None,
+        with (
+            patch(
+                "autorac.harness.evals.run_source_eval",
+                return_value=[source_result],
+            ) as mock_run_source_eval,
+            patch(
+                "autorac.harness.evals._validate_uk_shared_scalar_sibling_sets",
+                return_value=None,
+            ),
         ):
             run_eval_suite(
                 manifest=manifest,
@@ -4872,12 +5259,15 @@ cases:
         ]
         second = _fake_eval_result("openai-gpt-5.4", "case-two")
 
-        with patch(
-            "autorac.harness.evals.run_source_eval",
-            side_effect=[[usage_limited], [second]],
-        ) as mock_source, patch(
-            "autorac.harness.evals._validate_uk_shared_scalar_sibling_sets",
-            return_value=None,
+        with (
+            patch(
+                "autorac.harness.evals.run_source_eval",
+                side_effect=[[usage_limited], [second]],
+            ) as mock_source,
+            patch(
+                "autorac.harness.evals._validate_uk_shared_scalar_sibling_sets",
+                return_value=None,
+            ),
         ):
             results = run_eval_suite(
                 manifest=manifest,
@@ -4920,12 +5310,15 @@ cases:
         ]
         recovered = _fake_eval_result("openai-gpt-5.4", "case-one")
 
-        with patch(
-            "autorac.harness.evals.run_source_eval",
-            side_effect=[[timed_out], [recovered]],
-        ) as mock_source, patch(
-            "autorac.harness.evals._validate_uk_shared_scalar_sibling_sets",
-            return_value=None,
+        with (
+            patch(
+                "autorac.harness.evals.run_source_eval",
+                side_effect=[[timed_out], [recovered]],
+            ) as mock_source,
+            patch(
+                "autorac.harness.evals._validate_uk_shared_scalar_sibling_sets",
+                return_value=None,
+            ),
         ):
             results = run_eval_suite(
                 manifest=manifest,
@@ -4995,12 +5388,15 @@ cases:
             + "\n"
         )
 
-        with patch(
-            "autorac.harness.evals.run_source_eval",
-            return_value=[second],
-        ) as mock_source, patch(
-            "autorac.harness.evals._validate_uk_shared_scalar_sibling_sets",
-            return_value=None,
+        with (
+            patch(
+                "autorac.harness.evals.run_source_eval",
+                return_value=[second],
+            ) as mock_source,
+            patch(
+                "autorac.harness.evals._validate_uk_shared_scalar_sibling_sets",
+                return_value=None,
+            ),
         ):
             results = run_eval_suite(
                 manifest=manifest,
@@ -5259,7 +5655,9 @@ cases:
             ).resolve()
         ]
 
-    def test_repo_us_co_colorado_works_leaf_closeout_manifest_loads_expected_cases(self):
+    def test_repo_us_co_colorado_works_leaf_closeout_manifest_loads_expected_cases(
+        self,
+    ):
         repo_root = Path(__file__).resolve().parents[1]
         manifest = load_eval_suite_manifest(
             repo_root / "benchmarks" / "us_co_colorado_works_leaf_closeout.yaml"
@@ -5334,30 +5732,22 @@ cases:
             "snap-fy2026-cola-allotments",
         ]
         assert manifest.cases[0].allow_context == [
-            (repo_root.parent / "rac-us" / "statute" / "7" / "2014" / "e.rac").resolve(),
             (
-                repo_root.parent
-                / "rac-us"
-                / "statute"
-                / "7"
-                / "2014"
-                / "g"
-                / "1.rac"
+                repo_root.parent / "rac-us" / "statute" / "7" / "2014" / "e.rac"
+            ).resolve(),
+            (
+                repo_root.parent / "rac-us" / "statute" / "7" / "2014" / "g" / "1.rac"
             ).resolve(),
         ]
         assert manifest.cases[1].allow_context == [
             (repo_root.parent / "rac-us" / "statute" / "7" / "2017" / "a.rac").resolve()
         ]
         assert manifest.cases[2].allow_context == [
-            (repo_root.parent / "rac-us" / "statute" / "7" / "2017" / "a.rac").resolve(),
             (
-                repo_root.parent
-                / "rac-us"
-                / "statute"
-                / "7"
-                / "2017"
-                / "c"
-                / "1.rac"
+                repo_root.parent / "rac-us" / "statute" / "7" / "2017" / "a.rac"
+            ).resolve(),
+            (
+                repo_root.parent / "rac-us" / "statute" / "7" / "2017" / "c" / "1.rac"
             ).resolve(),
         ]
         assert manifest.cases[3].allow_context == [
@@ -5386,19 +5776,25 @@ cases:
         assert case.kind == "source"
         assert case.name == "snap-2017-c-3"
         assert case.source_id == "7 USC 2017(c)(3)"
-        assert case.source_file == (
-            repo_root.parent / "rac-us" / "sources" / "slices" / "7-USC" / "2017" / "c" / "3.txt"
-        ).resolve()
-        assert case.allow_context == [
-            (repo_root.parent / "rac-us" / "statute" / "7" / "2017" / "a.rac").resolve(),
-            (
+        assert (
+            case.source_file
+            == (
                 repo_root.parent
                 / "rac-us"
-                / "statute"
-                / "7"
+                / "sources"
+                / "slices"
+                / "7-USC"
                 / "2017"
                 / "c"
-                / "1.rac"
+                / "3.txt"
+            ).resolve()
+        )
+        assert case.allow_context == [
+            (
+                repo_root.parent / "rac-us" / "statute" / "7" / "2017" / "a.rac"
+            ).resolve(),
+            (
+                repo_root.parent / "rac-us" / "statute" / "7" / "2017" / "c" / "1.rac"
             ).resolve(),
         ]
 
@@ -5424,16 +5820,19 @@ cases:
         assert case.kind == "source"
         assert case.name == "snap-fy2026-cola-allotments"
         assert case.source_id == "USDA SNAP FY 2026 COLA allotment table"
-        assert case.source_file == (
-            repo_root.parent
-            / "rac-us"
-            / "sources"
-            / "slices"
-            / "usda"
-            / "snap"
-            / "fy-2026-cola"
-            / "allotment-table.txt"
-        ).resolve()
+        assert (
+            case.source_file
+            == (
+                repo_root.parent
+                / "rac-us"
+                / "sources"
+                / "slices"
+                / "usda"
+                / "snap"
+                / "fy-2026-cola"
+                / "allotment-table.txt"
+            ).resolve()
+        )
         assert case.allow_context == [
             (repo_root.parent / "rac-us" / "statute" / "7" / "2017" / "a.rac").resolve()
         ]
@@ -5458,24 +5857,22 @@ cases:
         assert case.kind == "source"
         assert case.name == "meets_snap_asset_test"
         assert case.source_id == "7 USC 2014(g)(1)"
-        assert case.source_file == (
-            repo_root.parent
-            / "rac-us"
-            / "sources"
-            / "slices"
-            / "7-USC"
-            / "2014"
-            / "g"
-            / "1.txt"
-        ).resolve()
-        assert case.allow_context == [
-            (
+        assert (
+            case.source_file
+            == (
                 repo_root.parent
                 / "rac-us"
-                / "usda"
-                / "snap"
-                / "fy-2026-cola"
-                / "2.rac"
+                / "sources"
+                / "slices"
+                / "7-USC"
+                / "2014"
+                / "g"
+                / "1.txt"
+            ).resolve()
+        )
+        assert case.allow_context == [
+            (
+                repo_root.parent / "rac-us" / "usda" / "snap" / "fy-2026-cola" / "2.rac"
             ).resolve()
         ]
         assert case.oracle == "policyengine"
@@ -5487,7 +5884,9 @@ cases:
     ):
         repo_root = Path(__file__).resolve().parents[1]
         manifest = load_eval_suite_manifest(
-            repo_root / "benchmarks" / "us_snap_asset_test_current_effective_refresh.yaml"
+            repo_root
+            / "benchmarks"
+            / "us_snap_asset_test_current_effective_refresh.yaml"
         )
 
         assert manifest.name == "SNAP asset test current-effective refresh"
@@ -5504,25 +5903,22 @@ cases:
         assert case.kind == "source"
         assert case.name == "meets_snap_asset_test_current_effective"
         assert case.source_id == "USDA SNAP FY2026 maximum asset limits"
-        assert case.source_file == (
-            repo_root.parent
-            / "rac-us"
-            / "sources"
-            / "slices"
-            / "usda"
-            / "snap"
-            / "fy-2026-cola"
-            / "asset-limits-current-effective.txt"
-        ).resolve()
-        assert case.allow_context == [
-            (
+        assert (
+            case.source_file
+            == (
                 repo_root.parent
                 / "rac-us"
-                / "statute"
-                / "7"
-                / "2014"
-                / "g"
-                / "1.rac"
+                / "sources"
+                / "slices"
+                / "usda"
+                / "snap"
+                / "fy-2026-cola"
+                / "asset-limits-current-effective.txt"
+            ).resolve()
+        )
+        assert case.allow_context == [
+            (
+                repo_root.parent / "rac-us" / "statute" / "7" / "2014" / "g" / "1.rac"
             ).resolve()
         ]
         assert case.oracle == "policyengine"
@@ -5549,33 +5945,25 @@ cases:
         assert case.kind == "source"
         assert case.name == "is_snap_eligible"
         assert case.source_id == "Federal SNAP current-effective household eligibility"
-        assert case.source_file == (
-            repo_root.parent
-            / "rac-us"
-            / "sources"
-            / "slices"
-            / "7-USC"
-            / "snap"
-            / "current-effective"
-            / "is_snap_eligible.txt"
-        ).resolve()
+        assert (
+            case.source_file
+            == (
+                repo_root.parent
+                / "rac-us"
+                / "sources"
+                / "slices"
+                / "7-USC"
+                / "snap"
+                / "current-effective"
+                / "is_snap_eligible.txt"
+            ).resolve()
+        )
         assert case.allow_context == [
             (
-                repo_root.parent
-                / "rac-us"
-                / "statute"
-                / "7"
-                / "2014"
-                / "c.rac"
+                repo_root.parent / "rac-us" / "statute" / "7" / "2014" / "c.rac"
             ).resolve(),
             (
-                repo_root.parent
-                / "rac-us"
-                / "statute"
-                / "7"
-                / "2014"
-                / "g"
-                / "1.rac"
+                repo_root.parent / "rac-us" / "statute" / "7" / "2014" / "g" / "1.rac"
             ).resolve(),
         ]
         assert case.oracle == "policyengine"
@@ -5597,17 +5985,22 @@ cases:
         case = manifest.cases[0]
         assert case.kind == "source"
         assert case.name == "snap_earned_income_deduction"
-        assert case.source_id == "SNAP earned income deduction under 7 USC 2014(e)(2)(B)"
-        assert case.source_file == (
-            repo_root.parent
-            / "rac-us"
-            / "sources"
-            / "slices"
-            / "7-USC"
-            / "snap"
-            / "current-effective"
-            / "snap_earned_income_deduction.txt"
-        ).resolve()
+        assert (
+            case.source_id == "SNAP earned income deduction under 7 USC 2014(e)(2)(B)"
+        )
+        assert (
+            case.source_file
+            == (
+                repo_root.parent
+                / "rac-us"
+                / "sources"
+                / "slices"
+                / "7-USC"
+                / "snap"
+                / "current-effective"
+                / "snap_earned_income_deduction.txt"
+            ).resolve()
+        )
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
@@ -5629,16 +6022,19 @@ cases:
         assert case.kind == "source"
         assert case.name == "snap_net_income_pre_shelter"
         assert case.source_id == "SNAP pre-shelter net income under 7 USC 2014(e)(6)(A)"
-        assert case.source_file == (
-            repo_root.parent
-            / "rac-us"
-            / "sources"
-            / "slices"
-            / "7-USC"
-            / "snap"
-            / "current-effective"
-            / "snap_net_income_pre_shelter.txt"
-        ).resolve()
+        assert (
+            case.source_file
+            == (
+                repo_root.parent
+                / "rac-us"
+                / "sources"
+                / "slices"
+                / "7-USC"
+                / "snap"
+                / "current-effective"
+                / "snap_net_income_pre_shelter.txt"
+            ).resolve()
+        )
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
@@ -5649,7 +6045,9 @@ cases:
     ):
         repo_root = Path(__file__).resolve().parents[1]
         manifest = load_eval_suite_manifest(
-            repo_root / "benchmarks" / "us_snap_nc_standard_utility_allowance_refresh.yaml"
+            repo_root
+            / "benchmarks"
+            / "us_snap_nc_standard_utility_allowance_refresh.yaml"
         )
 
         assert manifest.name == "North Carolina SNAP standard utility allowance refresh"
@@ -5659,18 +6057,24 @@ cases:
         case = manifest.cases[0]
         assert case.kind == "source"
         assert case.name == "snap_standard_utility_allowance_nc"
-        assert case.source_id == "North Carolina SNAP standard utility allowance under FNS 360.01(A)(1)"
-        assert case.source_file == (
-            repo_root.parent
-            / "rac-us-nc"
-            / "sources"
-            / "slices"
-            / "ncdhhs"
-            / "fns"
-            / "360"
-            / "current-effective"
-            / "snap_standard_utility_allowance_nc.txt"
-        ).resolve()
+        assert (
+            case.source_id
+            == "North Carolina SNAP standard utility allowance under FNS 360.01(A)(1)"
+        )
+        assert (
+            case.source_file
+            == (
+                repo_root.parent
+                / "rac-us-nc"
+                / "sources"
+                / "slices"
+                / "ncdhhs"
+                / "fns"
+                / "360"
+                / "current-effective"
+                / "snap_standard_utility_allowance_nc.txt"
+            ).resolve()
+        )
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
@@ -5681,7 +6085,9 @@ cases:
     ):
         repo_root = Path(__file__).resolve().parents[1]
         manifest = load_eval_suite_manifest(
-            repo_root / "benchmarks" / "us_snap_nc_limited_utility_allowance_refresh.yaml"
+            repo_root
+            / "benchmarks"
+            / "us_snap_nc_limited_utility_allowance_refresh.yaml"
         )
 
         assert manifest.name == "North Carolina SNAP limited utility allowance refresh"
@@ -5695,17 +6101,20 @@ cases:
             case.source_id
             == "North Carolina SNAP basic utility allowance under FNS 360.01(A)(2)"
         )
-        assert case.source_file == (
-            repo_root.parent
-            / "rac-us-nc"
-            / "sources"
-            / "slices"
-            / "ncdhhs"
-            / "fns"
-            / "360"
-            / "current-effective"
-            / "snap_limited_utility_allowance_nc.txt"
-        ).resolve()
+        assert (
+            case.source_file
+            == (
+                repo_root.parent
+                / "rac-us-nc"
+                / "sources"
+                / "slices"
+                / "ncdhhs"
+                / "fns"
+                / "360"
+                / "current-effective"
+                / "snap_limited_utility_allowance_nc.txt"
+            ).resolve()
+        )
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
@@ -5734,17 +6143,20 @@ cases:
             case.source_id
             == "North Carolina SNAP telephone utility allowance under FNS 360.01(A)(3)"
         )
-        assert case.source_file == (
-            repo_root.parent
-            / "rac-us-nc"
-            / "sources"
-            / "slices"
-            / "ncdhhs"
-            / "fns"
-            / "360"
-            / "current-effective"
-            / "snap_individual_utility_allowance_nc.txt"
-        ).resolve()
+        assert (
+            case.source_file
+            == (
+                repo_root.parent
+                / "rac-us-nc"
+                / "sources"
+                / "slices"
+                / "ncdhhs"
+                / "fns"
+                / "360"
+                / "current-effective"
+                / "snap_individual_utility_allowance_nc.txt"
+            ).resolve()
+        )
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
@@ -5755,7 +6167,9 @@ cases:
     ):
         repo_root = Path(__file__).resolve().parents[1]
         manifest = load_eval_suite_manifest(
-            repo_root / "benchmarks" / "us_snap_tn_standard_utility_allowance_refresh.yaml"
+            repo_root
+            / "benchmarks"
+            / "us_snap_tn_standard_utility_allowance_refresh.yaml"
         )
 
         assert manifest.name == "Tennessee SNAP standard utility allowance refresh"
@@ -5769,16 +6183,19 @@ cases:
             case.source_id
             == "Tennessee SNAP standard utility allowance under TennCare ABD Manual 125.020 section 3.d.ii.1.c.i"
         )
-        assert case.source_file == (
-            repo_root.parent
-            / "rac-us-tn"
-            / "sources"
-            / "slices"
-            / "tenncare"
-            / "post-eligibility"
-            / "current-effective"
-            / "snap_standard_utility_allowance_tn.txt"
-        ).resolve()
+        assert (
+            case.source_file
+            == (
+                repo_root.parent
+                / "rac-us-tn"
+                / "sources"
+                / "slices"
+                / "tenncare"
+                / "post-eligibility"
+                / "current-effective"
+                / "snap_standard_utility_allowance_tn.txt"
+            ).resolve()
+        )
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
@@ -5789,7 +6206,9 @@ cases:
     ):
         repo_root = Path(__file__).resolve().parents[1]
         manifest = load_eval_suite_manifest(
-            repo_root / "benchmarks" / "us_snap_tn_limited_utility_allowance_refresh.yaml"
+            repo_root
+            / "benchmarks"
+            / "us_snap_tn_limited_utility_allowance_refresh.yaml"
         )
 
         assert manifest.name == "Tennessee SNAP limited utility allowance refresh"
@@ -5803,16 +6222,19 @@ cases:
             case.source_id
             == "Tennessee SNAP limited utility allowance under TennCare ABD Manual 125.020 section 3.d.ii.1.c.ii"
         )
-        assert case.source_file == (
-            repo_root.parent
-            / "rac-us-tn"
-            / "sources"
-            / "slices"
-            / "tenncare"
-            / "post-eligibility"
-            / "current-effective"
-            / "snap_limited_utility_allowance_tn.txt"
-        ).resolve()
+        assert (
+            case.source_file
+            == (
+                repo_root.parent
+                / "rac-us-tn"
+                / "sources"
+                / "slices"
+                / "tenncare"
+                / "post-eligibility"
+                / "current-effective"
+                / "snap_limited_utility_allowance_tn.txt"
+            ).resolve()
+        )
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
@@ -5839,16 +6261,19 @@ cases:
             case.source_id
             == "Tennessee SNAP telephone utility allowance under TennCare ABD Manual 125.020 section 3.d.ii.1.c.iii"
         )
-        assert case.source_file == (
-            repo_root.parent
-            / "rac-us-tn"
-            / "sources"
-            / "slices"
-            / "tenncare"
-            / "post-eligibility"
-            / "current-effective"
-            / "snap_individual_utility_allowance_tn.txt"
-        ).resolve()
+        assert (
+            case.source_file
+            == (
+                repo_root.parent
+                / "rac-us-tn"
+                / "sources"
+                / "slices"
+                / "tenncare"
+                / "post-eligibility"
+                / "current-effective"
+                / "snap_individual_utility_allowance_tn.txt"
+            ).resolve()
+        )
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
@@ -5875,22 +6300,24 @@ cases:
             case.source_id
             == "Tennessee SNAP child support deduction election under SNAP Policy Manual Chapter 23.L"
         )
-        assert case.source_file == (
-            repo_root.parent
-            / "rac-us-tn"
-            / "sources"
-            / "slices"
-            / "tdhs"
-            / "snap"
-            / "current-effective"
-            / "snap_state_uses_child_support_deduction_tn.txt"
-        ).resolve()
+        assert (
+            case.source_file
+            == (
+                repo_root.parent
+                / "rac-us-tn"
+                / "sources"
+                / "slices"
+                / "tdhs"
+                / "snap"
+                / "current-effective"
+                / "snap_state_uses_child_support_deduction_tn.txt"
+            ).resolve()
+        )
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
         assert (
-            case.policyengine_rac_var_hint
-            == "snap_state_uses_child_support_deduction"
+            case.policyengine_rac_var_hint == "snap_state_uses_child_support_deduction"
         )
 
     def test_repo_us_snap_tn_self_employment_expense_option_refresh_manifest_loads_expected_case(
@@ -5903,10 +6330,7 @@ cases:
             / "us_snap_tn_self_employment_expense_option_refresh.yaml"
         )
 
-        assert (
-            manifest.name
-            == "Tennessee SNAP self-employment expense option refresh"
-        )
+        assert manifest.name == "Tennessee SNAP self-employment expense option refresh"
         assert manifest.mode == "repo-augmented"
         assert len(manifest.cases) == 1
         assert manifest.gates.min_policyengine_pass_rate == 1.0
@@ -5917,16 +6341,19 @@ cases:
             case.source_id
             == "Tennessee SNAP self-employment expense option under TDHS SNAP Income Policy 24.14"
         )
-        assert case.source_file == (
-            repo_root.parent
-            / "rac-us-tn"
-            / "sources"
-            / "slices"
-            / "tdhs"
-            / "snap"
-            / "current-effective"
-            / "snap_self_employment_expense_based_deduction_applies_tn.txt"
-        ).resolve()
+        assert (
+            case.source_file
+            == (
+                repo_root.parent
+                / "rac-us-tn"
+                / "sources"
+                / "slices"
+                / "tdhs"
+                / "snap"
+                / "current-effective"
+                / "snap_self_employment_expense_based_deduction_applies_tn.txt"
+            ).resolve()
+        )
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
@@ -5945,10 +6372,7 @@ cases:
             / "us_snap_ca_self_employment_expense_option_refresh.yaml"
         )
 
-        assert (
-            manifest.name
-            == "California SNAP self-employment expense option refresh"
-        )
+        assert manifest.name == "California SNAP self-employment expense option refresh"
         assert manifest.mode == "repo-augmented"
         assert len(manifest.cases) == 1
         assert manifest.gates.min_policyengine_pass_rate == 1.0
@@ -5959,16 +6383,19 @@ cases:
             case.source_id
             == "California CalFresh self-employment expense choice under MPP 63-503.413"
         )
-        assert case.source_file == (
-            repo_root.parent
-            / "rac-us-ca"
-            / "sources"
-            / "slices"
-            / "cdss"
-            / "calfresh"
-            / "current-effective"
-            / "snap_self_employment_expense_based_deduction_applies_ca.txt"
-        ).resolve()
+        assert (
+            case.source_file
+            == (
+                repo_root.parent
+                / "rac-us-ca"
+                / "sources"
+                / "slices"
+                / "cdss"
+                / "calfresh"
+                / "current-effective"
+                / "snap_self_employment_expense_based_deduction_applies_ca.txt"
+            ).resolve()
+        )
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
@@ -5998,22 +6425,24 @@ cases:
             case.source_id
             == "California CalFresh child support exclusion under MPP 63-502.2(p)"
         )
-        assert case.source_file == (
-            repo_root.parent
-            / "rac-us-ca"
-            / "sources"
-            / "slices"
-            / "cdss"
-            / "calfresh"
-            / "current-effective"
-            / "snap_state_uses_child_support_deduction_ca.txt"
-        ).resolve()
+        assert (
+            case.source_file
+            == (
+                repo_root.parent
+                / "rac-us-ca"
+                / "sources"
+                / "slices"
+                / "cdss"
+                / "calfresh"
+                / "current-effective"
+                / "snap_state_uses_child_support_deduction_ca.txt"
+            ).resolve()
+        )
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
         assert (
-            case.policyengine_rac_var_hint
-            == "snap_state_uses_child_support_deduction"
+            case.policyengine_rac_var_hint == "snap_state_uses_child_support_deduction"
         )
 
     def test_repo_us_snap_co_self_employment_expense_option_refresh_manifest_loads_expected_case(
@@ -6037,16 +6466,19 @@ cases:
             case.source_id
             == "Colorado SNAP self-employment expense deduction rule under 10 CCR 2506-1 section 4.403.11(B)-(C)(3)"
         )
-        assert case.source_file == (
-            repo_root.parent
-            / "rac-us-co"
-            / "sources"
-            / "slices"
-            / "cdhs"
-            / "snap"
-            / "current-effective"
-            / "snap_self_employment_expense_based_deduction_applies_co.txt"
-        ).resolve()
+        assert (
+            case.source_file
+            == (
+                repo_root.parent
+                / "rac-us-co"
+                / "sources"
+                / "slices"
+                / "cdhs"
+                / "snap"
+                / "current-effective"
+                / "snap_self_employment_expense_based_deduction_applies_co.txt"
+            ).resolve()
+        )
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
@@ -6076,22 +6508,24 @@ cases:
             case.source_id
             == "Colorado SNAP child support exclusion under 10 CCR 2506-1 section 4.407.5"
         )
-        assert case.source_file == (
-            repo_root.parent
-            / "rac-us-co"
-            / "sources"
-            / "slices"
-            / "cdhs"
-            / "snap"
-            / "current-effective"
-            / "snap_state_uses_child_support_deduction_co.txt"
-        ).resolve()
+        assert (
+            case.source_file
+            == (
+                repo_root.parent
+                / "rac-us-co"
+                / "sources"
+                / "slices"
+                / "cdhs"
+                / "snap"
+                / "current-effective"
+                / "snap_state_uses_child_support_deduction_co.txt"
+            ).resolve()
+        )
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
         assert (
-            case.policyengine_rac_var_hint
-            == "snap_state_uses_child_support_deduction"
+            case.policyengine_rac_var_hint == "snap_state_uses_child_support_deduction"
         )
 
     def test_repo_us_snap_ny_individual_utility_allowance_refresh_manifest_loads_expected_case(
@@ -6115,16 +6549,19 @@ cases:
             case.source_id
             == "New York SNAP telephone utility allowance under OTDA LDSS-5006 effective October 1, 2025"
         )
-        assert case.source_file == (
-            repo_root.parent
-            / "rac-us-ny"
-            / "sources"
-            / "slices"
-            / "otda"
-            / "snap"
-            / "current-effective"
-            / "snap_individual_utility_allowance_ny.txt"
-        ).resolve()
+        assert (
+            case.source_file
+            == (
+                repo_root.parent
+                / "rac-us-ny"
+                / "sources"
+                / "slices"
+                / "otda"
+                / "snap"
+                / "current-effective"
+                / "snap_individual_utility_allowance_ny.txt"
+            ).resolve()
+        )
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
@@ -6151,22 +6588,24 @@ cases:
             case.source_id
             == "New York SNAP child support deduction election under OTDA SNAP Source Book section 13.G.2"
         )
-        assert case.source_file == (
-            repo_root.parent
-            / "rac-us-ny"
-            / "sources"
-            / "slices"
-            / "otda"
-            / "snap"
-            / "current-effective"
-            / "snap_state_uses_child_support_deduction_ny.txt"
-        ).resolve()
+        assert (
+            case.source_file
+            == (
+                repo_root.parent
+                / "rac-us-ny"
+                / "sources"
+                / "slices"
+                / "otda"
+                / "snap"
+                / "current-effective"
+                / "snap_state_uses_child_support_deduction_ny.txt"
+            ).resolve()
+        )
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
         assert (
-            case.policyengine_rac_var_hint
-            == "snap_state_uses_child_support_deduction"
+            case.policyengine_rac_var_hint == "snap_state_uses_child_support_deduction"
         )
 
     def test_repo_us_snap_nc_child_support_deduction_option_refresh_manifest_loads_expected_case(
@@ -6179,7 +6618,10 @@ cases:
             / "us_snap_nc_child_support_deduction_option_refresh.yaml"
         )
 
-        assert manifest.name == "North Carolina SNAP child support deduction option refresh"
+        assert (
+            manifest.name
+            == "North Carolina SNAP child support deduction option refresh"
+        )
         assert manifest.mode == "repo-augmented"
         assert len(manifest.cases) == 1
         assert manifest.gates.min_policyengine_pass_rate == 1.0
@@ -6190,23 +6632,25 @@ cases:
             case.source_id
             == "North Carolina SNAP child support deduction election under FNS 340 section 340.19"
         )
-        assert case.source_file == (
-            repo_root.parent
-            / "rac-us-nc"
-            / "sources"
-            / "slices"
-            / "ncdhhs"
-            / "fns"
-            / "340"
-            / "current-effective"
-            / "snap_state_uses_child_support_deduction_nc.txt"
-        ).resolve()
+        assert (
+            case.source_file
+            == (
+                repo_root.parent
+                / "rac-us-nc"
+                / "sources"
+                / "slices"
+                / "ncdhhs"
+                / "fns"
+                / "340"
+                / "current-effective"
+                / "snap_state_uses_child_support_deduction_nc.txt"
+            ).resolve()
+        )
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
         assert (
-            case.policyengine_rac_var_hint
-            == "snap_state_uses_child_support_deduction"
+            case.policyengine_rac_var_hint == "snap_state_uses_child_support_deduction"
         )
 
     def test_repo_us_snap_nc_self_employment_expense_option_refresh_manifest_loads_expected_case(
@@ -6233,17 +6677,20 @@ cases:
             case.source_id
             == "North Carolina SNAP self-employment expense option under FNS 315 section 315.28"
         )
-        assert case.source_file == (
-            repo_root.parent
-            / "rac-us-nc"
-            / "sources"
-            / "slices"
-            / "ncdhhs"
-            / "fns"
-            / "315"
-            / "current-effective"
-            / "snap_self_employment_expense_based_deduction_applies_nc.txt"
-        ).resolve()
+        assert (
+            case.source_file
+            == (
+                repo_root.parent
+                / "rac-us-nc"
+                / "sources"
+                / "slices"
+                / "ncdhhs"
+                / "fns"
+                / "315"
+                / "current-effective"
+                / "snap_self_employment_expense_based_deduction_applies_nc.txt"
+            ).resolve()
+        )
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
@@ -6273,16 +6720,19 @@ cases:
             case.source_id
             == "New York SNAP self-employment expense treatment under OTDA SNAP Source Book section 13.H"
         )
-        assert case.source_file == (
-            repo_root.parent
-            / "rac-us-ny"
-            / "sources"
-            / "slices"
-            / "otda"
-            / "snap"
-            / "current-effective"
-            / "snap_self_employment_expense_based_deduction_applies_ny.txt"
-        ).resolve()
+        assert (
+            case.source_file
+            == (
+                repo_root.parent
+                / "rac-us-ny"
+                / "sources"
+                / "slices"
+                / "otda"
+                / "snap"
+                / "current-effective"
+                / "snap_self_employment_expense_based_deduction_applies_ny.txt"
+            ).resolve()
+        )
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
@@ -6296,7 +6746,9 @@ cases:
     ):
         repo_root = Path(__file__).resolve().parents[1]
         manifest = load_eval_suite_manifest(
-            repo_root / "benchmarks" / "us_snap_ny_standard_utility_allowance_refresh.yaml"
+            repo_root
+            / "benchmarks"
+            / "us_snap_ny_standard_utility_allowance_refresh.yaml"
         )
 
         assert manifest.name == "New York SNAP standard utility allowance refresh"
@@ -6310,16 +6762,19 @@ cases:
             case.source_id
             == "New York SNAP standard utility allowance under OTDA LDSS-5006 effective October 1, 2025"
         )
-        assert case.source_file == (
-            repo_root.parent
-            / "rac-us-ny"
-            / "sources"
-            / "slices"
-            / "otda"
-            / "snap"
-            / "current-effective"
-            / "snap_standard_utility_allowance_ny.txt"
-        ).resolve()
+        assert (
+            case.source_file
+            == (
+                repo_root.parent
+                / "rac-us-ny"
+                / "sources"
+                / "slices"
+                / "otda"
+                / "snap"
+                / "current-effective"
+                / "snap_standard_utility_allowance_ny.txt"
+            ).resolve()
+        )
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
@@ -6330,7 +6785,9 @@ cases:
     ):
         repo_root = Path(__file__).resolve().parents[1]
         manifest = load_eval_suite_manifest(
-            repo_root / "benchmarks" / "us_snap_ny_limited_utility_allowance_refresh.yaml"
+            repo_root
+            / "benchmarks"
+            / "us_snap_ny_limited_utility_allowance_refresh.yaml"
         )
 
         assert manifest.name == "New York SNAP limited utility allowance refresh"
@@ -6344,16 +6801,19 @@ cases:
             case.source_id
             == "New York SNAP limited utility allowance under OTDA LDSS-5006 effective October 1, 2025"
         )
-        assert case.source_file == (
-            repo_root.parent
-            / "rac-us-ny"
-            / "sources"
-            / "slices"
-            / "otda"
-            / "snap"
-            / "current-effective"
-            / "snap_limited_utility_allowance_ny.txt"
-        ).resolve()
+        assert (
+            case.source_file
+            == (
+                repo_root.parent
+                / "rac-us-ny"
+                / "sources"
+                / "slices"
+                / "otda"
+                / "snap"
+                / "current-effective"
+                / "snap_limited_utility_allowance_ny.txt"
+            ).resolve()
+        )
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
@@ -6364,7 +6824,9 @@ cases:
     ):
         repo_root = Path(__file__).resolve().parents[1]
         manifest = load_eval_suite_manifest(
-            repo_root / "benchmarks" / "us_snap_tx_standard_utility_allowance_refresh.yaml"
+            repo_root
+            / "benchmarks"
+            / "us_snap_tx_standard_utility_allowance_refresh.yaml"
         )
 
         assert manifest.name == "Texas SNAP standard utility allowance refresh"
@@ -6404,7 +6866,9 @@ cases:
     ):
         repo_root = Path(__file__).resolve().parents[1]
         manifest = load_eval_suite_manifest(
-            repo_root / "benchmarks" / "us_snap_tx_limited_utility_allowance_refresh.yaml"
+            repo_root
+            / "benchmarks"
+            / "us_snap_tx_limited_utility_allowance_refresh.yaml"
         )
 
         assert manifest.name == "Texas SNAP limited utility allowance refresh"
@@ -6521,7 +6985,9 @@ cases:
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
-        assert case.policyengine_rac_var_hint == "snap_state_uses_child_support_deduction"
+        assert (
+            case.policyengine_rac_var_hint == "snap_state_uses_child_support_deduction"
+        )
 
     def test_repo_us_snap_tx_self_employment_expense_option_refresh_manifest_loads_expected_case(
         self,
@@ -6564,7 +7030,10 @@ cases:
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
-        assert case.policyengine_rac_var_hint == "snap_self_employment_expense_based_deduction_applies"
+        assert (
+            case.policyengine_rac_var_hint
+            == "snap_self_employment_expense_based_deduction_applies"
+        )
 
     def test_repo_us_snap_tx_state_using_standard_utility_allowance_refresh_manifest_loads_expected_case(
         self,
@@ -6576,7 +7045,9 @@ cases:
             / "us_snap_tx_state_using_standard_utility_allowance_refresh.yaml"
         )
 
-        assert manifest.name == "Texas SNAP state using standard utility allowance refresh"
+        assert (
+            manifest.name == "Texas SNAP state using standard utility allowance refresh"
+        )
         assert manifest.mode == "repo-augmented"
         assert len(manifest.cases) == 1
         assert manifest.gates.min_policyengine_pass_rate == 1.0
@@ -6637,20 +7108,25 @@ cases:
             case.source_id
             == "Florida SNAP child support deduction election under ESS Program Policy Manual 2610.0410"
         )
-        assert case.source_file == (
-            repo_root.parent
-            / "rac-us-fl"
-            / "sources"
-            / "slices"
-            / "myflfamilies"
-            / "ess"
-            / "current-effective"
-            / "snap_state_uses_child_support_deduction_fl.txt"
-        ).resolve()
+        assert (
+            case.source_file
+            == (
+                repo_root.parent
+                / "rac-us-fl"
+                / "sources"
+                / "slices"
+                / "myflfamilies"
+                / "ess"
+                / "current-effective"
+                / "snap_state_uses_child_support_deduction_fl.txt"
+            ).resolve()
+        )
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
-        assert case.policyengine_rac_var_hint == "snap_state_uses_child_support_deduction"
+        assert (
+            case.policyengine_rac_var_hint == "snap_state_uses_child_support_deduction"
+        )
 
     def test_repo_us_snap_fl_self_employment_expense_option_refresh_manifest_loads_expected_case(
         self,
@@ -6673,20 +7149,26 @@ cases:
             case.source_id
             == "Florida SNAP self-employment expense option under ESS Program Policy Manual 1810.0302"
         )
-        assert case.source_file == (
-            repo_root.parent
-            / "rac-us-fl"
-            / "sources"
-            / "slices"
-            / "myflfamilies"
-            / "ess"
-            / "current-effective"
-            / "snap_self_employment_expense_based_deduction_applies_fl.txt"
-        ).resolve()
+        assert (
+            case.source_file
+            == (
+                repo_root.parent
+                / "rac-us-fl"
+                / "sources"
+                / "slices"
+                / "myflfamilies"
+                / "ess"
+                / "current-effective"
+                / "snap_self_employment_expense_based_deduction_applies_fl.txt"
+            ).resolve()
+        )
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
-        assert case.policyengine_rac_var_hint == "snap_self_employment_expense_based_deduction_applies"
+        assert (
+            case.policyengine_rac_var_hint
+            == "snap_self_employment_expense_based_deduction_applies"
+        )
 
     def test_repo_us_snap_md_child_support_deduction_option_refresh_manifest_loads_expected_case(
         self,
@@ -6709,20 +7191,25 @@ cases:
             case.source_id
             == "Maryland SNAP child support deduction election under SNAP Manual Section 408 Verification"
         )
-        assert case.source_file == (
-            repo_root.parent
-            / "rac-us-md"
-            / "sources"
-            / "slices"
-            / "dhs"
-            / "snap"
-            / "current-effective"
-            / "snap_state_uses_child_support_deduction_md.txt"
-        ).resolve()
+        assert (
+            case.source_file
+            == (
+                repo_root.parent
+                / "rac-us-md"
+                / "sources"
+                / "slices"
+                / "dhs"
+                / "snap"
+                / "current-effective"
+                / "snap_state_uses_child_support_deduction_md.txt"
+            ).resolve()
+        )
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
-        assert case.policyengine_rac_var_hint == "snap_state_uses_child_support_deduction"
+        assert (
+            case.policyengine_rac_var_hint == "snap_state_uses_child_support_deduction"
+        )
 
     def test_repo_us_snap_md_self_employment_simplified_deduction_rate_refresh_manifest_loads_expected_case(
         self,
@@ -6748,16 +7235,19 @@ cases:
             case.source_id
             == "Maryland SNAP self-employment simplified deduction rate under SNAP Manual Section 104 Self-employed Households"
         )
-        assert case.source_file == (
-            repo_root.parent
-            / "rac-us-md"
-            / "sources"
-            / "slices"
-            / "dhs"
-            / "snap"
-            / "current-effective"
-            / "snap_self_employment_simplified_deduction_rate_md.txt"
-        ).resolve()
+        assert (
+            case.source_file
+            == (
+                repo_root.parent
+                / "rac-us-md"
+                / "sources"
+                / "slices"
+                / "dhs"
+                / "snap"
+                / "current-effective"
+                / "snap_self_employment_simplified_deduction_rate_md.txt"
+            ).resolve()
+        )
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
@@ -6787,20 +7277,25 @@ cases:
             case.source_id
             == "Georgia SNAP child support deduction election under DFCS SNAP Manual 3035 Verification"
         )
-        assert case.source_file == (
-            repo_root.parent
-            / "rac-us-ga"
-            / "sources"
-            / "slices"
-            / "dfcs"
-            / "snap"
-            / "current-effective"
-            / "snap_state_uses_child_support_deduction_ga.txt"
-        ).resolve()
+        assert (
+            case.source_file
+            == (
+                repo_root.parent
+                / "rac-us-ga"
+                / "sources"
+                / "slices"
+                / "dfcs"
+                / "snap"
+                / "current-effective"
+                / "snap_state_uses_child_support_deduction_ga.txt"
+            ).resolve()
+        )
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
-        assert case.policyengine_rac_var_hint == "snap_state_uses_child_support_deduction"
+        assert (
+            case.policyengine_rac_var_hint == "snap_state_uses_child_support_deduction"
+        )
 
     def test_repo_us_snap_ga_self_employment_expense_option_refresh_manifest_loads_expected_case(
         self,
@@ -6823,16 +7318,19 @@ cases:
             case.source_id
             == "Georgia SNAP self-employment expense option under DFCS SNAP Manual 3425 Self-Employment Income"
         )
-        assert case.source_file == (
-            repo_root.parent
-            / "rac-us-ga"
-            / "sources"
-            / "slices"
-            / "dfcs"
-            / "snap"
-            / "current-effective"
-            / "snap_self_employment_expense_based_deduction_applies_ga.txt"
-        ).resolve()
+        assert (
+            case.source_file
+            == (
+                repo_root.parent
+                / "rac-us-ga"
+                / "sources"
+                / "slices"
+                / "dfcs"
+                / "snap"
+                / "current-effective"
+                / "snap_self_employment_expense_based_deduction_applies_ga.txt"
+            ).resolve()
+        )
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
@@ -6851,10 +7349,7 @@ cases:
             / "us_snap_tx_standard_medical_expense_deduction_refresh.yaml"
         )
 
-        assert (
-            manifest.name
-            == "Texas SNAP standard medical expense deduction refresh"
-        )
+        assert manifest.name == "Texas SNAP standard medical expense deduction refresh"
         assert manifest.mode == "repo-augmented"
         assert len(manifest.cases) == 1
         assert manifest.gates.min_policyengine_pass_rate == 1.0
@@ -6888,8 +7383,7 @@ cases:
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
         assert (
-            case.policyengine_rac_var_hint
-            == "snap_standard_medical_expense_deduction"
+            case.policyengine_rac_var_hint == "snap_standard_medical_expense_deduction"
         )
 
     def test_repo_us_snap_tx_homeless_shelter_deduction_available_refresh_manifest_loads_expected_case(
@@ -6930,7 +7424,10 @@ cases:
             case.metadata_file
             == tx_target_root / "snap_homeless_shelter_deduction_available_tx.meta.yaml"
         )
-        assert case.section_eid == "sec_bulletin_25_15_section_2_homeless_shelter_deduction"
+        assert (
+            case.section_eid
+            == "sec_bulletin_25_15_section_2_homeless_shelter_deduction"
+        )
         assert case.section_eids == []
         assert case.allow_context == []
         assert case.oracle == "policyengine"
@@ -6973,7 +7470,8 @@ cases:
         assert case.akn_file is None
         assert (
             case.metadata_file
-            == tx_target_root / "snap_tanf_non_cash_gross_income_limit_fpg_ratio_tx.meta.yaml"
+            == tx_target_root
+            / "snap_tanf_non_cash_gross_income_limit_fpg_ratio_tx.meta.yaml"
         )
         assert case.section_eid == "sec_b_471"
         assert case.section_eids == []
@@ -7051,16 +7549,19 @@ cases:
             case.source_id
             == "Georgia SNAP self-employment simplified deduction rate under DFCS SNAP Manual 3425 Self-Employment Income"
         )
-        assert case.source_file == (
-            repo_root.parent
-            / "rac-us-ga"
-            / "sources"
-            / "slices"
-            / "dfcs"
-            / "snap"
-            / "current-effective"
-            / "snap_self_employment_simplified_deduction_rate_ga.txt"
-        ).resolve()
+        assert (
+            case.source_file
+            == (
+                repo_root.parent
+                / "rac-us-ga"
+                / "sources"
+                / "slices"
+                / "dfcs"
+                / "snap"
+                / "current-effective"
+                / "snap_self_employment_simplified_deduction_rate_ga.txt"
+            ).resolve()
+        )
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
@@ -7093,20 +7594,25 @@ cases:
             case.source_id
             == "South Carolina SNAP child support deduction under SNAP Manual Vol 65 section 12.7"
         )
-        assert case.source_file == (
-            repo_root.parent
-            / "rac-us-sc"
-            / "sources"
-            / "slices"
-            / "scdss"
-            / "snap"
-            / "current-effective"
-            / "snap_state_uses_child_support_deduction_sc.txt"
-        ).resolve()
+        assert (
+            case.source_file
+            == (
+                repo_root.parent
+                / "rac-us-sc"
+                / "sources"
+                / "slices"
+                / "scdss"
+                / "snap"
+                / "current-effective"
+                / "snap_state_uses_child_support_deduction_sc.txt"
+            ).resolve()
+        )
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
-        assert case.policyengine_rac_var_hint == "snap_state_uses_child_support_deduction"
+        assert (
+            case.policyengine_rac_var_hint == "snap_state_uses_child_support_deduction"
+        )
 
     def test_repo_us_snap_sc_self_employment_expense_option_refresh_manifest_loads_expected_case(
         self,
@@ -7132,16 +7638,19 @@ cases:
             case.source_id
             == "South Carolina SNAP self-employment expense option under SNAP Manual Vol 65 section 11.4(3)"
         )
-        assert case.source_file == (
-            repo_root.parent
-            / "rac-us-sc"
-            / "sources"
-            / "slices"
-            / "scdss"
-            / "snap"
-            / "current-effective"
-            / "snap_self_employment_expense_based_deduction_applies_sc.txt"
-        ).resolve()
+        assert (
+            case.source_file
+            == (
+                repo_root.parent
+                / "rac-us-sc"
+                / "sources"
+                / "slices"
+                / "scdss"
+                / "snap"
+                / "current-effective"
+                / "snap_self_employment_expense_based_deduction_applies_sc.txt"
+            ).resolve()
+        )
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
@@ -7174,16 +7683,19 @@ cases:
             case.source_id
             == "South Carolina SNAP self-employment simplified deduction rate under SNAP Manual Vol 65 section 11.4(3)"
         )
-        assert case.source_file == (
-            repo_root.parent
-            / "rac-us-sc"
-            / "sources"
-            / "slices"
-            / "scdss"
-            / "snap"
-            / "current-effective"
-            / "snap_self_employment_simplified_deduction_rate_sc.txt"
-        ).resolve()
+        assert (
+            case.source_file
+            == (
+                repo_root.parent
+                / "rac-us-sc"
+                / "sources"
+                / "slices"
+                / "scdss"
+                / "snap"
+                / "current-effective"
+                / "snap_self_employment_simplified_deduction_rate_sc.txt"
+            ).resolve()
+        )
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
@@ -7213,20 +7725,25 @@ cases:
             case.source_id
             == "Alabama SNAP child support deduction under DHR Food Assistance Program Points of Eligibility Manual Appendix I section E"
         )
-        assert case.source_file == (
-            repo_root.parent
-            / "rac-us-al"
-            / "sources"
-            / "slices"
-            / "aldhr"
-            / "poe"
-            / "current-effective"
-            / "snap_state_uses_child_support_deduction_al.txt"
-        ).resolve()
+        assert (
+            case.source_file
+            == (
+                repo_root.parent
+                / "rac-us-al"
+                / "sources"
+                / "slices"
+                / "aldhr"
+                / "poe"
+                / "current-effective"
+                / "snap_state_uses_child_support_deduction_al.txt"
+            ).resolve()
+        )
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
-        assert case.policyengine_rac_var_hint == "snap_state_uses_child_support_deduction"
+        assert (
+            case.policyengine_rac_var_hint == "snap_state_uses_child_support_deduction"
+        )
 
     def test_repo_us_snap_al_self_employment_expense_option_refresh_manifest_loads_expected_case(
         self,
@@ -7249,16 +7766,19 @@ cases:
             case.source_id
             == "Alabama SNAP self-employment expense option under DHR Food Assistance Program Points of Eligibility Manual Chapter 11 section D"
         )
-        assert case.source_file == (
-            repo_root.parent
-            / "rac-us-al"
-            / "sources"
-            / "slices"
-            / "aldhr"
-            / "poe"
-            / "current-effective"
-            / "snap_self_employment_expense_based_deduction_applies_al.txt"
-        ).resolve()
+        assert (
+            case.source_file
+            == (
+                repo_root.parent
+                / "rac-us-al"
+                / "sources"
+                / "slices"
+                / "aldhr"
+                / "poe"
+                / "current-effective"
+                / "snap_self_employment_expense_based_deduction_applies_al.txt"
+            ).resolve()
+        )
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
@@ -7291,16 +7811,19 @@ cases:
             case.source_id
             == "Alabama SNAP self-employment simplified deduction rate under DHR Food Assistance Program Points of Eligibility Manual Chapter 11 section 1100"
         )
-        assert case.source_file == (
-            repo_root.parent
-            / "rac-us-al"
-            / "sources"
-            / "slices"
-            / "aldhr"
-            / "poe"
-            / "current-effective"
-            / "snap_self_employment_simplified_deduction_rate_al.txt"
-        ).resolve()
+        assert (
+            case.source_file
+            == (
+                repo_root.parent
+                / "rac-us-al"
+                / "sources"
+                / "slices"
+                / "aldhr"
+                / "poe"
+                / "current-effective"
+                / "snap_self_employment_simplified_deduction_rate_al.txt"
+            ).resolve()
+        )
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
@@ -7330,20 +7853,25 @@ cases:
             case.source_id
             == "Arkansas SNAP child support deduction under DHS SNAP Certification Manual section 6550 Child Support Deductions"
         )
-        assert case.source_file == (
-            repo_root.parent
-            / "rac-us-ar"
-            / "sources"
-            / "slices"
-            / "ardhs"
-            / "snap"
-            / "current-effective"
-            / "snap_state_uses_child_support_deduction_ar.txt"
-        ).resolve()
+        assert (
+            case.source_file
+            == (
+                repo_root.parent
+                / "rac-us-ar"
+                / "sources"
+                / "slices"
+                / "ardhs"
+                / "snap"
+                / "current-effective"
+                / "snap_state_uses_child_support_deduction_ar.txt"
+            ).resolve()
+        )
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
-        assert case.policyengine_rac_var_hint == "snap_state_uses_child_support_deduction"
+        assert (
+            case.policyengine_rac_var_hint == "snap_state_uses_child_support_deduction"
+        )
 
     def test_repo_us_snap_ar_self_employment_expense_option_refresh_manifest_loads_expected_case(
         self,
@@ -7366,16 +7894,19 @@ cases:
             case.source_id
             == "Arkansas SNAP self-employment expense option under DHS SNAP Certification Manual section 5663 Costs of Producing Self-Employment Income"
         )
-        assert case.source_file == (
-            repo_root.parent
-            / "rac-us-ar"
-            / "sources"
-            / "slices"
-            / "ardhs"
-            / "snap"
-            / "current-effective"
-            / "snap_self_employment_expense_based_deduction_applies_ar.txt"
-        ).resolve()
+        assert (
+            case.source_file
+            == (
+                repo_root.parent
+                / "rac-us-ar"
+                / "sources"
+                / "slices"
+                / "ardhs"
+                / "snap"
+                / "current-effective"
+                / "snap_self_employment_expense_based_deduction_applies_ar.txt"
+            ).resolve()
+        )
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
@@ -7459,7 +7990,9 @@ class TestRepoAugmentedContext:
         repo_root = tmp_path / "repos"
         rac_root = repo_root / "rac"
         rac_root.mkdir(parents=True)
-        context_file = repo_root / "rac-us" / "statute" / "26" / "32" / "b" / "2" / "A.rac"
+        context_file = (
+            repo_root / "rac-us" / "statute" / "26" / "32" / "b" / "2" / "A.rac"
+        )
         context_file.parent.mkdir(parents=True)
         context_file.write_text("status: encoded\n")
 
@@ -7527,7 +8060,9 @@ class TestRepoAugmentedContext:
         copied = workspace.root / manifest["context_files"][0]["workspace_path"]
         assert copied.exists()
 
-    def test_prepare_eval_workspace_materializes_source_metadata_sidecar(self, tmp_path):
+    def test_prepare_eval_workspace_materializes_source_metadata_sidecar(
+        self, tmp_path
+    ):
         repo_root = tmp_path / "repos"
         policy_repo = repo_root / "rac-us-tn"
         policy_repo.mkdir(parents=True)
@@ -7691,7 +8226,12 @@ class TestRepoAugmentedContext:
         rac_root = repo_root / "rac"
         rac_root.mkdir(parents=True)
         external_file = (
-            repo_root / "rac-us-co" / "regulation" / "9-CCR-2503-6" / "3.606.1" / "F.rac"
+            repo_root
+            / "rac-us-co"
+            / "regulation"
+            / "9-CCR-2503-6"
+            / "3.606.1"
+            / "F.rac"
         )
         external_file.parent.mkdir(parents=True, exist_ok=True)
         external_file.write_text(
@@ -7724,14 +8264,35 @@ class TestRepoAugmentedContext:
             "import target `regulation/9-CCR-2503-6/3.606.1/F`"
         ) in prompt
         assert "do not wrap import targets in quotes" in prompt
-        assert "use the listed import target rather than the `./context/...` inspection path" in prompt
-        assert "do not guess contradictory `.rac.test` expectations for those imported values" in prompt
-        assert "keep `.rac.test` inputs and expected outputs consistent with the rows visible in that imported file" in prompt
-        assert "Do not invent degenerate placeholder rows like `number_of_children_in_assistance_unit: 0` plus `number_of_caretakers_in_assistance_unit: 0`" in prompt
-        assert "Do not assert an exact zero imported standard, grant, or threshold unless that exact imported row is visible in the copied chart file" in prompt
-        assert "Do not use a `0 children / 0 caretakers` household as the primary threshold test" in prompt
+        assert (
+            "use the listed import target rather than the `./context/...` inspection path"
+            in prompt
+        )
+        assert (
+            "do not guess contradictory `.rac.test` expectations for those imported values"
+            in prompt
+        )
+        assert (
+            "keep `.rac.test` inputs and expected outputs consistent with the rows visible in that imported file"
+            in prompt
+        )
+        assert (
+            "Do not invent degenerate placeholder rows like `number_of_children_in_assistance_unit: 0` plus `number_of_caretakers_in_assistance_unit: 0`"
+            in prompt
+        )
+        assert (
+            "Do not assert an exact zero imported standard, grant, or threshold unless that exact imported row is visible in the copied chart file"
+            in prompt
+        )
+        assert (
+            "Do not use a `0 children / 0 caretakers` household as the primary threshold test"
+            in prompt
+        )
         assert "Wrong (`.rac.test` guesses a degenerate chart row):" in prompt
-        assert "Right (`.rac.test` uses a visible chart row like one child / no caretaker):" in prompt
+        assert (
+            "Right (`.rac.test` uses a visible chart row like one child / no caretaker):"
+            in prompt
+        )
 
     def test_hydrate_eval_root_copies_context_into_import_tree(self, tmp_path):
         repo_root = tmp_path / "repos"
@@ -7760,7 +8321,9 @@ class TestRepoAugmentedContext:
         eval_root = tmp_path / "eval-root"
         _hydrate_eval_root(eval_root, workspace)
 
-        assert (eval_root / "statute" / "26" / "24" / "c.rac").read_text() == "status: stub\n"
+        assert (
+            eval_root / "statute" / "26" / "24" / "c.rac"
+        ).read_text() == "status: stub\n"
 
     def test_prepare_eval_workspace_expands_transitive_context_imports(self, tmp_path):
         repo_root = tmp_path / "repos"
@@ -7825,10 +8388,14 @@ class TestRepoAugmentedContext:
 
         eval_root = tmp_path / "eval-root"
         _hydrate_eval_root(eval_root, workspace)
-        assert (eval_root / "26" / "24" / "c" / "2.rac").read_text() == "status: encoded\n"
+        assert (
+            eval_root / "26" / "24" / "c" / "2.rac"
+        ).read_text() == "status: encoded\n"
         assert (eval_root / "26" / "152" / "c.rac").read_text() == "status: encoded\n"
 
-    def test_repo_augmented_context_resolves_statute_prefixed_dependencies(self, tmp_path):
+    def test_repo_augmented_context_resolves_statute_prefixed_dependencies(
+        self, tmp_path
+    ):
         repo_root = tmp_path / "repos"
         rac_root = repo_root / "rac"
         rac_root.mkdir(parents=True)
@@ -7930,18 +8497,23 @@ class TestUnexpectedAccessDetection:
 
 
 class TestSourceEval:
-    def test_run_source_eval_uses_explicit_context_without_statute_lookup(self, tmp_path):
+    def test_run_source_eval_uses_explicit_context_without_statute_lookup(
+        self, tmp_path
+    ):
         rac_root = tmp_path / "rac"
         rac_root.mkdir()
         context_file = tmp_path / "examples" / "piecewise.rac"
         context_file.parent.mkdir(parents=True)
         context_file.write_text("status: encoded\n")
 
-        with patch(
-            "autorac.harness.evals._run_prompt_eval",
-        ) as mock_prompt_eval, patch(
-            "autorac.harness.evals.evaluate_artifact",
-        ) as mock_evaluate_artifact:
+        with (
+            patch(
+                "autorac.harness.evals._run_prompt_eval",
+            ) as mock_prompt_eval,
+            patch(
+                "autorac.harness.evals.evaluate_artifact",
+            ) as mock_evaluate_artifact,
+        ):
             mock_prompt_eval.return_value.text = (
                 "=== FILE: 9-CCR-2503-6-3.606.1-F.rac ===\n"
                 '"""\nF. Determining Eligibility ...\n"""\n'
@@ -7989,15 +8561,20 @@ class TestSourceEval:
         assert ".rac.test" in prompt
         assert "=== FILE:" in prompt
 
-    def test_run_source_eval_passes_oracle_settings_to_evaluate_artifact(self, tmp_path):
+    def test_run_source_eval_passes_oracle_settings_to_evaluate_artifact(
+        self, tmp_path
+    ):
         rac_root = tmp_path / "rac"
         rac_root.mkdir()
 
-        with patch(
-            "autorac.harness.evals._run_prompt_eval",
-        ) as mock_prompt_eval, patch(
-            "autorac.harness.evals.evaluate_artifact",
-        ) as mock_evaluate_artifact:
+        with (
+            patch(
+                "autorac.harness.evals._run_prompt_eval",
+            ) as mock_prompt_eval,
+            patch(
+                "autorac.harness.evals.evaluate_artifact",
+            ) as mock_evaluate_artifact,
+        ):
             mock_prompt_eval.return_value.text = (
                 "=== FILE: uksi-2006-965-regulation-2.rac ===\n"
                 '"""\nhttps://www.legislation.gov.uk/uksi/2006/965/regulation/2\n"""\n'
@@ -8029,9 +8606,7 @@ class TestSourceEval:
             )
 
         assert mock_evaluate_artifact.call_args.kwargs["oracle"] == "policyengine"
-        assert (
-            mock_evaluate_artifact.call_args.kwargs["policyengine_country"] == "uk"
-        )
+        assert mock_evaluate_artifact.call_args.kwargs["policyengine_country"] == "uk"
 
     def test_run_source_eval_passes_policyengine_rac_var_hint_to_evaluate_artifact(
         self, tmp_path
@@ -8039,11 +8614,14 @@ class TestSourceEval:
         rac_root = tmp_path / "rac"
         rac_root.mkdir()
 
-        with patch(
-            "autorac.harness.evals._run_prompt_eval",
-        ) as mock_prompt_eval, patch(
-            "autorac.harness.evals.evaluate_artifact",
-        ) as mock_evaluate_artifact:
+        with (
+            patch(
+                "autorac.harness.evals._run_prompt_eval",
+            ) as mock_prompt_eval,
+            patch(
+                "autorac.harness.evals.evaluate_artifact",
+            ) as mock_evaluate_artifact,
+        ):
             mock_prompt_eval.return_value.text = (
                 "=== FILE: uksi-2013-376-regulation-36-3-single-under-25.rac ===\n"
                 '"""\n317.82\n"""\n'
@@ -8117,7 +8695,10 @@ class TestSourceEval:
             "each case must assert `uc_standard_allowance_single_claimant_aged_under_25` directly in `output:`"
             in prompt
         )
-        assert "prefer the oracle's direct component facts over inverted household proxy inputs" in prompt
+        assert (
+            "prefer the oracle's direct component facts over inverted household proxy inputs"
+            in prompt
+        )
         assert (
             "preserve that as a person-level fact instead of turning it into a whole-household bar"
             in prompt
@@ -8172,17 +8753,19 @@ class TestSourceEval:
             "should set `snap_state_using_standard_utility_allowance` to `false`, not `true`"
             in prompt
         )
-        assert "do not invent placeholder literals like `OTHER`, `NONE`, or `UNKNOWN`" in prompt
         assert (
-            "should use a valid non-telephone category like `SUA` or `BUA`"
+            "do not invent placeholder literals like `OTHER`, `NONE`, or `UNKNOWN`"
             in prompt
         )
+        assert "should use a valid non-telephone category like `SUA` or `BUA`" in prompt
 
     def test_build_eval_prompt_includes_sets_source_metadata_guidance(self, tmp_path):
         runner = parse_runner_spec("openai:gpt-5.4")
         source_path = tmp_path / "snap_standard_utility_allowance_tn.txt"
         source_path.write_text("The SUA is $451, effective October 1, 2025.")
-        source_path.with_name("snap_standard_utility_allowance_tn.meta.yaml").write_text(
+        source_path.with_name(
+            "snap_standard_utility_allowance_tn.meta.yaml"
+        ).write_text(
             "version: 1\n"
             "source_backing:\n"
             "  kind: akn_section\n"
@@ -8219,8 +8802,14 @@ class TestSourceEval:
         assert "relation: sets" not in prompt
         assert '"relation": "sets"' in prompt
         assert '"source_backing"' in prompt
-        assert "setting the effective jurisdiction-specific value for that delegated slot" in prompt
-        assert "derived extraction from the listed authoritative AKN section or sections" in prompt
+        assert (
+            "setting the effective jurisdiction-specific value for that delegated slot"
+            in prompt
+        )
+        assert (
+            "derived extraction from the listed authoritative AKN section or sections"
+            in prompt
+        )
         assert "cfr/7/273.9/d/6/iii#snap_standard_utility_allowance" in prompt
         assert "...#*_applies` or `...#*_uses_*" in prompt
         assert (
@@ -8270,7 +8859,10 @@ class TestSourceEval:
             runner_backend="openai",
         )
 
-        assert "For a single fixed-amount source slice, a base case is sufficient." in prompt
+        assert (
+            "For a single fixed-amount source slice, a base case is sufficient."
+            in prompt
+        )
         assert (
             "For a one-row fixed-amount slice with `period: Year`, a base case is sufficient; do not synthesize an `effective_date_boundary` test."
             in prompt
@@ -8289,7 +8881,9 @@ class TestSourceEval:
             is False
         )
 
-    def test_normalize_nonannual_test_period_value_converts_iso_week_to_effective_date(self):
+    def test_normalize_nonannual_test_period_value_converts_iso_week_to_effective_date(
+        self,
+    ):
         assert (
             _normalize_nonannual_test_period_value("2025-W13", date(2025, 3, 21))
             == "2025-03-21"
