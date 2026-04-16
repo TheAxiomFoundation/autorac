@@ -8164,6 +8164,14 @@ class TestSourceEval:
             "prefer an inapplicable North Carolina case such as a non-SUA allowance type"
             in prompt
         )
+        assert (
+            "that means the jurisdiction does not always use the standard utility allowance"
+            in prompt
+        )
+        assert (
+            "should set `snap_state_using_standard_utility_allowance` to `false`, not `true`"
+            in prompt
+        )
         assert "do not invent placeholder literals like `OTHER`, `NONE`, or `UNKNOWN`" in prompt
         assert (
             "should use a valid non-telephone category like `SUA` or `BUA`"
