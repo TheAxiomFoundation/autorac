@@ -48,9 +48,7 @@ def test_final_review_manifest_paths_resolve_existing_files():
 def test_pilot_editable_paths_point_at_prompt_surface():
     paths = pilot_editable_paths()
 
-    assert paths == [
-        autorac_repo_root() / "src/autorac/harness/eval_prompt_surface.py"
-    ]
+    assert paths == [autorac_repo_root() / "src/autorac/harness/eval_prompt_surface.py"]
 
 
 def test_program_path_resolves_autoresearch_program():
@@ -88,7 +86,10 @@ def test_seed_legislation_cache_copies_existing_local_cache(monkeypatch, tmp_pat
     assert copied["_legislation_gov_uk"] == 2
     assert copied["_legislation_gov_uk_cache"] == 2
     assert (
-        run_root / "_legislation_gov_uk_cache" / "uksi-2002-1792-2025-03-31" / "source.akn"
+        run_root
+        / "_legislation_gov_uk_cache"
+        / "uksi-2002-1792-2025-03-31"
+        / "source.akn"
     ).read_text() == "cached akn\n"
 
 
@@ -189,6 +190,8 @@ def test_build_mutation_prompt_mentions_only_editable_file():
     assert "Do not create, delete, or rename files." in prompt
     assert "separate holdout final-review set" in prompt
     assert "baseline training report is already fully ready" in prompt
-    assert "Do not make naming-only, readability-only, or token-count-only edits" in prompt
+    assert (
+        "Do not make naming-only, readability-only, or token-count-only edits" in prompt
+    )
     assert "Target at most one concrete failure cluster per iteration" in prompt
     assert "preserve that as a real disjunction" in prompt

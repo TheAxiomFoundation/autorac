@@ -356,7 +356,7 @@ class TestCliUsageParsing:
         payload = json.dumps(
             {
                 "type": "result",
-                "result": 'status: encoded\n\ncredit:\n    from 1998-01-01: 1000\n',
+                "result": "status: encoded\n\ncredit:\n    from 1998-01-01: 1000\n",
                 "is_error": False,
                 "total_cost_usd": 0.123,
                 "usage": {
@@ -390,14 +390,16 @@ class TestCliUsageParsing:
                 {
                     "type": "reasoning",
                     "id": "rs_1",
-                    "summary": [{"type": "summary_text", "text": "Need one file only."}],
+                    "summary": [
+                        {"type": "summary_text", "text": "Need one file only."}
+                    ],
                 },
                 {
                     "type": "message",
                     "content": [
                         {
                             "type": "output_text",
-                            "text": 'status: encoded\n\ncredit:\n    from 1998-01-01: 1000\n',
+                            "text": "status: encoded\n\ncredit:\n    from 1998-01-01: 1000\n",
                         }
                     ],
                 },
@@ -447,7 +449,7 @@ class TestCliUsageParsing:
             agent_type="encoder",
             prompt="Encode 26 USC 24(a)",
             phase=Phase.ENCODING,
-            result='status: encoded\n\ncredit:\n    from 1998-01-01: 1000\n',
+            result="status: encoded\n\ncredit:\n    from 1998-01-01: 1000\n",
         )
 
         wrote = openai_orchestrator._materialize_agent_artifact(agent_run, expected)
@@ -509,7 +511,9 @@ class TestPathResolution:
     ):
         monkeypatch.setattr(
             "autorac.harness.orchestrator.find_citation_text",
-            lambda citation, xml_root: "(a) Allowance of credit. Exact subsection text.",
+            lambda citation, xml_root: (
+                "(a) Allowance of credit. Exact subsection text."
+            ),
         )
 
         result = openai_orchestrator._fetch_statute_text("26 USC 24(a)")
@@ -851,7 +855,9 @@ class TestAggregatorWaveInEncoding:
             if compile_calls == 1:
                 return SimpleNamespace(
                     passed=False,
-                    issues=["Compilation failed: line 6, col 18: unexpected token: IDENT"],
+                    issues=[
+                        "Compilation failed: line 6, col 18: unexpected token: IDENT"
+                    ],
                     raw_output=None,
                     error="unexpected token",
                 )
@@ -892,9 +898,8 @@ class TestAggregatorWaveInEncoding:
 class TestOutputPathInference:
     def test_find_statute_root_for_temp_output_path(self, cli_orchestrator):
         output_path = Path("/tmp/autorac-openai-irc24-reencode-v5/26/24")
-        assert (
-            cli_orchestrator._find_statute_root(output_path)
-            == Path("/tmp/autorac-openai-irc24-reencode-v5")
+        assert cli_orchestrator._find_statute_root(output_path) == Path(
+            "/tmp/autorac-openai-irc24-reencode-v5"
         )
 
 
@@ -1020,7 +1025,9 @@ class TestProvenanceLogging:
         cli_orchestrator._log_agent_run("prov-reasoning", agent_run)
 
         events = cli_orchestrator.encoding_db.get_session_events("prov-reasoning")
-        reasoning_event = [e for e in events if e.event_type == "provenance_reasoning"][0]
+        reasoning_event = [e for e in events if e.event_type == "provenance_reasoning"][
+            0
+        ]
         assert reasoning_event.content.startswith("Need to align subsection (a)")
         assert reasoning_event.metadata["provider"] == "openai"
         assert reasoning_event.metadata["backend"] == "codex-cli"

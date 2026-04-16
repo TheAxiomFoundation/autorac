@@ -61,10 +61,7 @@ from autorac.harness.evals import EvalArtifactMetrics
 
 class TestRunnerOverrides:
     def test_rewrites_openai_gpt_runner_to_codex(self):
-        assert (
-            _rewrite_gpt_runner_backend("openai:gpt-5.4", "codex")
-            == "codex:gpt-5.4"
-        )
+        assert _rewrite_gpt_runner_backend("openai:gpt-5.4", "codex") == "codex:gpt-5.4"
 
     def test_preserves_alias_when_rewriting_gpt_runner_backend(self):
         assert (
@@ -75,25 +72,28 @@ class TestRunnerOverrides:
     def test_effective_runner_specs_defaults_to_codex(self):
         args = SimpleNamespace(gpt_backend=None)
 
-        assert _effective_runner_specs(
-            ["openai:gpt-5.4", "claude:opus"], args
-        ) == ["codex:gpt-5.4", "claude:opus"]
+        assert _effective_runner_specs(["openai:gpt-5.4", "claude:opus"], args) == [
+            "codex:gpt-5.4",
+            "claude:opus",
+        ]
 
     def test_effective_runner_specs_uses_env_override(self, monkeypatch):
         monkeypatch.setenv("AUTORAC_GPT_BACKEND", "codex")
         args = SimpleNamespace(gpt_backend=None)
 
-        assert _effective_runner_specs(
-            ["openai:gpt-5.4", "claude:opus"], args
-        ) == ["codex:gpt-5.4", "claude:opus"]
+        assert _effective_runner_specs(["openai:gpt-5.4", "claude:opus"], args) == [
+            "codex:gpt-5.4",
+            "claude:opus",
+        ]
 
     def test_effective_runner_specs_allows_explicit_openai_override(self, monkeypatch):
         monkeypatch.delenv("AUTORAC_GPT_BACKEND", raising=False)
         args = SimpleNamespace(gpt_backend="openai")
 
-        assert _effective_runner_specs(
-            ["codex:gpt-5.4", "claude:opus"], args
-        ) == ["openai:gpt-5.4", "claude:opus"]
+        assert _effective_runner_specs(["codex:gpt-5.4", "claude:opus"], args) == [
+            "openai:gpt-5.4",
+            "claude:opus",
+        ]
 
 
 class TestMain:
@@ -340,7 +340,9 @@ class TestMain:
 class TestCmdEvalSuite:
     def test_exits_nonzero_when_runner_is_not_ready(self, tmp_path, capsys):
         manifest_file = tmp_path / "suite.yaml"
-        manifest_file.write_text("name: readiness\ncases:\n  - kind: source\n    source_id: x\n    source_file: ./source.txt\n")
+        manifest_file.write_text(
+            "name: readiness\ncases:\n  - kind: source\n    source_id: x\n    source_file: ./source.txt\n"
+        )
         (tmp_path / "source.txt").write_text("authoritative text")
         args = SimpleNamespace(
             manifest=manifest_file,
@@ -393,10 +395,10 @@ class TestCmdEvalSuite:
             gate_results=[],
         )
 
-        with patch("autorac.cli.load_eval_suite_manifest") as mock_load, patch(
-            "autorac.cli.run_eval_suite", return_value=[fake_result]
-        ) as mock_run, patch(
-            "autorac.cli.summarize_readiness", return_value=fake_summary
+        with (
+            patch("autorac.cli.load_eval_suite_manifest") as mock_load,
+            patch("autorac.cli.run_eval_suite", return_value=[fake_result]) as mock_run,
+            patch("autorac.cli.summarize_readiness", return_value=fake_summary),
         ):
             mock_load.return_value.name = "Readiness"
             mock_load.return_value.path = manifest_file
@@ -417,7 +419,9 @@ class TestCmdEvalSuite:
 
     def test_passes_resume_flag_to_run_eval_suite(self, tmp_path):
         manifest_file = tmp_path / "suite.yaml"
-        manifest_file.write_text("name: readiness\ncases:\n  - kind: source\n    source_id: x\n    source_file: ./source.txt\n")
+        manifest_file.write_text(
+            "name: readiness\ncases:\n  - kind: source\n    source_id: x\n    source_file: ./source.txt\n"
+        )
         (tmp_path / "source.txt").write_text("authoritative text")
         args = SimpleNamespace(
             manifest=manifest_file,
@@ -470,10 +474,10 @@ class TestCmdEvalSuite:
             gate_results=[],
         )
 
-        with patch("autorac.cli.load_eval_suite_manifest") as mock_load, patch(
-            "autorac.cli.run_eval_suite", return_value=[fake_result]
-        ) as mock_run, patch(
-            "autorac.cli.summarize_readiness", return_value=fake_summary
+        with (
+            patch("autorac.cli.load_eval_suite_manifest") as mock_load,
+            patch("autorac.cli.run_eval_suite", return_value=[fake_result]) as mock_run,
+            patch("autorac.cli.summarize_readiness", return_value=fake_summary),
         ):
             mock_load.return_value.name = "Readiness"
             mock_load.return_value.path = manifest_file
@@ -488,7 +492,9 @@ class TestCmdEvalSuite:
 
     def test_auto_resumes_after_unexpected_suite_exception(self, tmp_path):
         manifest_file = tmp_path / "suite.yaml"
-        manifest_file.write_text("name: readiness\ncases:\n  - kind: source\n    source_id: x\n    source_file: ./source.txt\n")
+        manifest_file.write_text(
+            "name: readiness\ncases:\n  - kind: source\n    source_id: x\n    source_file: ./source.txt\n"
+        )
         (tmp_path / "source.txt").write_text("authoritative text")
         args = SimpleNamespace(
             manifest=manifest_file,
@@ -541,12 +547,15 @@ class TestCmdEvalSuite:
             gate_results=[],
         )
 
-        with patch("autorac.cli.load_eval_suite_manifest") as mock_load, patch(
-            "autorac.cli.run_eval_suite",
-            side_effect=[RuntimeError("boom"), [fake_result]],
-        ) as mock_run, patch(
-            "autorac.cli.summarize_readiness", return_value=fake_summary
-        ), patch("autorac.cli.time.sleep") as mock_sleep:
+        with (
+            patch("autorac.cli.load_eval_suite_manifest") as mock_load,
+            patch(
+                "autorac.cli.run_eval_suite",
+                side_effect=[RuntimeError("boom"), [fake_result]],
+            ) as mock_run,
+            patch("autorac.cli.summarize_readiness", return_value=fake_summary),
+            patch("autorac.cli.time.sleep") as mock_sleep,
+        ):
             mock_load.return_value.name = "Readiness"
             mock_load.return_value.path = manifest_file
             mock_load.return_value.runners = ["openai:gpt-5.4"]
@@ -564,7 +573,9 @@ class TestCmdEvalSuite:
 
     def test_usage_limit_failure_does_not_trigger_auto_resume(self, tmp_path):
         manifest_file = tmp_path / "suite.yaml"
-        manifest_file.write_text("name: readiness\ncases:\n  - kind: source\n    source_id: x\n    source_file: ./source.txt\n")
+        manifest_file.write_text(
+            "name: readiness\ncases:\n  - kind: source\n    source_id: x\n    source_file: ./source.txt\n"
+        )
         (tmp_path / "source.txt").write_text("authoritative text")
         args = SimpleNamespace(
             manifest=manifest_file,
@@ -642,12 +653,15 @@ class TestCmdEvalSuite:
             )
             return [fake_result]
 
-        with patch("autorac.cli.load_eval_suite_manifest") as mock_load, patch(
-            "autorac.cli.run_eval_suite",
-            side_effect=fake_run_eval_suite,
-        ) as mock_run, patch(
-            "autorac.cli.summarize_readiness", return_value=fake_summary
-        ), patch("autorac.cli.time.sleep") as mock_sleep:
+        with (
+            patch("autorac.cli.load_eval_suite_manifest") as mock_load,
+            patch(
+                "autorac.cli.run_eval_suite",
+                side_effect=fake_run_eval_suite,
+            ) as mock_run,
+            patch("autorac.cli.summarize_readiness", return_value=fake_summary),
+            patch("autorac.cli.time.sleep") as mock_sleep,
+        ):
             mock_load.return_value.name = "Readiness"
             mock_load.return_value.path = manifest_file
             mock_load.return_value.runners = ["openai:gpt-5.4"]
@@ -777,7 +791,9 @@ class TestCmdEvalSuiteRevalidate:
         )
 
         source_output = tmp_path / "out"
-        rac_file = source_output / "01-case-a" / "openai-gpt-5.4" / "source" / "case-a.rac"
+        rac_file = (
+            source_output / "01-case-a" / "openai-gpt-5.4" / "source" / "case-a.rac"
+        )
         rac_file.parent.mkdir(parents=True)
         rac_file.write_text(
             '"""\nauthoritative source text\n"""\n\ncase_a:\n    entity: Household\n    period: Month\n    dtype: Money\n    unit: USD\n    from 2024-01-01: 1\n'
@@ -907,8 +923,11 @@ class TestCmdEvalSuiteRevalidate:
         )
         args.rac_path.mkdir()
 
-        with patch("autorac.cli.evaluate_artifact", return_value=fresh_metrics) as mock_eval, patch(
-            "autorac.cli.summarize_readiness", return_value=summary
+        with (
+            patch(
+                "autorac.cli.evaluate_artifact", return_value=fresh_metrics
+            ) as mock_eval,
+            patch("autorac.cli.summarize_readiness", return_value=summary),
         ):
             with pytest.raises(SystemExit) as exc_info:
                 cmd_eval_suite_revalidate(args)
@@ -1088,7 +1107,9 @@ class TestCmdEvalSuiteArchive:
         assert archived_result["context_manifest_file"].startswith(str(archive_dir))
         assert not archived_result["output_file"].startswith(str(source_output))
 
-        archived_row = json.loads((archive_dir / "suite-results.jsonl").read_text().strip())
+        archived_row = json.loads(
+            (archive_dir / "suite-results.jsonl").read_text().strip()
+        )
         assert archived_row["result"]["output_file"].startswith(str(archive_dir))
 
         metadata = json.loads((archive_dir / "archive-metadata.json").read_text())
@@ -1334,10 +1355,30 @@ class TestCmdValidate:
         }
         mock_result.to_actual_scores.return_value = ReviewResults(
             reviews=[
-                ReviewResult(reviewer="rac_reviewer", passed=True, items_checked=1, items_passed=1),
-                ReviewResult(reviewer="formula_reviewer", passed=True, items_checked=2, items_passed=2),
-                ReviewResult(reviewer="parameter_reviewer", passed=False, items_checked=2, items_passed=1),
-                ReviewResult(reviewer="integration_reviewer", passed=True, items_checked=1, items_passed=1),
+                ReviewResult(
+                    reviewer="rac_reviewer",
+                    passed=True,
+                    items_checked=1,
+                    items_passed=1,
+                ),
+                ReviewResult(
+                    reviewer="formula_reviewer",
+                    passed=True,
+                    items_checked=2,
+                    items_passed=2,
+                ),
+                ReviewResult(
+                    reviewer="parameter_reviewer",
+                    passed=False,
+                    items_checked=2,
+                    items_passed=1,
+                ),
+                ReviewResult(
+                    reviewer="integration_reviewer",
+                    passed=True,
+                    items_checked=1,
+                    items_passed=1,
+                ),
             ],
             policyengine_match=1.0,
             taxsim_match=None,
@@ -2947,7 +2988,9 @@ class TestCmdValidateEdgeCases:
 </akomaNtoso>
             """.strip()
         )
-        source_file.with_name("snap_standard_utility_allowance_tx.meta.yaml").write_text(
+        source_file.with_name(
+            "snap_standard_utility_allowance_tx.meta.yaml"
+        ).write_text(
             "version: 1\n"
             "source_backing:\n"
             "  kind: akn_section\n"
@@ -3015,7 +3058,9 @@ class TestCmdValidateEdgeCases:
         assert call_kwargs["rac_us_path"] == Path(
             "/Users/maxghenis/TheAxiomFoundation/rac-us"
         )
-        assert call_kwargs["rac_path"] == Path("/Users/maxghenis/TheAxiomFoundation/rac")
+        assert call_kwargs["rac_path"] == Path(
+            "/Users/maxghenis/TheAxiomFoundation/rac"
+        )
 
 
 class TestCmdCalibrationEdgeCases:

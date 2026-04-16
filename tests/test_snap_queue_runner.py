@@ -41,9 +41,7 @@ def test_sha256_paths_ignores_file_names(tmp_path):
     assert left_digest == right_digest
 
 
-def test_iter_manifest_queue_candidates_includes_federal_rac_us(
-    tmp_path, monkeypatch
-):
+def test_iter_manifest_queue_candidates_includes_federal_rac_us(tmp_path, monkeypatch):
     module = load_queue_runner_module()
     autorac_root = tmp_path / "autorac"
     benchmarks = autorac_root / "benchmarks"
@@ -217,7 +215,9 @@ def test_reconcile_stale_running_items_marks_ready_orphan_done(tmp_path):
     assert changed is True
     assert data["items"][0]["status"] == "done"
     assert data["items"][0]["source_tracking_version"] == module.SOURCE_TRACKING_VERSION
-    assert data["items"][0]["note"] == "closed fully ready after orphaned eval completed"
+    assert (
+        data["items"][0]["note"] == "closed fully ready after orphaned eval completed"
+    )
     assert data["event_log"][0]["message"] == (
         "snap_demo was left in `running`, but its output is ready; marked done."
     )

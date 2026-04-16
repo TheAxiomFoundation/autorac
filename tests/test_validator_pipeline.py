@@ -105,8 +105,14 @@ def test_generalist_reviewer_prompt_allows_justified_entity_not_supported_fallba
 
 def test_generalist_reviewer_prompt_allows_editorial_omission_and_unavailable_subject_to_imports():
     assert "editorial omission or dotted ellipsis" in GENERALIST_REVIEWER_PROMPT
-    assert "top-level `status: deferred` fallback is acceptable" in GENERALIST_REVIEWER_PROMPT
-    assert "paragraph-specific local inputs can be acceptable" in GENERALIST_REVIEWER_PROMPT
+    assert (
+        "top-level `status: deferred` fallback is acceptable"
+        in GENERALIST_REVIEWER_PROMPT
+    )
+    assert (
+        "paragraph-specific local inputs can be acceptable"
+        in GENERALIST_REVIEWER_PROMPT
+    )
     assert "Prefer imports when available" in GENERALIST_REVIEWER_PROMPT
 
 
@@ -139,16 +145,20 @@ class TestRunClaudeCode:
             assert code == 1
 
     def test_prefers_codex_when_env_requests_it(self):
-        with patch.dict(
-            "os.environ",
-            {"AUTORAC_REVIEWER_CLI": "codex"},
-            clear=False,
-        ), patch(
-            "autorac.harness.validator_pipeline._run_codex_reviewer_cli",
-            return_value=('{"passed": true}', 0),
-        ) as mock_codex, patch(
-            "autorac.harness.validator_pipeline._run_subprocess_with_idle_timeout"
-        ) as mock_run:
+        with (
+            patch.dict(
+                "os.environ",
+                {"AUTORAC_REVIEWER_CLI": "codex"},
+                clear=False,
+            ),
+            patch(
+                "autorac.harness.validator_pipeline._run_codex_reviewer_cli",
+                return_value=('{"passed": true}', 0),
+            ) as mock_codex,
+            patch(
+                "autorac.harness.validator_pipeline._run_subprocess_with_idle_timeout"
+            ) as mock_run,
+        ):
             output, code = run_claude_code("test")
 
         assert output == '{"passed": true}'
@@ -157,11 +167,14 @@ class TestRunClaudeCode:
         mock_run.assert_not_called()
 
     def test_handles_missing_cli(self):
-        with patch(
-            "autorac.harness.validator_pipeline._run_subprocess_with_idle_timeout"
-        ) as mock_run, patch(
-            "autorac.harness.validator_pipeline._run_codex_reviewer_cli",
-            return_value=("Reviewer CLIs not found (missing claude and codex)", 1),
+        with (
+            patch(
+                "autorac.harness.validator_pipeline._run_subprocess_with_idle_timeout"
+            ) as mock_run,
+            patch(
+                "autorac.harness.validator_pipeline._run_codex_reviewer_cli",
+                return_value=("Reviewer CLIs not found (missing claude and codex)", 1),
+            ),
         ):
             mock_run.side_effect = [FileNotFoundError()]
             output, code = run_claude_code("test")
@@ -169,12 +182,18 @@ class TestRunClaudeCode:
             assert code == 1
 
     def test_falls_back_to_codex_when_claude_missing(self):
-        with patch(
-            "autorac.harness.validator_pipeline._run_subprocess_with_idle_timeout"
-        ) as mock_run, patch(
-            "autorac.harness.validator_pipeline._run_codex_reviewer_cli",
-            return_value=('{"score": 8.0, "passed": true, "issues": [], "reasoning": "ok"}', 0),
-        ) as mock_codex:
+        with (
+            patch(
+                "autorac.harness.validator_pipeline._run_subprocess_with_idle_timeout"
+            ) as mock_run,
+            patch(
+                "autorac.harness.validator_pipeline._run_codex_reviewer_cli",
+                return_value=(
+                    '{"score": 8.0, "passed": true, "issues": [], "reasoning": "ok"}',
+                    0,
+                ),
+            ) as mock_codex,
+        ):
             mock_run.side_effect = [FileNotFoundError()]
             output, code = run_claude_code("test prompt", cwd=Path("/tmp"))
             assert '"score": 8.0' in output
@@ -196,11 +215,14 @@ class TestRunClaudeCode:
             def kill(self):
                 self.returncode = -9
 
-        with patch.dict(
-            "os.environ",
-            {"AUTORAC_REVIEWER_CLAUDE_IDLE_TIMEOUT_SECONDS": "0"},
-            clear=False,
-        ), patch("autorac.harness.validator_pipeline.subprocess.Popen", FakePopen):
+        with (
+            patch.dict(
+                "os.environ",
+                {"AUTORAC_REVIEWER_CLAUDE_IDLE_TIMEOUT_SECONDS": "0"},
+                clear=False,
+            ),
+            patch("autorac.harness.validator_pipeline.subprocess.Popen", FakePopen),
+        ):
             output, code = run_claude_code("test prompt", timeout=5)
 
         assert "Timeout after 0s" in output
@@ -227,7 +249,9 @@ class TestRunPeSubprocessDetailed:
         ) as mock_run:
             mock_run.return_value = Mock(output="RESULT:123\n", returncode=0)
 
-            result = pipeline._run_pe_subprocess_detailed("print('RESULT:123')", "python")
+            result = pipeline._run_pe_subprocess_detailed(
+                "print('RESULT:123')", "python"
+            )
 
         assert result.returncode == 0
         assert result.stdout == "RESULT:123\n"
@@ -241,7 +265,9 @@ class TestRunPeSubprocessDetailed:
         ) as mock_run:
             mock_run.side_effect = subprocess.TimeoutExpired(cmd="python", timeout=120)
 
-            result = pipeline._run_pe_subprocess_detailed("print('RESULT:123')", "python")
+            result = pipeline._run_pe_subprocess_detailed(
+                "print('RESULT:123')", "python"
+            )
 
         assert result.returncode == 124
         assert result.stderr == "Timeout after 120s"
@@ -299,11 +325,14 @@ class TestRunPeSubprocessDetailed:
             def kill(self):
                 self.returncode = -9
 
-        with patch.dict(
-            "os.environ",
-            {"AUTORAC_REVIEWER_CODEX_IDLE_TIMEOUT_SECONDS": "0"},
-            clear=False,
-        ), patch("autorac.harness.validator_pipeline.subprocess.Popen", FakePopen):
+        with (
+            patch.dict(
+                "os.environ",
+                {"AUTORAC_REVIEWER_CODEX_IDLE_TIMEOUT_SECONDS": "0"},
+                clear=False,
+            ),
+            patch("autorac.harness.validator_pipeline.subprocess.Popen", FakePopen),
+        ):
             output, code = _run_codex_reviewer_cli("test prompt", timeout=5)
 
         assert "Timeout after 5s" in output
@@ -463,7 +492,9 @@ Both legally obligated and informal child support payments are treated as income
         assert 7.0 not in numbers
         assert 2025.0 not in numbers
 
-    def test_ignores_bulletin_dates_month_periods_and_statewide_restatements_for_grounding(self):
+    def test_ignores_bulletin_dates_month_periods_and_statewide_restatements_for_grounding(
+        self,
+    ):
         numbers = extract_numbers_from_text(
             """
 Texas SNAP telephone standard under MEPD and TW Bulletin 25-15 section 2
@@ -882,7 +913,9 @@ Households with at least one person age 60 or older or disabled: $4,500
         assert 3000.0 in occurrences
         assert 4500.0 in occurrences
 
-    def test_allows_table_label_age_values_for_grounding_without_requiring_scalars(self):
+    def test_allows_table_label_age_values_for_grounding_without_requiring_scalars(
+        self,
+    ):
         numbers = extract_numbers_from_text(
             """
 Table 5: Maximum Asset Limits
@@ -2334,7 +2367,9 @@ size_6_or_more_amount:
 
     def test_ci_allows_schedule_index_helper_scalars(self, pipeline):
         """CI should ignore helper constants that only name schedule row indices."""
-        rac_file = pipeline.rac_us_path / "us" / "snap_standard_deduction_helper_indices.rac"
+        rac_file = (
+            pipeline.rac_us_path / "us" / "snap_standard_deduction_helper_indices.rac"
+        )
         rac_file.parent.mkdir(parents=True, exist_ok=True)
         rac_file.write_text(
             '''
@@ -2417,11 +2452,15 @@ size_6_or_more_amount:
             result = pipeline._run_ci(rac_file)
 
         assert result.passed is True
-        assert not any("missing from source" in issue.lower() for issue in result.issues)
+        assert not any(
+            "missing from source" in issue.lower() for issue in result.issues
+        )
 
     def test_ci_allows_size_segment_schedule_index_literals(self, pipeline):
         """CI should allow schedule-row indices on helpers that contain `_size_`."""
-        rac_file = pipeline.rac_us_path / "us" / "snap_standard_deduction_segment_leaf.rac"
+        rac_file = (
+            pipeline.rac_us_path / "us" / "snap_standard_deduction_segment_leaf.rac"
+        )
         rac_file.parent.mkdir(parents=True, exist_ok=True)
         rac_file.write_text(
             '''
@@ -2501,7 +2540,7 @@ size_6_or_more_amount:
 
     def test_extract_grounding_values_ignores_worded_schedule_index_helpers(self):
         values = extract_grounding_values(
-            '''
+            """
 north_carolina_sua_unit_size_four:
     entity: SnapUnit
     period: Month
@@ -2519,7 +2558,7 @@ north_carolina_sua_unit_size_five_or_more_threshold:
     period: Month
     dtype: Count
     from 2025-01-01: 5
-'''
+"""
         )
 
         assert not any(raw == "4" and value == 4.0 for _, raw, value in values)
@@ -2527,7 +2566,7 @@ north_carolina_sua_unit_size_five_or_more_threshold:
 
     def test_extract_grounding_values_ignores_row_number_schedule_index_helpers(self):
         values = extract_grounding_values(
-            '''
+            """
 nc_tua_unit_size_row_4:
     entity: SnapUnit
     period: Month
@@ -2539,15 +2578,17 @@ nc_tua_unit_size_row_5_or_more_threshold:
     period: Month
     dtype: Count
     from 2025-01-01: 5
-'''
+"""
         )
 
         assert not any(raw == "4" and value == 4.0 for _, raw, value in values)
         assert any(raw == "5" and value == 5.0 for _, raw, value in values)
 
-    def test_extract_grounding_values_ignores_person_worded_schedule_index_helpers(self):
+    def test_extract_grounding_values_ignores_person_worded_schedule_index_helpers(
+        self,
+    ):
         values = extract_grounding_values(
-            '''
+            """
 north_carolina_snap_tua_four_person_unit_size:
     entity: SnapUnit
     period: Month
@@ -2559,7 +2600,7 @@ north_carolina_snap_tua_five_or_more_threshold:
     period: Month
     dtype: Count
     from 2025-01-01: 5
-'''
+"""
         )
 
         assert not any(raw == "4" and value == 4.0 for _, raw, value in values)
@@ -2718,7 +2759,9 @@ assessed_amount_deemed_increase:
         result = pipeline._run_ci(rac_file)
 
         assert result.passed is False
-        assert any("Function-style variable reference" in issue for issue in result.issues)
+        assert any(
+            "Function-style variable reference" in issue for issue in result.issues
+        )
 
     def test_ci_allows_numeric_age_threshold_scalars(self, pipeline):
         """CI should allow substantive age thresholds represented as named scalars."""
@@ -2809,7 +2852,9 @@ qualifying_young_person_4A_1_b:
             result = pipeline._run_ci(rac_file)
 
         assert result.passed is False
-        assert any("Branch-specific output name missing" in issue for issue in result.issues)
+        assert any(
+            "Branch-specific output name missing" in issue for issue in result.issues
+        )
 
     def test_ci_requires_import_for_resolved_defined_term(self, pipeline):
         """CI should fail when a known defined term is modeled locally instead of imported."""
@@ -2885,7 +2930,9 @@ savings_credit_condition:
             ]
             result = pipeline._run_ci(rac_file)
 
-        assert not any("Defined term import missing" in issue for issue in result.issues)
+        assert not any(
+            "Defined term import missing" in issue for issue in result.issues
+        )
 
     def test_ci_requires_import_for_resolved_canonical_concept(self, pipeline):
         """CI should fail when a unique nearby canonical concept exists but is modeled locally."""
@@ -2907,7 +2954,9 @@ is_individual_responsibility_contract:
 '''
         )
 
-        rac_file = pipeline.rac_us_path / "regulation" / "9-CCR-2503-6" / "3.609.1" / "A.rac"
+        rac_file = (
+            pipeline.rac_us_path / "regulation" / "9-CCR-2503-6" / "3.609.1" / "A.rac"
+        )
         rac_file.parent.mkdir(parents=True, exist_ok=True)
         rac_file.write_text(
             '''
@@ -2940,8 +2989,12 @@ individual_responsibility_contract_requirement_satisfied:
             result = pipeline._run_ci(rac_file)
 
         assert result.passed is False
-        assert any("Canonical concept import missing" in issue for issue in result.issues)
-        assert any("individual responsibility contract" in issue for issue in result.issues)
+        assert any(
+            "Canonical concept import missing" in issue for issue in result.issues
+        )
+        assert any(
+            "individual responsibility contract" in issue for issue in result.issues
+        )
 
     def test_ci_allows_import_for_resolved_canonical_concept(self, pipeline):
         """CI should allow a uniquely resolved nearby canonical concept import."""
@@ -2963,7 +3016,9 @@ is_individual_responsibility_contract:
 '''
         )
 
-        rac_file = pipeline.rac_us_path / "regulation" / "9-CCR-2503-6" / "3.609.1" / "A.rac"
+        rac_file = (
+            pipeline.rac_us_path / "regulation" / "9-CCR-2503-6" / "3.609.1" / "A.rac"
+        )
         rac_file.parent.mkdir(parents=True, exist_ok=True)
         rac_file.write_text(
             '''
@@ -2999,7 +3054,9 @@ individual_responsibility_contract_requirement_satisfied:
             ]
             result = pipeline._run_ci(rac_file)
 
-        assert not any("Canonical concept import missing" in issue for issue in result.issues)
+        assert not any(
+            "Canonical concept import missing" in issue for issue in result.issues
+        )
 
     def test_ci_rejects_promoted_stub_when_source_is_ingested(self, pipeline):
         """CI should reject a committed stub once the official source snapshot exists."""
@@ -3052,11 +3109,12 @@ is_assistance_unit:
 
         assert result.passed is False
         assert any(
-            "Promoted RAC stub with ingested source" in issue
-            for issue in result.issues
+            "Promoted RAC stub with ingested source" in issue for issue in result.issues
         )
 
-    def test_ci_rejects_imported_stub_dependency_when_source_is_ingested(self, pipeline):
+    def test_ci_rejects_imported_stub_dependency_when_source_is_ingested(
+        self, pipeline
+    ):
         """CI should reject downstream imports that still point at a promoted stub."""
         target = pipeline.rac_us_path / "statute" / "crs" / "26-2-703" / "2.5.rac"
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -3090,7 +3148,9 @@ is_assistance_unit:
         source_file.parent.mkdir(parents=True, exist_ok=True)
         source_file.write_text("<html>official statute source</html>")
 
-        rac_file = pipeline.rac_us_path / "regulation" / "9-CCR-2503-6" / "3.606.1" / "J.rac"
+        rac_file = (
+            pipeline.rac_us_path / "regulation" / "9-CCR-2503-6" / "3.606.1" / "J.rac"
+        )
         rac_file.parent.mkdir(parents=True, exist_ok=True)
         rac_file.write_text(
             '''
@@ -3132,9 +3192,13 @@ grant_amount_for_assistance_unit:
             for issue in result.issues
         )
 
-    def test_ci_does_not_force_import_for_low_confidence_one_word_concept(self, pipeline):
+    def test_ci_does_not_force_import_for_low_confidence_one_word_concept(
+        self, pipeline
+    ):
         """Generic one-word concepts like `income` should not become required imports."""
-        concept_file = pipeline.rac_us_path / "statute" / "crs" / "26-2-703" / "10.5.rac"
+        concept_file = (
+            pipeline.rac_us_path / "statute" / "crs" / "26-2-703" / "10.5.rac"
+        )
         concept_file.parent.mkdir(parents=True, exist_ok=True)
         concept_file.write_text(
             '''
@@ -3152,7 +3216,9 @@ is_income:
 '''
         )
 
-        rac_file = pipeline.rac_us_path / "regulation" / "9-CCR-2503-6" / "3.605.2" / "X.rac"
+        rac_file = (
+            pipeline.rac_us_path / "regulation" / "9-CCR-2503-6" / "3.605.2" / "X.rac"
+        )
         rac_file.parent.mkdir(parents=True, exist_ok=True)
         rac_file.write_text(
             '''
@@ -3184,9 +3250,13 @@ income_is_considered_for_eligibility:
             ]
             result = pipeline._run_ci(rac_file)
 
-        assert not any("Canonical concept import missing" in issue for issue in result.issues)
+        assert not any(
+            "Canonical concept import missing" in issue for issue in result.issues
+        )
 
-    def test_ci_runs_test_runner_from_flattened_import_workspace(self, pipeline, tmp_path):
+    def test_ci_runs_test_runner_from_flattened_import_workspace(
+        self, pipeline, tmp_path
+    ):
         runner_root = tmp_path / "case" / "codex-gpt-5.4"
         source_dir = runner_root / "source"
         external_dir = runner_root / "external"
@@ -3255,7 +3325,9 @@ grant_standard_for_assistance_unit:
                 )
             raise AssertionError(f"Unexpected subprocess command: {cmd}")
 
-        with patch("autorac.harness.validator_pipeline.subprocess.run", side_effect=fake_run):
+        with patch(
+            "autorac.harness.validator_pipeline.subprocess.run", side_effect=fake_run
+        ):
             result = pipeline._run_ci(rac_file)
 
         assert result.passed is True
@@ -3375,7 +3447,9 @@ snap_state_uses_child_support_deduction:
 '''
         )
 
-        manifest_dir = case_root / "_eval_workspaces" / "openai-gpt-5.4" / "leaf" / "workspace"
+        manifest_dir = (
+            case_root / "_eval_workspaces" / "openai-gpt-5.4" / "leaf" / "workspace"
+        )
         manifest_dir.mkdir(parents=True, exist_ok=True)
         (manifest_dir / "context-manifest.json").write_text(
             json.dumps(
@@ -3471,11 +3545,15 @@ shared_eligibility_flag:
         assert pipeline._infer_title_from_rac_path(rac_file) == "26"
 
     def test_infer_title_from_rac_path_skips_non_statute_eval_layout(self, pipeline):
-        rac_file = pipeline.rac_us_path / "claude-opus" / "source" / "9-CCR-2503-6-3.606.1.rac"
+        rac_file = (
+            pipeline.rac_us_path / "claude-opus" / "source" / "9-CCR-2503-6-3.606.1.rac"
+        )
         assert pipeline._infer_title_from_rac_path(rac_file) is None
 
     def test_ci_skips_cross_statute_rule_for_non_statute_eval_layout(self, pipeline):
-        rac_file = pipeline.rac_us_path / "claude-opus" / "source" / "9-CCR-2503-6-3.606.1.rac"
+        rac_file = (
+            pipeline.rac_us_path / "claude-opus" / "source" / "9-CCR-2503-6-3.606.1.rac"
+        )
         rac_file.parent.mkdir(parents=True, exist_ok=True)
         rac_file.write_text(
             '''
@@ -3583,9 +3661,10 @@ class TestRunReviewer:
             # Verify oracle context was included in prompt
             call_prompt = mock_claude.call_args[0][0]
             assert "POLICYENGINE" in call_prompt
-            assert result.prompt_sha256 == hashlib.sha256(
-                call_prompt.encode("utf-8")
-            ).hexdigest()
+            assert (
+                result.prompt_sha256
+                == hashlib.sha256(call_prompt.encode("utf-8")).hexdigest()
+            )
 
     def test_reviewer_includes_review_context_and_companion_test(
         self, pipeline, temp_rac_file
@@ -3609,7 +3688,9 @@ class TestRunReviewer:
             assert "File: benchmark artifact (.rac)" in call_prompt
             assert str(temp_rac_file) not in call_prompt
 
-    def test_ci_flags_except_where_carve_outs_treated_as_satisfied(self, pipeline, temp_rac_file):
+    def test_ci_flags_except_where_carve_outs_treated_as_satisfied(
+        self, pipeline, temp_rac_file
+    ):
         temp_rac_file.write_text(
             '''"""
 10. The circumstances prescribed are that except where sub-paragraph (b) applies,
@@ -3638,13 +3719,16 @@ assessed_income_period_10_2_a_satisfied:
         assert any("Carve-out logic inverted" in issue for issue in issues)
 
     def test_reviewer_no_json_in_output(self, pipeline, temp_rac_file):
-        """Reviewer handles response without JSON."""
+        """Reviewer handles response without JSON via structured parse-failure result."""
         with patch("autorac.harness.validator_pipeline.run_claude_code") as mock_claude:
             mock_claude.return_value = ("No JSON here, just text", 0)
             result = pipeline._run_reviewer("rac-reviewer", temp_rac_file)
             assert result.passed is False
             assert result.score is None
-            assert any("error" in issue.lower() for issue in result.issues)
+            # New behavior: structured reviewer_parse_failed tag + detail message
+            assert "reviewer_parse_failed" in result.issues
+            assert result.error is not None
+            assert "reviewer_parse_failed" in result.error
 
     def test_reviewer_parses_fenced_generalist_json(self, pipeline, temp_rac_file):
         with patch("autorac.harness.validator_pipeline.run_claude_code") as mock_claude:
@@ -3707,7 +3791,10 @@ assessed_income_period_10_2_a_satisfied:
             assert "senior statutory-fidelity reviewer" in call_prompt
             assert "No semantic compression" in call_prompt
             assert "atomic source slice or branch leaf" in call_prompt
-            assert "Only place substantive statutory-fidelity defects in `blocking_issues`" in call_prompt
+            assert (
+                "Only place substantive statutory-fidelity defects in `blocking_issues`"
+                in call_prompt
+            )
 
     def test_generalist_reviewer_separates_blocking_and_non_blocking_issues(
         self, pipeline, temp_rac_file
@@ -3811,7 +3898,9 @@ class TestFindPePython:
             if python_path == str(env_python):
                 return Mock(stdout="ok", stderr="", returncode=0)
             if python_path == sys.executable:
-                pytest.fail("current interpreter should not be checked before env override")
+                pytest.fail(
+                    "current interpreter should not be checked before env override"
+                )
             return Mock(stdout="", stderr="error", returncode=1)
 
         with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run:
@@ -3895,12 +3984,16 @@ class TestFindPePython:
 
         with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run:
             mock_run.side_effect = mock_run_side_effect
-            with patch("autorac.harness.validator_pipeline.Path.home", return_value=tmp_path):
+            with patch(
+                "autorac.harness.validator_pipeline.Path.home", return_value=tmp_path
+            ):
                 result = pipeline._find_pe_python()
 
         assert result == str(worktree_python)
 
-    def test_worktree_venv_preferred_over_policyengine_checkout(self, pipeline, tmp_path):
+    def test_worktree_venv_preferred_over_policyengine_checkout(
+        self, pipeline, tmp_path
+    ):
         worktree_python = (
             tmp_path
             / "worktrees"
@@ -3910,12 +4003,7 @@ class TestFindPePython:
             / "python"
         )
         checkout_python = (
-            tmp_path
-            / "PolicyEngine"
-            / "policyengine-us"
-            / ".venv"
-            / "bin"
-            / "python"
+            tmp_path / "PolicyEngine" / "policyengine-us" / ".venv" / "bin" / "python"
         )
         worktree_python.parent.mkdir(parents=True)
         checkout_python.parent.mkdir(parents=True)
@@ -3927,12 +4015,16 @@ class TestFindPePython:
             if python_path == str(worktree_python):
                 return Mock(stdout="ok", stderr="", returncode=0)
             if python_path == str(checkout_python):
-                pytest.fail("worktree venv should be preferred over PolicyEngine checkout")
+                pytest.fail(
+                    "worktree venv should be preferred over PolicyEngine checkout"
+                )
             return Mock(stdout="", stderr="error", returncode=1)
 
         with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run:
             mock_run.side_effect = mock_run_side_effect
-            with patch("autorac.harness.validator_pipeline.Path.home", return_value=tmp_path):
+            with patch(
+                "autorac.harness.validator_pipeline.Path.home", return_value=tmp_path
+            ):
                 result = pipeline._find_pe_python()
 
         assert result == str(worktree_python)
@@ -4136,9 +4228,7 @@ eitc:
             with patch.object(
                 pipeline,
                 "_run_pe_subprocess_detailed",
-                return_value=OracleSubprocessResult(
-                    returncode=1, stderr="boom"
-                ),
+                return_value=OracleSubprocessResult(returncode=1, stderr="boom"),
             ):
                 result = pipeline._run_policyengine(rac_file)
                 assert any("failed" in issue.lower() for issue in result.issues)
@@ -4305,9 +4395,7 @@ source_row_amount:
         assert result.score == 1.0
         assert "uc_standard_allowance" in mock_run.call_args[0][0]
 
-    def test_pe_uk_prefers_nested_input_period_and_quotes_year_keys(
-        self, temp_dirs
-    ):
+    def test_pe_uk_prefers_nested_input_period_and_quotes_year_keys(self, temp_dirs):
         rac_us, rac_dir = temp_dirs
         pipeline = ValidatorPipeline(
             rac_us_path=rac_us,
@@ -4358,9 +4446,7 @@ regulation_80A_2_b_ii_applicable_annual_limit:
         assert "'2025': 30" in scenario_script
         assert "int('2025')" in scenario_script
 
-    def test_pe_uk_skips_zero_oracle_cases_for_table_row_amount_slices(
-        self, temp_dirs
-    ):
+    def test_pe_uk_skips_zero_oracle_cases_for_table_row_amount_slices(self, temp_dirs):
         rac_us, rac_dir = temp_dirs
         pipeline = ValidatorPipeline(
             rac_us_path=rac_us,
@@ -4397,9 +4483,7 @@ uc_standard_allowance_single_claimant_aged_under_25:
 
         assert result.score is None
         assert mock_run.call_count == 0
-        assert any(
-            "row-specific zero case" in issue.lower() for issue in result.issues
-        )
+        assert any("row-specific zero case" in issue.lower() for issue in result.issues)
 
     def test_pe_no_expected(self, pipeline, temp_dirs):
         """Tests without expected values are skipped."""
@@ -5078,7 +5162,10 @@ class TestGetPeVariableMap:
             mapping["snap_tanf_non_cash_gross_income_limit_fpg_ratio"]
             == "snap_tanf_non_cash_gross_income_limit_fpg_ratio"
         )
-        assert mapping["snap_tanf_non_cash_asset_limit"] == "snap_tanf_non_cash_asset_limit"
+        assert (
+            mapping["snap_tanf_non_cash_asset_limit"]
+            == "snap_tanf_non_cash_asset_limit"
+        )
         assert (
             mapping["snap_child_support_deduction"]
             == "snap_child_support_gross_income_deduction"
@@ -5090,16 +5177,37 @@ class TestGetPeVariableMap:
 
     def test_uk_child_benefit_leaf_mapping(self, pipeline):
         mapping = pipeline._get_pe_variable_map("uk")
-        assert mapping["child_benefit_enhanced_rate_amount"] == "child_benefit_respective_amount"
-        assert mapping["child_benefit_enhanced_weekly_rate"] == "child_benefit_respective_amount"
-        assert mapping["child_benefit_regulation_2_1_a_amount"] == "child_benefit_respective_amount"
+        assert (
+            mapping["child_benefit_enhanced_rate_amount"]
+            == "child_benefit_respective_amount"
+        )
+        assert (
+            mapping["child_benefit_enhanced_weekly_rate"]
+            == "child_benefit_respective_amount"
+        )
+        assert (
+            mapping["child_benefit_regulation_2_1_a_amount"]
+            == "child_benefit_respective_amount"
+        )
         assert mapping["child_benefit_reg2_1_a"] == "child_benefit_respective_amount"
         assert mapping["child_benefit_weekly_rate"] == "child_benefit_respective_amount"
-        assert mapping["uk_child_benefit_other_child_weekly_rate"] == "child_benefit_respective_amount"
+        assert (
+            mapping["uk_child_benefit_other_child_weekly_rate"]
+            == "child_benefit_respective_amount"
+        )
         assert mapping["child_benefit_reg2_1_b"] == "child_benefit_respective_amount"
-        assert mapping["child_benefit_weekly_rate_other_case"] == "child_benefit_respective_amount"
-        assert mapping["standard_minimum_guarantee_couple_weekly_rate"] == "standard_minimum_guarantee"
-        assert mapping["standard_minimum_guarantee_single_weekly_rate"] == "standard_minimum_guarantee"
+        assert (
+            mapping["child_benefit_weekly_rate_other_case"]
+            == "child_benefit_respective_amount"
+        )
+        assert (
+            mapping["standard_minimum_guarantee_couple_weekly_rate"]
+            == "standard_minimum_guarantee"
+        )
+        assert (
+            mapping["standard_minimum_guarantee_single_weekly_rate"]
+            == "standard_minimum_guarantee"
+        )
 
     def test_pe_monthly_vars(self, pipeline):
         assert "snap" in pipeline._PE_MONTHLY_VARS
@@ -5109,7 +5217,9 @@ class TestGetPeVariableMap:
         assert "snap_standard_utility_allowance" in pipeline._PE_MONTHLY_VARS
         assert "snap_limited_utility_allowance" in pipeline._PE_MONTHLY_VARS
         assert "snap_individual_utility_allowance" in pipeline._PE_MONTHLY_VARS
-        assert "snap_state_using_standard_utility_allowance" in pipeline._PE_MONTHLY_VARS
+        assert (
+            "snap_state_using_standard_utility_allowance" in pipeline._PE_MONTHLY_VARS
+        )
         assert "meets_snap_asset_test" in pipeline._PE_MONTHLY_VARS
         assert "meets_snap_gross_income_test" in pipeline._PE_MONTHLY_VARS
         assert "meets_snap_net_income_test" in pipeline._PE_MONTHLY_VARS
@@ -5301,9 +5411,7 @@ class TestGetPeVariableMap:
 
         assert "'snap_earned_income': {'2022-01': 0}" in script
 
-    def test_build_pe_us_script_maps_snap_net_income_pre_shelter_inputs(
-        self, pipeline
-    ):
+    def test_build_pe_us_script_maps_snap_net_income_pre_shelter_inputs(self, pipeline):
         script = pipeline._build_pe_us_scenario_script(
             "snap_net_income_pre_shelter",
             {
@@ -5324,9 +5432,7 @@ class TestGetPeVariableMap:
         assert "'snap_child_support_deduction': {'2022-01': 20}" in script
         assert "'snap_excess_medical_expense_deduction': {'2022-01': 30}" in script
 
-    def test_build_pe_us_script_maps_direct_pre_shelter_income_synonym(
-        self, pipeline
-    ):
+    def test_build_pe_us_script_maps_direct_pre_shelter_income_synonym(self, pipeline):
         script = pipeline._build_pe_us_scenario_script(
             "snap_net_income_pre_shelter",
             {
@@ -5338,9 +5444,7 @@ class TestGetPeVariableMap:
 
         assert "'snap_net_income_pre_shelter': {'2024-01': 50}" in script
 
-    def test_build_pe_us_script_maps_long_pre_shelter_income_synonym(
-        self, pipeline
-    ):
+    def test_build_pe_us_script_maps_long_pre_shelter_income_synonym(self, pipeline):
         script = pipeline._build_pe_us_scenario_script(
             "snap_net_income_pre_shelter",
             {
@@ -5366,9 +5470,7 @@ class TestGetPeVariableMap:
 
         assert "'snap_net_income_pre_shelter': {'2024-01': 300}" in script
 
-    def test_build_pe_us_script_maps_short_pre_shelter_income_synonym(
-        self, pipeline
-    ):
+    def test_build_pe_us_script_maps_short_pre_shelter_income_synonym(self, pipeline):
         script = pipeline._build_pe_us_scenario_script(
             "snap_net_income_pre_shelter",
             {
@@ -5393,7 +5495,10 @@ class TestGetPeVariableMap:
             "2022",
         )
 
-        assert "'child0': {'age': {'2022': 8}, 'is_tax_unit_dependent': {'2022': True}}" in script
+        assert (
+            "'child0': {'age': {'2022': 8}, 'is_tax_unit_dependent': {'2022': True}}"
+            in script
+        )
         assert "'spm_unit_pre_subsidy_childcare_expenses': {'2022': 600}" in script
 
     def test_build_pe_us_script_annualizes_direct_pre_shelter_dependent_care_deduction(
@@ -5408,7 +5513,10 @@ class TestGetPeVariableMap:
             "2022",
         )
 
-        assert "'child0': {'age': {'2022': 8}, 'is_tax_unit_dependent': {'2022': True}}" in script
+        assert (
+            "'child0': {'age': {'2022': 8}, 'is_tax_unit_dependent': {'2022': True}}"
+            in script
+        )
         assert "'spm_unit_pre_subsidy_childcare_expenses': {'2022': 120}" in script
 
     def test_build_pe_us_script_derives_snap_earned_income_for_pre_shelter_path(
@@ -5501,7 +5609,10 @@ class TestGetPeVariableMap:
 
         assert "CountryTaxBenefitSystem" in script
         assert "system.parameters('2026-01')" in script
-        assert "float(params.gov.usda.snap.income.deductions.self_employment.rate['MD'])" in script
+        assert (
+            "float(params.gov.usda.snap.income.deductions.self_employment.rate['MD'])"
+            in script
+        )
 
     def test_build_pe_us_script_maps_snap_self_employment_simplified_deduction_rate_for_explicit_state(
         self, pipeline
@@ -5512,7 +5623,10 @@ class TestGetPeVariableMap:
             "2026",
         )
 
-        assert "float(params.gov.usda.snap.income.deductions.self_employment.rate['OH'])" in script
+        assert (
+            "float(params.gov.usda.snap.income.deductions.self_employment.rate['OH'])"
+            in script
+        )
 
     def test_build_pe_us_script_maps_snap_standard_medical_expense_deduction(
         self, pipeline
@@ -5590,7 +5704,9 @@ snap_state_uses_child_support_deduction:
 """
         )
 
-        manifest_dir = case_root / "_eval_workspaces" / "openai-gpt-5.4" / "leaf" / "workspace"
+        manifest_dir = (
+            case_root / "_eval_workspaces" / "openai-gpt-5.4" / "leaf" / "workspace"
+        )
         manifest_dir.mkdir(parents=True, exist_ok=True)
         (manifest_dir / "context-manifest.json").write_text(
             json.dumps(
@@ -5644,7 +5760,9 @@ snap_individual_utility_allowance:
 """
         )
 
-        manifest_dir = case_root / "_eval_workspaces" / "openai-gpt-5.4" / "leaf" / "workspace"
+        manifest_dir = (
+            case_root / "_eval_workspaces" / "openai-gpt-5.4" / "leaf" / "workspace"
+        )
         manifest_dir.mkdir(parents=True, exist_ok=True)
         (manifest_dir / "context-manifest.json").write_text(
             json.dumps(
@@ -5666,9 +5784,7 @@ snap_individual_utility_allowance:
             with patch.object(
                 pipeline,
                 "_run_pe_subprocess_detailed",
-                return_value=OracleSubprocessResult(
-                    returncode=0, stdout="RESULT:62\n"
-                ),
+                return_value=OracleSubprocessResult(returncode=0, stdout="RESULT:62\n"),
             ) as mock_run:
                 result = pipeline._run_policyengine(rac_file)
 
@@ -5698,7 +5814,9 @@ snap_self_employment_expense_based_deduction_applies:
 """
         )
 
-        manifest_dir = case_root / "_eval_workspaces" / "openai-gpt-5.4" / "leaf" / "workspace"
+        manifest_dir = (
+            case_root / "_eval_workspaces" / "openai-gpt-5.4" / "leaf" / "workspace"
+        )
         manifest_dir.mkdir(parents=True, exist_ok=True)
         (manifest_dir / "context-manifest.json").write_text(
             json.dumps(
@@ -5750,7 +5868,9 @@ snap_self_employment_simplified_deduction_rate:
 """
         )
 
-        manifest_dir = case_root / "_eval_workspaces" / "openai-gpt-5.4" / "leaf" / "workspace"
+        manifest_dir = (
+            case_root / "_eval_workspaces" / "openai-gpt-5.4" / "leaf" / "workspace"
+        )
         manifest_dir.mkdir(parents=True, exist_ok=True)
         (manifest_dir / "context-manifest.json").write_text(
             json.dumps(
@@ -5802,7 +5922,9 @@ snap_standard_medical_expense_deduction:
 """
         )
 
-        manifest_dir = case_root / "_eval_workspaces" / "openai-gpt-5.4" / "leaf" / "workspace"
+        manifest_dir = (
+            case_root / "_eval_workspaces" / "openai-gpt-5.4" / "leaf" / "workspace"
+        )
         manifest_dir.mkdir(parents=True, exist_ok=True)
         (manifest_dir / "context-manifest.json").write_text(
             json.dumps(
@@ -5854,7 +5976,9 @@ snap_homeless_shelter_deduction_available:
 """
         )
 
-        manifest_dir = case_root / "_eval_workspaces" / "openai-gpt-5.4" / "leaf" / "workspace"
+        manifest_dir = (
+            case_root / "_eval_workspaces" / "openai-gpt-5.4" / "leaf" / "workspace"
+        )
         manifest_dir.mkdir(parents=True, exist_ok=True)
         (manifest_dir / "context-manifest.json").write_text(
             json.dumps(
@@ -5906,7 +6030,9 @@ snap_tanf_non_cash_gross_income_limit_fpg_ratio:
 """
         )
 
-        manifest_dir = case_root / "_eval_workspaces" / "openai-gpt-5.4" / "leaf" / "workspace"
+        manifest_dir = (
+            case_root / "_eval_workspaces" / "openai-gpt-5.4" / "leaf" / "workspace"
+        )
         manifest_dir.mkdir(parents=True, exist_ok=True)
         (manifest_dir / "context-manifest.json").write_text(
             json.dumps(
@@ -5958,7 +6084,9 @@ snap_tanf_non_cash_asset_limit:
 """
         )
 
-        manifest_dir = case_root / "_eval_workspaces" / "openai-gpt-5.4" / "leaf" / "workspace"
+        manifest_dir = (
+            case_root / "_eval_workspaces" / "openai-gpt-5.4" / "leaf" / "workspace"
+        )
         manifest_dir.mkdir(parents=True, exist_ok=True)
         (manifest_dir / "context-manifest.json").write_text(
             json.dumps(
@@ -6404,9 +6532,7 @@ class TestBuildPeScenarioScript:
         assert "else:" in script
         assert "val = float(monthly[target_index]) * 12 / 52" in script
 
-    def test_uk_child_benefit_other_case_false_targets_eldest_person(
-        self, pipeline
-    ):
+    def test_uk_child_benefit_other_case_false_targets_eldest_person(self, pipeline):
         script = pipeline._build_pe_scenario_script(
             "child_benefit_respective_amount",
             {
@@ -6420,9 +6546,7 @@ class TestBuildPeScenarioScript:
         )
         assert "target_index = 0" in script
 
-    def test_uk_child_benefit_other_case_alias_uses_other_child_branch(
-        self, pipeline
-    ):
+    def test_uk_child_benefit_other_case_alias_uses_other_child_branch(self, pipeline):
         script = pipeline._build_pe_scenario_script(
             "child_benefit_respective_amount",
             {
@@ -6458,9 +6582,7 @@ class TestBuildPeScenarioScript:
             in script
         )
 
-    def test_uk_child_benefit_weekly_rate_b_uses_other_child_branch(
-        self, pipeline
-    ):
+    def test_uk_child_benefit_weekly_rate_b_uses_other_child_branch(self, pipeline):
         script = pipeline._build_pe_scenario_script(
             "child_benefit_respective_amount",
             {
@@ -6477,9 +6599,7 @@ class TestBuildPeScenarioScript:
             in script
         )
 
-    def test_uk_child_benefit_not_child_or_qyp_false_uses_adult_target(
-        self, pipeline
-    ):
+    def test_uk_child_benefit_not_child_or_qyp_false_uses_adult_target(self, pipeline):
         script = pipeline._build_pe_scenario_script(
             "child_benefit_respective_amount",
             {
@@ -6532,9 +6652,7 @@ class TestBuildPeScenarioScript:
         assert "weekly = float(annual[0]) / 52" in script
         assert "if scenario_is_couple:" in script
 
-    def test_uk_pension_credit_single_leaf_script_zeros_couple_branch(
-        self, pipeline
-    ):
+    def test_uk_pension_credit_single_leaf_script_zeros_couple_branch(self, pipeline):
         script = pipeline._build_pe_scenario_script(
             "standard_minimum_guarantee",
             {
@@ -6586,9 +6704,7 @@ class TestBuildPeScenarioScript:
         assert "if scenario_is_couple:" in script
         assert "val = weekly" in script
 
-    def test_uk_pension_credit_suffix_a_alias_builds_couple_branch(
-        self, pipeline
-    ):
+    def test_uk_pension_credit_suffix_a_alias_builds_couple_branch(self, pipeline):
         script = pipeline._build_pe_scenario_script(
             "standard_minimum_guarantee",
             {
@@ -6604,9 +6720,7 @@ class TestBuildPeScenarioScript:
         assert "if scenario_is_couple:" in script
         assert "val = 0.0" in script
 
-    def test_uk_pension_credit_suffix_b_alias_builds_single_branch(
-        self, pipeline
-    ):
+    def test_uk_pension_credit_suffix_b_alias_builds_single_branch(self, pipeline):
         script = pipeline._build_pe_scenario_script(
             "standard_minimum_guarantee",
             {
@@ -6734,9 +6848,7 @@ class TestBuildPeScenarioScript:
         assert "'child'" in script
         assert "is_single = True" in script
 
-    def test_uk_benefit_cap_80a_2_b_ii_not_single_claimant_zeros_branch(
-        self, pipeline
-    ):
+    def test_uk_benefit_cap_80a_2_b_ii_not_single_claimant_zeros_branch(self, pipeline):
         script = pipeline._build_pe_scenario_script(
             "benefit_cap",
             {
@@ -6753,9 +6865,7 @@ class TestBuildPeScenarioScript:
         assert "is_single = False" in script
         assert "if is_single and in_london and has_child:" in script
 
-    def test_uk_benefit_cap_80a_2_d_script_supports_household_inputs(
-        self, pipeline
-    ):
+    def test_uk_benefit_cap_80a_2_d_script_supports_household_inputs(self, pipeline):
         script = pipeline._build_pe_scenario_script(
             "benefit_cap",
             {
@@ -6816,9 +6926,7 @@ class TestBuildPeScenarioScript:
         assert "'child'" not in script
         assert "if is_single and not in_london and not has_child:" in script
 
-    def test_uk_benefit_cap_explicit_inputs_override_leaf_heuristics(
-        self, pipeline
-    ):
+    def test_uk_benefit_cap_explicit_inputs_override_leaf_heuristics(self, pipeline):
         script = pipeline._build_pe_scenario_script(
             "benefit_cap",
             {
@@ -6836,9 +6944,7 @@ class TestBuildPeScenarioScript:
         assert "'spouse'" in script
         assert "'child'" in script
 
-    def test_uk_benefit_cap_negated_child_helper_false_means_no_child(
-        self, pipeline
-    ):
+    def test_uk_benefit_cap_negated_child_helper_false_means_no_child(self, pipeline):
         script = pipeline._build_pe_scenario_script(
             "benefit_cap",
             {
@@ -6896,9 +7002,7 @@ class TestBuildPeScenarioScript:
         assert "has_child = False" in script
         assert "if is_single and in_london and not has_child:" in script
 
-    def test_uk_benefit_cap_residency_keys_do_not_imply_joint_claimants(
-        self, pipeline
-    ):
+    def test_uk_benefit_cap_residency_keys_do_not_imply_joint_claimants(self, pipeline):
         script = pipeline._build_pe_scenario_script(
             "benefit_cap",
             {
@@ -6932,9 +7036,7 @@ class TestIsPeTestMappable:
         assert mappable is False
         assert "internal parameter" in reason.lower()
 
-    def test_us_snap_min_allotment_with_renamed_tfp_cost_is_unmappable(
-        self, pipeline
-    ):
+    def test_us_snap_min_allotment_with_renamed_tfp_cost_is_unmappable(self, pipeline):
         mappable, reason = pipeline._is_pe_test_mappable(
             "us",
             "snap_min_allotment",
@@ -7120,9 +7222,7 @@ class TestIsPeTestMappable:
         assert mappable is False
         assert "take-up" in reason.lower()
 
-    def test_uk_child_benefit_non_child_or_qyp_subject_is_unmappable(
-        self, pipeline
-    ):
+    def test_uk_child_benefit_non_child_or_qyp_subject_is_unmappable(self, pipeline):
         mappable, reason = pipeline._is_pe_test_mappable(
             "uk",
             "child_benefit_other_child_weekly_rate",
@@ -7239,8 +7339,14 @@ class TestIsPeTestMappable:
 
 class TestResolvePeVariable:
     def test_resolves_direct_us_snap_variable_names(self, pipeline):
-        assert pipeline._resolve_pe_variable("us", "snap_normal_allotment") == "snap_normal_allotment"
-        assert pipeline._resolve_pe_variable("us", "snap_expected_contribution") == "snap_expected_contribution"
+        assert (
+            pipeline._resolve_pe_variable("us", "snap_normal_allotment")
+            == "snap_normal_allotment"
+        )
+        assert (
+            pipeline._resolve_pe_variable("us", "snap_expected_contribution")
+            == "snap_expected_contribution"
+        )
         assert (
             pipeline._resolve_pe_variable("us", "snap_earned_income_deduction")
             == "snap_earned_income_deduction"
@@ -7249,14 +7355,33 @@ class TestResolvePeVariable:
             pipeline._resolve_pe_variable("us", "snap_net_income_pre_shelter")
             == "snap_net_income_pre_shelter"
         )
-        assert pipeline._resolve_pe_variable("us", "snap_min_allotment") == "snap_min_allotment"
-        assert pipeline._resolve_pe_variable("us", "snap_net_income") == "snap_net_income"
-        assert pipeline._resolve_pe_variable("us", "meets_snap_asset_test") == "meets_snap_asset_test"
-        assert pipeline._resolve_pe_variable("us", "meets_snap_gross_income_test") == "meets_snap_gross_income_test"
-        assert pipeline._resolve_pe_variable("us", "meets_snap_net_income_test") == "meets_snap_net_income_test"
-        assert pipeline._resolve_pe_variable("us", "is_snap_eligible") == "is_snap_eligible"
+        assert (
+            pipeline._resolve_pe_variable("us", "snap_min_allotment")
+            == "snap_min_allotment"
+        )
+        assert (
+            pipeline._resolve_pe_variable("us", "snap_net_income") == "snap_net_income"
+        )
+        assert (
+            pipeline._resolve_pe_variable("us", "meets_snap_asset_test")
+            == "meets_snap_asset_test"
+        )
+        assert (
+            pipeline._resolve_pe_variable("us", "meets_snap_gross_income_test")
+            == "meets_snap_gross_income_test"
+        )
+        assert (
+            pipeline._resolve_pe_variable("us", "meets_snap_net_income_test")
+            == "meets_snap_net_income_test"
+        )
+        assert (
+            pipeline._resolve_pe_variable("us", "is_snap_eligible")
+            == "is_snap_eligible"
+        )
 
-    def test_resolves_uk_child_benefit_enhanced_rate_family_by_substring(self, pipeline):
+    def test_resolves_uk_child_benefit_enhanced_rate_family_by_substring(
+        self, pipeline
+    ):
         assert (
             pipeline._resolve_pe_variable(
                 "uk", "child_benefit_enhanced_rate_paragraph_1_a"
@@ -7278,7 +7403,9 @@ class TestResolvePeVariable:
 
     def test_resolves_uk_child_benefit_other_child_weekly_rate(self, pipeline):
         assert (
-            pipeline._resolve_pe_variable("uk", "uk_child_benefit_other_child_weekly_rate")
+            pipeline._resolve_pe_variable(
+                "uk", "uk_child_benefit_other_child_weekly_rate"
+            )
             == "child_benefit_respective_amount"
         )
 
@@ -7316,7 +7443,9 @@ class TestResolvePeVariable:
         self, pipeline
     ):
         assert (
-            pipeline._resolve_pe_variable("uk", "standard_minimum_guarantee_couple_weekly_rate")
+            pipeline._resolve_pe_variable(
+                "uk", "standard_minimum_guarantee_couple_weekly_rate"
+            )
             == "standard_minimum_guarantee"
         )
 
@@ -7324,7 +7453,9 @@ class TestResolvePeVariable:
         self, pipeline
     ):
         assert (
-            pipeline._resolve_pe_variable("uk", "standard_minimum_guarantee_single_weekly_rate")
+            pipeline._resolve_pe_variable(
+                "uk", "standard_minimum_guarantee_single_weekly_rate"
+            )
             == "standard_minimum_guarantee"
         )
 
@@ -7386,7 +7517,9 @@ class TestResolvePeVariable:
 
     def test_resolves_uk_pc_disabled_child_addition_amount(self, pipeline):
         assert (
-            pipeline._resolve_pe_variable("uk", "pc_disabled_child_addition_weekly_rate")
+            pipeline._resolve_pe_variable(
+                "uk", "pc_disabled_child_addition_weekly_rate"
+            )
             == "child_minimum_guarantee_addition"
         )
 
@@ -7425,7 +7558,10 @@ class TestResolvePeVariable:
         )
 
     def test_resolves_uk_benefit_cap_80a_2_b_amount(self, pipeline):
-        assert pipeline._resolve_pe_variable("uk", "benefit_cap_80A_2_b_amount") == "benefit_cap"
+        assert (
+            pipeline._resolve_pe_variable("uk", "benefit_cap_80A_2_b_amount")
+            == "benefit_cap"
+        )
 
     def test_resolves_uk_benefit_cap_relevant_amount_80a_2_d(self, pipeline):
         assert (
@@ -7441,9 +7577,7 @@ class TestResolvePeVariable:
             == "benefit_cap"
         )
 
-    def test_resolves_uk_benefit_cap_relevant_amount_without_prefix(
-        self, pipeline
-    ):
+    def test_resolves_uk_benefit_cap_relevant_amount_without_prefix(self, pipeline):
         assert (
             pipeline._resolve_pe_variable("uk", "relevant_amount_80A_2_b_ii")
             == "benefit_cap"
@@ -7493,9 +7627,7 @@ class TestResolvePeVariable:
 
     def test_resolves_uk_uc_work_allowance_with_housing_amount(self, pipeline):
         assert (
-            pipeline._resolve_pe_variable(
-                "uk", "uc_work_allowance_with_housing_amount"
-            )
+            pipeline._resolve_pe_variable("uk", "uc_work_allowance_with_housing_amount")
             == "uc_work_allowance"
         )
 
@@ -7509,7 +7641,9 @@ class TestResolvePeVariable:
 
     def test_resolves_uk_uc_non_dep_deduction_amount(self, pipeline):
         assert (
-            pipeline._resolve_pe_variable("uk", "uc_individual_non_dep_deduction_amount")
+            pipeline._resolve_pe_variable(
+                "uk", "uc_individual_non_dep_deduction_amount"
+            )
             == "uc_individual_non_dep_deduction"
         )
 
@@ -7639,7 +7773,10 @@ class TestBuildPeUkAdditionalScenarios:
             rac_var="pc_severe_disability_addition_one_eligible_adult_weekly_rate",
         )
 
-        assert "sim.calculate('severe_disability_minimum_guarantee_addition', int('2025'))" in script
+        assert (
+            "sim.calculate('severe_disability_minimum_guarantee_addition', int('2025'))"
+            in script
+        )
         assert "'attendance_allowance': {'2025': 1}" in script
         assert "'members': ['adult']" in script
         assert "val = float(annual[0]) / 52" in script
@@ -7656,8 +7793,14 @@ class TestBuildPeUkAdditionalScenarios:
             rac_var="pc_severe_disability_addition_two_eligible_adults_weekly_rate",
         )
 
-        assert "sim.calculate('severe_disability_minimum_guarantee_addition', int('2025'))" in script
-        assert "'spouse': {'age': {'2025': 70}, 'attendance_allowance': {'2025': 1}}" in script
+        assert (
+            "sim.calculate('severe_disability_minimum_guarantee_addition', int('2025'))"
+            in script
+        )
+        assert (
+            "'spouse': {'age': {'2025': 70}, 'attendance_allowance': {'2025': 1}}"
+            in script
+        )
         assert "'members': ['adult', 'spouse']" in script
 
     def test_uk_pc_carer_addition_script_builds_carer_case(self, pipeline):
@@ -7670,7 +7813,9 @@ class TestBuildPeUkAdditionalScenarios:
             rac_var="pc_carer_addition_weekly_rate",
         )
 
-        assert "sim.calculate('carer_minimum_guarantee_addition', int('2025'))" in script
+        assert (
+            "sim.calculate('carer_minimum_guarantee_addition', int('2025'))" in script
+        )
         assert "'carers_allowance': {'2025': 1}" in script
         assert "val = float(annual[0]) / 52" in script
 
@@ -7684,7 +7829,10 @@ class TestBuildPeUkAdditionalScenarios:
             rac_var="pc_child_addition_weekly_rate",
         )
 
-        assert "target_sim.calculate('child_minimum_guarantee_addition', int('2025'))" in script
+        assert (
+            "target_sim.calculate('child_minimum_guarantee_addition', int('2025'))"
+            in script
+        )
         assert "'child': {'age': {'2025': 10}}" in script
         assert "val = float(target_annual[0]) / 52" in script
 
@@ -7699,7 +7847,10 @@ class TestBuildPeUkAdditionalScenarios:
         )
 
         assert "'dla': {'2025': 1}" in script
-        assert "base_annual = base_sim.calculate('child_minimum_guarantee_addition', int('2025'))" in script
+        assert (
+            "base_annual = base_sim.calculate('child_minimum_guarantee_addition', int('2025'))"
+            in script
+        )
         assert "val = (float(target_annual[0]) - float(base_annual[0])) / 52" in script
 
     def test_uk_pc_severely_disabled_child_addition_script_subtracts_base_case(
@@ -7729,7 +7880,10 @@ class TestBuildPeUkAdditionalScenarios:
             rac_var="uc_disabled_child_element_amount",
         )
 
-        assert "sim.calculate('uc_individual_disabled_child_element', int('2025'))" in script
+        assert (
+            "sim.calculate('uc_individual_disabled_child_element', int('2025'))"
+            in script
+        )
         assert "'is_disabled_for_benefits': {'2025': True}" in script
         assert "'members': ['child']" in script
         assert "val = float(annual[0]) / 12" in script
@@ -7792,7 +7946,10 @@ class TestBuildPeUkAdditionalScenarios:
             rac_var="uc_maximum_childcare_element_one_child_amount",
         )
 
-        assert "sim.calculate('uc_maximum_childcare_element_amount', int('2025'))" in script
+        assert (
+            "sim.calculate('uc_maximum_childcare_element_amount', int('2025'))"
+            in script
+        )
         assert "'uc_childcare_element_eligible_children': {'2025': 1}" in script
         assert "val = float(annual[0]) / 12" in script
 
@@ -7808,13 +7965,14 @@ class TestBuildPeUkAdditionalScenarios:
             rac_var="uc_maximum_childcare_element_two_or_more_children_amount",
         )
 
-        assert "sim.calculate('uc_maximum_childcare_element_amount', int('2025'))" in script
+        assert (
+            "sim.calculate('uc_maximum_childcare_element_amount', int('2025'))"
+            in script
+        )
         assert "'uc_childcare_element_eligible_children': {'2025': 2}" in script
         assert "val = float(annual[0]) / 12" in script
 
-    def test_uk_uc_non_dep_deduction_script_builds_liable_adult_case(
-        self, pipeline
-    ):
+    def test_uk_uc_non_dep_deduction_script_builds_liable_adult_case(self, pipeline):
         script = pipeline._build_pe_scenario_script(
             "uc_individual_non_dep_deduction",
             {"period": "2025-04-01"},
@@ -7859,9 +8017,7 @@ class TestBuildPeUkAdditionalScenarios:
         assert "'weekly_hours': {'2025': 30}" in script
         assert "'is_disabled_for_benefits': {'2025': True}" in script
 
-    def test_uk_wtc_severely_disabled_element_script_builds_severe_case(
-        self, pipeline
-    ):
+    def test_uk_wtc_severely_disabled_element_script_builds_severe_case(self, pipeline):
         script = pipeline._build_pe_scenario_script(
             "WTC_severely_disabled_element",
             {"period": "2025-04-06"},
