@@ -2306,9 +2306,37 @@ class ValidatorPipeline:
             }
             if period.get("period_kind") == "year":
                 period["period_kind"] = "tax_year"
+            required = {"period_kind", "start", "end"}
+            missing = sorted(required - set(period))
+            if missing:
+                raise ValueError(
+                    "period mapping missing required field(s): "
+                    + ", ".join(missing)
+                )
+            if period["period_kind"] not in {
+                "month",
+                "benefit_week",
+                "tax_year",
+                "custom",
+            }:
+                raise ValueError(
+                    f"unsupported period_kind: {period['period_kind']!r}"
+                )
+            for key in ("start", "end"):
+                try:
+                    date.fromisoformat(str(period[key]))
+                except ValueError as exc:
+                    raise ValueError(
+                        f"period {key} must be an ISO date, got {period[key]!r}"
+                    ) from exc
+            if period["period_kind"] == "custom" and not period.get("name"):
+                raise ValueError("custom period mappings must include name")
             return period
         if isinstance(value, int):
-            return self._rulespec_tax_year_period(value)
+            raise ValueError(
+                "bare year periods are ambiguous; use an explicit period mapping "
+                "with period_kind/start/end"
+            )
         if isinstance(value, date):
             day = value.isoformat()
             return {
@@ -2320,7 +2348,10 @@ class ValidatorPipeline:
         if isinstance(value, str):
             stripped = value.strip()
             if re.fullmatch(r"\d{4}", stripped):
-                return self._rulespec_tax_year_period(int(stripped))
+                raise ValueError(
+                    "bare year periods are ambiguous; use an explicit period "
+                    "mapping with period_kind/start/end"
+                )
             if re.fullmatch(r"\d{4}-\d{2}", stripped):
                 year = int(stripped[:4])
                 month = int(stripped[5:])
@@ -2330,14 +2361,6 @@ class ValidatorPipeline:
                     "end": date(year, month, monthrange(year, month)[1]).isoformat(),
                 }
         raise ValueError(f"unsupported period shorthand: {value!r}")
-
-    def _rulespec_tax_year_period(self, year: int) -> dict[str, Any]:
-        """Return the Axiom Rules tax-year period used by compact year tests."""
-        return {
-            "period_kind": "tax_year",
-            "start": date(year, 4, 6).isoformat(),
-            "end": date(year + 1, 4, 5).isoformat(),
-        }
 
     def _rulespec_case_query_entity_id(
         self,
@@ -2388,6 +2411,22 @@ class ValidatorPipeline:
                 return {"kind": "decimal", "value": stripped}
             return {"kind": "text", "value": value}
         raise ValueError(f"unsupported scalar test value {value!r}")
+
+    def _rulespec_expected_scalar_value(self, value: Any) -> dict[str, Any]:
+        """Coerce expected output YAML values without interpreting strings."""
+        if isinstance(value, bool):
+            return {"kind": "bool", "value": value}
+        if isinstance(value, int):
+            return {"kind": "integer", "value": value}
+        if isinstance(value, float):
+            return {"kind": "decimal", "value": str(value)}
+        if isinstance(value, Decimal):
+            return {"kind": "decimal", "value": str(value)}
+        if isinstance(value, date):
+            return {"kind": "date", "value": value.isoformat()}
+        if isinstance(value, str):
+            return {"kind": "text", "value": value}
+        raise ValueError(f"unsupported expected scalar value {value!r}")
 
     def _build_rulespec_dataset(
         self,
@@ -2529,6 +2568,8 @@ class ValidatorPipeline:
             )
         if actual_kind == "bool" and expected_kind == "bool":
             return bool(actual.get("value")) == bool(expected.get("value"))
+        if actual_kind != expected_kind:
+            return False
         return str(actual.get("value")) == str(expected.get("value"))
 
     def _format_rulespec_actual_value(self, output: dict[str, Any]) -> str:
@@ -2537,8 +2578,12 @@ class ValidatorPipeline:
             return str(output.get("outcome"))
         value = output.get("value") if output.get("kind") == "scalar" else output
         if isinstance(value, dict):
-            return str(value.get("value"))
+            return self._format_rulespec_scalar_value(value)
         return str(value)
+
+    def _format_rulespec_scalar_value(self, value: dict[str, Any]) -> str:
+        """Format a scalar value spec with its kind for failure messages."""
+        return f"{value.get('kind')} {value.get('value')}"
 
     def _compare_rulespec_output(
         self,
@@ -2572,11 +2617,12 @@ class ValidatorPipeline:
                 f"Test case `{case_name}` output `{output_name}` returned "
                 "an unrecognised value shape."
             )
-        expected_scalar = self._rulespec_scalar_value(expected_value)
+        expected_scalar = self._rulespec_expected_scalar_value(expected_value)
         if not self._rulespec_scalar_values_equal(actual_scalar, expected_scalar):
             return (
                 f"Test case `{case_name}` output `{output_name}` expected "
-                f"{expected_value}, got {self._format_rulespec_actual_value(actual_output)}."
+                f"{self._format_rulespec_scalar_value(expected_scalar)}, got "
+                f"{self._format_rulespec_actual_value(actual_output)}."
             )
         return None
 

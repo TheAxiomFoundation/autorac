@@ -118,7 +118,7 @@ rules:
     assert result.passed is False
     assert any(
         "snap_standard_utility_allowance" in issue
-        and "expected 452, got 451" in issue
+        and "expected integer 452, got integer 451" in issue
         for issue in result.issues
     )
 
@@ -184,7 +184,10 @@ rules:
     )
     rules_file.with_name("rules.test.yaml").write_text(
         """- name: base_rate
-  period: 2024
+  period:
+    period_kind: tax_year
+    start: 2024-04-06
+    end: 2025-04-05
   input: {}
   output:
     policy_rate: 0.2
@@ -198,6 +201,143 @@ rules:
     )
 
     assert pipeline._run_ci(rules_file).passed is True
+
+
+def test_rulespec_ci_rejects_scalar_kind_mismatches(tmp_path):
+    if not AXIOM_RULES_BINARY.exists():
+        pytest.skip("local axiom-rules binary is not built")
+
+    rules_file = tmp_path / "rules.yaml"
+    rules_file.write_text(
+        """format: rulespec/v1
+module:
+  summary: The code is 1 and the count is 1.
+rules:
+  - name: code_text
+    kind: derived
+    entity: Case
+    dtype: Text
+    period: Month
+    versions:
+      - effective_from: '2024-01-01'
+        formula: '"1"'
+  - name: count
+    kind: derived
+    entity: Case
+    dtype: Integer
+    period: Month
+    versions:
+      - effective_from: '2024-01-01'
+        formula: '1'
+"""
+    )
+    rules_file.with_name("rules.test.yaml").write_text(
+        """- name: kind_mismatch
+  period: 2024-01
+  input: {}
+  output:
+    code_text: 1
+    count: "1"
+"""
+    )
+
+    pipeline = ValidatorPipeline(
+        rac_us_path=tmp_path,
+        rac_path=AXIOM_RULES_PATH,
+        enable_oracles=False,
+    )
+    result = pipeline._run_ci(rules_file)
+
+    assert result.passed is False
+    assert any(
+        "code_text" in issue and "expected integer 1, got text 1" in issue
+        for issue in result.issues
+    )
+    assert any(
+        "count" in issue and "expected text 1, got integer 1" in issue
+        for issue in result.issues
+    )
+
+
+def test_rulespec_ci_rejects_malformed_period_mapping(tmp_path):
+    if not AXIOM_RULES_BINARY.exists():
+        pytest.skip("local axiom-rules binary is not built")
+
+    rules_file = tmp_path / "rules.yaml"
+    rules_file.write_text(
+        """format: rulespec/v1
+module:
+  summary: The flag is true.
+rules:
+  - name: flag
+    kind: derived
+    entity: Case
+    dtype: Bool
+    period: Month
+    versions:
+      - effective_from: '2024-01-01'
+        formula: 'true'
+"""
+    )
+    rules_file.with_name("rules.test.yaml").write_text(
+        """- name: missing_dates
+  period:
+    period_kind: month
+  input: {}
+  output:
+    flag: true
+"""
+    )
+
+    pipeline = ValidatorPipeline(
+        rac_us_path=tmp_path,
+        rac_path=AXIOM_RULES_PATH,
+        enable_oracles=False,
+    )
+    result = pipeline._run_ci(rules_file)
+
+    assert result.passed is False
+    assert any("period mapping missing required field(s)" in issue for issue in result.issues)
+
+
+def test_rulespec_ci_rejects_bare_year_periods(tmp_path):
+    if not AXIOM_RULES_BINARY.exists():
+        pytest.skip("local axiom-rules binary is not built")
+
+    rules_file = tmp_path / "rules.yaml"
+    rules_file.write_text(
+        """format: rulespec/v1
+module:
+  summary: The flag is true.
+rules:
+  - name: flag
+    kind: derived
+    entity: Case
+    dtype: Bool
+    period: Month
+    versions:
+      - effective_from: '2024-01-01'
+        formula: 'true'
+"""
+    )
+    rules_file.with_name("rules.test.yaml").write_text(
+        """- name: ambiguous_year
+  period: 2024
+  input: {}
+  output:
+    flag: true
+"""
+    )
+
+    pipeline = ValidatorPipeline(
+        rac_us_path=tmp_path,
+        rac_path=AXIOM_RULES_PATH,
+        enable_oracles=False,
+    )
+    result = pipeline._run_ci(rules_file)
+
+    assert result.passed is False
+    assert any("bare year periods are ambiguous" in issue for issue in result.issues)
 
 
 def test_rulespec_ci_rejects_ungrounded_generated_numeric_literal(tmp_path):
