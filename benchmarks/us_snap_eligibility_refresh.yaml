@@ -14,10 +14,10 @@ cases:
   - kind: source
     name: is_snap_eligible
     source_id: Federal SNAP current-effective household eligibility
-    source_file: ../../rac-us/sources/slices/7-USC/snap/current-effective/is_snap_eligible.txt
+    source_file: ../../rules-us/sources/slices/7-USC/snap/current-effective/is_snap_eligible.txt
     allow_context:
-      - ../../rac-us/statute/7/2014/c.rac
-      - ../../rac-us/statute/7/2014/g/1.rac
+      - ../../rules-us/statute/7/2014/c.yaml
+      - ../../rules-us/statute/7/2014/g/1.yaml
     oracle: policyengine
     policyengine_country: auto
-    policyengine_rac_var_hint: is_snap_eligible
+    policyengine_rule_hint: is_snap_eligible

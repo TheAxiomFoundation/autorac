@@ -1,19 +1,18 @@
 """
-Pytest fixtures for autorac tests.
+Pytest fixtures for axiom_encode tests.
 """
 
 import sys
 import tempfile
 from pathlib import Path
-from unittest.mock import Mock
 
 import pytest
 
-# Add src to path for imports - make src accessible as 'autorac'
+# Add src to path for imports - make src accessible as 'axiom_encode'
 src_path = str(Path(__file__).parent.parent / "src")
 sys.path.insert(0, src_path)
 
-from autorac import (
+from axiom_encode import (
     EncodingDB,
     EncodingRun,
     PipelineResult,
@@ -42,7 +41,7 @@ def sample_review_results():
     return ReviewResults(
         reviews=[
             ReviewResult(
-                reviewer="rac_reviewer",
+                reviewer="rulespec_reviewer",
                 passed=True,
                 items_checked=10,
                 items_passed=8,
@@ -75,11 +74,11 @@ def sample_review_results():
 def sample_encoding_run(sample_review_results):
     """Create a sample encoding run."""
     run = EncodingRun(
-        file_path="/path/to/statute.rac",
+        file_path="/path/to/statute.yaml",
         citation="26 USC 32",
-        agent_type="autorac:encoder",
+        agent_type="axiom_encode:encoder",
         agent_model="claude-opus-4-6",
-        rac_content="# EITC\nEarnedIncome:\n  dtype: Money\n",
+        rulespec_content="# EITC\nEarnedIncome:\n  dtype: Money\n",
         statute_text="Sample statute text for EITC",
         review_results=sample_review_results,
     )
@@ -99,8 +98,8 @@ def mock_validation_result():
                 issues=[],
                 duration_ms=100,
             ),
-            "rac_reviewer": ValidationResult(
-                validator_name="rac_reviewer",
+            "rulespec_reviewer": ValidationResult(
+                validator_name="rulespec_reviewer",
                 passed=True,
                 score=8.0,
                 issues=[],
@@ -160,8 +159,8 @@ def mock_failing_validation_result():
                 duration_ms=100,
                 error="Parse error: unexpected token",
             ),
-            "rac_reviewer": ValidationResult(
-                validator_name="rac_reviewer",
+            "rulespec_reviewer": ValidationResult(
+                validator_name="rulespec_reviewer",
                 passed=True,
                 score=5.0,
                 issues=["Missing citation reference"],
@@ -192,29 +191,3 @@ def mock_failing_validation_result():
         total_duration_ms=1500,
         all_passed=False,
     )
-
-
-@pytest.fixture
-def temp_rac_file():
-    """Create a temporary RAC file for testing."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        rac_file = Path(tmpdir) / "test.rac"
-        rac_file.write_text("""
-# Test definition
-TestIncome:
-  entity: Person
-  dtype: Money
-  period: Year
-  formula: |
-    return 1000
-""")
-        yield rac_file
-
-
-@pytest.fixture
-def mock_agent():
-    """Create a mock agent for testing encoder harness."""
-    mock = Mock()
-    mock.encode.return_value = "# Encoded content\n"
-    mock.suggest.return_value = []
-    return mock

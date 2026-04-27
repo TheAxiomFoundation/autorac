@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 # Import what we're testing
-from autorac.harness.backends import (
+from axiom_encode.harness.backends import (
     AgentSDKBackend,
     ClaudeCodeBackend,
     CodexCLIBackend,
@@ -41,22 +41,22 @@ class TestEncoderBackendInterface:
         req = EncoderRequest(
             citation="26 USC 32",
             statute_text="The earned income tax credit...",
-            output_path=Path("/tmp/test.rac"),
+            output_path=Path("/tmp/test.yaml"),
         )
         assert req.citation == "26 USC 32"
         assert req.statute_text.startswith("The earned")
-        assert req.output_path == Path("/tmp/test.rac")
+        assert req.output_path == Path("/tmp/test.yaml")
 
     def test_response_dataclass(self):
         """EncoderResponse holds encoding outputs."""
         resp = EncoderResponse(
-            rac_content="eitc:\n  entity: TaxUnit",
+            rulespec_content="eitc:\n  entity: TaxUnit",
             success=True,
             error=None,
             duration_ms=1500,
         )
         assert resp.success
-        assert "eitc" in resp.rac_content
+        assert "eitc" in resp.rulespec_content
         assert resp.duration_ms == 1500
 
 
@@ -83,7 +83,7 @@ class TestClaudeCodeBackend:
                 EncoderRequest(
                     citation="26 USC 1",
                     statute_text="Test statute",
-                    output_path=Path("/tmp/test.rac"),
+                    output_path=Path("/tmp/test.yaml"),
                 )
             )
 
@@ -107,7 +107,7 @@ class TestClaudeCodeBackend:
                 EncoderRequest(
                     citation="26 USC 1",
                     statute_text="Test",
-                    output_path=Path("/tmp/test.rac"),
+                    output_path=Path("/tmp/test.yaml"),
                 )
             )
 
@@ -125,7 +125,7 @@ class TestClaudeCodeBackend:
 
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = Mock(
-                stdout='{"rac_reviewer": 8.0, "formula_reviewer": 7.5, "confidence": 0.8}',
+                stdout='{"rulespec_reviewer": 8.0, "formula_reviewer": 7.5, "confidence": 0.8}',
                 stderr="",
                 returncode=0,
             )
@@ -135,7 +135,7 @@ class TestClaudeCodeBackend:
                 statute_text="EITC rules...",
             )
 
-            assert scores.rac_reviewer == 8.0
+            assert scores.rulespec_reviewer == 8.0
             assert scores.confidence == 0.8
 
 
@@ -181,7 +181,7 @@ class TestAgentSDKBackend:
                 EncoderRequest(
                     citation="26 USC 1",
                     statute_text="Test",
-                    output_path=Path("/tmp/test.rac"),
+                    output_path=Path("/tmp/test.yaml"),
                 )
             )
 
@@ -197,14 +197,14 @@ class TestAgentSDKBackend:
             EncoderRequest(
                 citation=f"26 USC {i}",
                 statute_text=f"Statute {i}",
-                output_path=Path(f"/tmp/test{i}.rac"),
+                output_path=Path(f"/tmp/test{i}.yaml"),
             )
             for i in range(5)
         ]
 
         with patch.object(backend, "encode_async") as mock_encode:
             mock_encode.return_value = EncoderResponse(
-                rac_content="test",
+                rulespec_content="test",
                 success=True,
                 error=None,
                 duration_ms=100,
@@ -233,7 +233,7 @@ class TestAgentSDKBackend:
             await asyncio.sleep(0.01)  # Simulate work
             concurrent_count -= 1
             return EncoderResponse(
-                rac_content="test",
+                rulespec_content="test",
                 success=True,
                 error=None,
                 duration_ms=10,
@@ -244,7 +244,7 @@ class TestAgentSDKBackend:
                 EncoderRequest(
                     citation=f"26 USC {i}",
                     statute_text=f"Statute {i}",
-                    output_path=Path(f"/tmp/test{i}.rac"),
+                    output_path=Path(f"/tmp/test{i}.yaml"),
                 )
                 for i in range(10)
             ]
@@ -273,18 +273,18 @@ class TestClaudeCodeBackendAdditional:
                 EncoderRequest(
                     citation="26 USC 1",
                     statute_text="Test",
-                    output_path=Path("/tmp/test.rac"),
+                    output_path=Path("/tmp/test.yaml"),
                 )
             )
 
             assert not resp.success
             assert resp.error is not None
-            assert resp.rac_content == ""
+            assert resp.rulespec_content == ""
 
     def test_encode_reads_file_when_exists(self, tmp_path):
         """Test encode reads from output_path when file exists."""
         backend = ClaudeCodeBackend()
-        output_path = tmp_path / "output.rac"
+        output_path = tmp_path / "output.yaml"
 
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = Mock(
@@ -304,7 +304,7 @@ class TestClaudeCodeBackendAdditional:
             )
 
             assert resp.success
-            assert "file_var" in resp.rac_content
+            assert "file_var" in resp.rulespec_content
 
     def test_predict_no_json_in_output(self):
         """Test predict returns defaults when no JSON found in output."""
@@ -404,7 +404,7 @@ class TestAgentSDKBackendAdditional:
                 EncoderRequest(
                     citation="26 USC 1",
                     statute_text="Test",
-                    output_path=Path("/tmp/nonexistent.rac"),
+                    output_path=Path("/tmp/nonexistent.yaml"),
                 )
             )
 
@@ -418,7 +418,7 @@ class TestAgentSDKBackendAdditional:
         """Test encode_async reads from output_path if it exists."""
         backend = AgentSDKBackend(api_key="test-key")
 
-        output_path = tmp_path / "output.rac"
+        output_path = tmp_path / "output.yaml"
         output_path.write_text("file_content:\n  entity: TaxUnit\n")
 
         mock_anthropic = Mock()
@@ -442,7 +442,7 @@ class TestAgentSDKBackendAdditional:
             )
 
             assert resp.success
-            assert "file_content" in resp.rac_content
+            assert "file_content" in resp.rulespec_content
 
     @pytest.mark.asyncio
     async def test_encode_async_import_error(self):
@@ -463,7 +463,7 @@ class TestAgentSDKBackendAdditional:
                 EncoderRequest(
                     citation="26 USC 1",
                     statute_text="Test",
-                    output_path=Path("/tmp/test.rac"),
+                    output_path=Path("/tmp/test.yaml"),
                 )
             )
 
@@ -488,7 +488,7 @@ class TestAgentSDKBackendAdditional:
                 EncoderRequest(
                     citation="26 USC 1",
                     statute_text="Test",
-                    output_path=Path("/tmp/test.rac"),
+                    output_path=Path("/tmp/test.yaml"),
                 )
             )
 
@@ -523,7 +523,7 @@ class TestCodexCLIBackend:
                 EncoderRequest(
                     citation="26 USC 1",
                     statute_text="Test statute",
-                    output_path=Path("/tmp/output/test.rac"),
+                    output_path=Path("/tmp/output/test.yaml"),
                     model="gpt-5.4",
                 )
             )
@@ -548,7 +548,7 @@ class TestCodexCLIBackend:
                 EncoderRequest(
                     citation="26 USC 1",
                     statute_text="Test statute",
-                    output_path=Path("/tmp/output/test.rac"),
+                    output_path=Path("/tmp/output/test.yaml"),
                     model="gpt-5.4",
                 )
             )
@@ -582,7 +582,7 @@ class TestBackendCompatibility:
                 EncoderRequest(
                     citation="26 USC 1",
                     statute_text="Test",
-                    output_path=Path("/tmp/test.rac"),
+                    output_path=Path("/tmp/test.yaml"),
                 )
             )
 
@@ -594,7 +594,7 @@ class TestBackendCompatibility:
 
         with patch.object(backend, "encode_async") as mock_async:
             mock_async.return_value = EncoderResponse(
-                rac_content="test",
+                rulespec_content="test",
                 success=True,
                 error=None,
                 duration_ms=100,
@@ -605,7 +605,7 @@ class TestBackendCompatibility:
                 EncoderRequest(
                     citation="26 USC 1",
                     statute_text="Test",
-                    output_path=Path("/tmp/test.rac"),
+                    output_path=Path("/tmp/test.yaml"),
                 )
             )
 

@@ -1,7 +1,7 @@
 # Prompt versioning
 
-AutoRAC ships its agent prompts as Python string constants in
-`src/autorac/prompts/`. Because encoder and reviewer behaviour is largely
+Axiom Encode ships its agent prompts as Python string constants in
+`src/axiom_encode/prompts/`. Because encoder and reviewer behaviour is largely
 determined by these prompts, we track their evolution with an explicit
 version field in addition to the automatically recorded prompt hash.
 
@@ -39,8 +39,8 @@ missing a real semantic change is a confusing audit trail.
 
 Each module owns its own version:
 
-- `autorac.prompts.encoder.__version__` — encoder prompt.
-- `autorac.prompts.reviewers.__version__` — **bundle** of all four reviewer
+- `axiom_encode.prompts.encoder.__version__` — encoder prompt.
+- `axiom_encode.prompts.reviewers.__version__` — **bundle** of all four reviewer
   prompts. Any change to any reviewer prompt bumps this single integer.
 
 We deliberately keep reviewer prompts on a shared version to reflect the
@@ -48,7 +48,7 @@ fact that they are run and consumed as a set.
 
 ## Relationship to the encoding DB
 
-The encoding DB (see `src/autorac/harness/encoding_db.py`) records the raw
+The encoding DB (see `src/axiom_encode/harness/encoding_db.py`) records the raw
 SHA-256 of each prompt as part of every run. That hash is the authoritative
 fingerprint. `__version__` is a looser, human-friendly label that rides on
 top:

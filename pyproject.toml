@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "autorac"
+name = "axiom-encode"
 version = "0.2.64"
-description = "AI-assisted RAC encoding infrastructure - fully self-contained"
+description = "AI-assisted RuleSpec encoding infrastructure - fully self-contained"
 readme = "README.md"
 requires-python = ">=3.13"
 license = "MIT"
@@ -30,7 +30,7 @@ dependencies = [
 # By default uses Claude Code CLI (subprocess) - no anthropic SDK needed.
 # Claude Code must be installed: npm install -g @anthropic-ai/claude-code
 #
-# For API backend (Modal, servers), install with: pip install autorac[api]
+# For API backend (Modal, servers), install with: pip install axiom-encode[api]
 
 [project.optional-dependencies]
 api = [
@@ -50,14 +50,14 @@ dev = [
     "towncrier",
 ]
 all = [
-    "autorac[api,dev,observability]",
+    "axiom-encode[api,dev,observability]",
 ]
 
 [project.scripts]
-autorac = "autorac.cli:main"
+axiom-encode = "axiom_encode.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/autorac"]
+packages = ["src/axiom_encode"]
 
 [tool.hatch.build.targets.sdist]
 include = [
@@ -72,10 +72,10 @@ sources = ["src"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 pythonpath = ["src"]
-addopts = "--cov=src/autorac --cov-report=term-missing"
+addopts = "--cov=src/axiom_encode --cov-report=term-missing"
 
 [tool.towncrier]
-package = "autorac"
+package = "axiom_encode"
 package_dir = "src"
 directory = "changes"
 filename = "CHANGELOG.md"
@@ -111,4 +111,4 @@ ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["E402"]
-"src/autorac/supabase_sync.py" = ["F821"]
+"src/axiom_encode/supabase_sync.py" = ["F821"]

@@ -14,7 +14,7 @@ cases:
   - kind: source
     name: snap_self_employment_expense_based_deduction_applies_fl
     source_id: Florida SNAP self-employment expense option under ESS Program Policy Manual 1810.0302
-    source_file: ../../rac-us-fl/sources/slices/myflfamilies/ess/current-effective/snap_self_employment_expense_based_deduction_applies_fl.txt
+    source_file: ../../rules-us-fl/sources/slices/myflfamilies/ess/current-effective/snap_self_employment_expense_based_deduction_applies_fl.txt
     oracle: policyengine
     policyengine_country: auto
-    policyengine_rac_var_hint: snap_self_employment_expense_based_deduction_applies
+    policyengine_rule_hint: snap_self_employment_expense_based_deduction_applies

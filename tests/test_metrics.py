@@ -11,7 +11,7 @@ import pytest
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from autorac import (
+from axiom_encode import (
     CalibrationMetrics,
     CalibrationSnapshot,
     EncodingDB,
@@ -25,7 +25,7 @@ from autorac import (
 )
 
 # Private function import for testing internals
-from autorac.harness.metrics import _compute_metric
+from axiom_encode.harness.metrics import _compute_metric
 
 
 class TestComputeMetric:
@@ -117,15 +117,15 @@ class TestComputeCalibration:
         """Test calibration computation with sample data."""
         for i in range(15):
             run = create_run(
-                file_path=f"/path/to/file{i}.rac",
+                file_path=f"/path/to/file{i}.yaml",
                 citation="26 USC 32",
-                agent_type="autorac:encoder",
+                agent_type="axiom_encode:encoder",
                 agent_model="claude-opus-4-6",
-                rac_content="# content",
+                rulespec_content="# content",
                 review_results=ReviewResults(
                     reviews=[
                         ReviewResult(
-                            reviewer="rac_reviewer",
+                            reviewer="rulespec_reviewer",
                             passed=True,
                             items_checked=10,
                             items_passed=7 + (i % 3),
@@ -158,22 +158,22 @@ class TestComputeCalibration:
         snapshot = compute_calibration(experiment_db, min_samples=10)
 
         assert snapshot.total_runs == 15
-        assert "rac_reviewer" in snapshot.metrics
-        assert snapshot.metrics["rac_reviewer"].n_samples == 15
+        assert "rulespec_reviewer" in snapshot.metrics
+        assert snapshot.metrics["rulespec_reviewer"].n_samples == 15
 
     def test_min_samples_filter(self, experiment_db):
         """Test that metrics with too few samples are excluded."""
         for i in range(5):
             run = create_run(
-                file_path=f"/path/to/file{i}.rac",
+                file_path=f"/path/to/file{i}.yaml",
                 citation="26 USC 32",
-                agent_type="autorac:encoder",
+                agent_type="axiom_encode:encoder",
                 agent_model="claude-opus-4-6",
-                rac_content="# content",
+                rulespec_content="# content",
                 review_results=ReviewResults(
                     reviews=[
                         ReviewResult(
-                            reviewer="rac_reviewer",
+                            reviewer="rulespec_reviewer",
                             passed=True,
                             items_checked=10,
                             items_passed=8,
@@ -190,11 +190,11 @@ class TestComputeCalibration:
             experiment_db.log_run(run)
 
         snapshot = compute_calibration(experiment_db, min_samples=10)
-        assert "rac_reviewer" not in snapshot.metrics
+        assert "rulespec_reviewer" not in snapshot.metrics
 
         # With lower threshold, metrics should appear
         snapshot = compute_calibration(experiment_db, min_samples=3)
-        assert "rac_reviewer" in snapshot.metrics
+        assert "rulespec_reviewer" in snapshot.metrics
 
     def test_pass_rate_calculation(self, experiment_db):
         """Test pass rate is calculated correctly."""
@@ -202,15 +202,15 @@ class TestComputeCalibration:
         for i in range(4):
             all_pass = i != 3
             run = create_run(
-                file_path=f"/path/to/file{i}.rac",
+                file_path=f"/path/to/file{i}.yaml",
                 citation="26 USC 32",
-                agent_type="autorac:encoder",
+                agent_type="axiom_encode:encoder",
                 agent_model="claude-opus-4-6",
-                rac_content="# content",
+                rulespec_content="# content",
                 review_results=ReviewResults(
                     reviews=[
                         ReviewResult(
-                            reviewer="rac_reviewer",
+                            reviewer="rulespec_reviewer",
                             passed=all_pass,
                             items_checked=10,
                             items_passed=8 if all_pass else 3,
@@ -251,8 +251,8 @@ class TestCalibrationReport:
         snapshot = CalibrationSnapshot(
             timestamp=datetime.now(),
             metrics={
-                "rac_reviewer": CalibrationMetrics(
-                    metric_name="rac_reviewer",
+                "rulespec_reviewer": CalibrationMetrics(
+                    metric_name="rulespec_reviewer",
                     n_samples=50,
                     predicted_mean=7.5,
                     actual_mean=8.0,
@@ -268,7 +268,7 @@ class TestCalibrationReport:
         report = print_calibration_report(snapshot)
         assert "Total Runs: 50" in report
         assert "Pass Rate: 85.0%" in report
-        assert "rac_reviewer" in report
+        assert "rulespec_reviewer" in report
         assert "Bias > 0: Agent overconfident" in report
 
 
@@ -285,8 +285,8 @@ class TestCalibrationTrend:
         snapshot = CalibrationSnapshot(
             timestamp=datetime.now(),
             metrics={
-                "rac_reviewer": CalibrationMetrics(
-                    metric_name="rac_reviewer",
+                "rulespec_reviewer": CalibrationMetrics(
+                    metric_name="rulespec_reviewer",
                     n_samples=50,
                     predicted_mean=7.5,
                     actual_mean=8.0,
@@ -301,7 +301,7 @@ class TestCalibrationTrend:
         save_calibration_snapshot(temp_db_path, snapshot)
 
         # Retrieve the trend
-        trend = get_calibration_trend(temp_db_path, "rac_reviewer")
+        trend = get_calibration_trend(temp_db_path, "rulespec_reviewer")
         assert len(trend) == 1
         ts, pred, actual = trend[0]
         assert pred == pytest.approx(7.5, rel=0.01)
@@ -318,8 +318,8 @@ class TestCalibrationTrend:
             snapshot = CalibrationSnapshot(
                 timestamp=datetime.now(),
                 metrics={
-                    "rac_reviewer": CalibrationMetrics(
-                        metric_name="rac_reviewer",
+                    "rulespec_reviewer": CalibrationMetrics(
+                        metric_name="rulespec_reviewer",
                         n_samples=50 + i,
                         predicted_mean=7.0 + i * 0.1,
                         actual_mean=8.0 + i * 0.1,
@@ -335,7 +335,9 @@ class TestCalibrationTrend:
             time.sleep(0.01)  # Ensure different timestamps
 
         # Get only last 3
-        trend = get_calibration_trend(temp_db_path, "rac_reviewer", limit=3)
+        trend = get_calibration_trend(
+            temp_db_path, "rulespec_reviewer", limit=3
+        )
         assert len(trend) == 3
 
     def test_get_calibration_trend_nonexistent_metric(
@@ -353,15 +355,15 @@ class TestSampleReviewData:
         """Test metrics for an agent with high pass rates."""
         for i in range(20):
             run = create_run(
-                file_path=f"/path/to/file{i}.rac",
+                file_path=f"/path/to/file{i}.yaml",
                 citation="26 USC 32",
-                agent_type="autorac:encoder",
+                agent_type="axiom_encode:encoder",
                 agent_model="claude-opus-4-6",
-                rac_content="# content",
+                rulespec_content="# content",
                 review_results=ReviewResults(
                     reviews=[
                         ReviewResult(
-                            reviewer="rac_reviewer",
+                            reviewer="rulespec_reviewer",
                             passed=True,
                             items_checked=10,
                             items_passed=9,
@@ -379,7 +381,7 @@ class TestSampleReviewData:
 
         snapshot = compute_calibration(experiment_db, min_samples=10)
         # Items rate should be high (9/10 = 0.9)
-        assert snapshot.metrics["rac_reviewer"].actual_mean == pytest.approx(
+        assert snapshot.metrics["rulespec_reviewer"].actual_mean == pytest.approx(
             0.9, rel=0.01
         )
 
@@ -387,15 +389,15 @@ class TestSampleReviewData:
         """Test metrics for an agent with low pass rates."""
         for i in range(20):
             run = create_run(
-                file_path=f"/path/to/file{i}.rac",
+                file_path=f"/path/to/file{i}.yaml",
                 citation="26 USC 32",
-                agent_type="autorac:encoder",
+                agent_type="axiom_encode:encoder",
                 agent_model="claude-opus-4-6",
-                rac_content="# content",
+                rulespec_content="# content",
                 review_results=ReviewResults(
                     reviews=[
                         ReviewResult(
-                            reviewer="rac_reviewer",
+                            reviewer="rulespec_reviewer",
                             passed=False,
                             items_checked=10,
                             items_passed=3,
@@ -408,7 +410,7 @@ class TestSampleReviewData:
 
         snapshot = compute_calibration(experiment_db, min_samples=10)
         # Items rate should be low (3/10 = 0.3)
-        assert snapshot.metrics["rac_reviewer"].actual_mean == pytest.approx(
+        assert snapshot.metrics["rulespec_reviewer"].actual_mean == pytest.approx(
             0.3, rel=0.01
         )
         # Pass rate should be 0% (no run has all reviews passing)
@@ -419,15 +421,15 @@ class TestSampleReviewData:
         for i in range(20):
             passes = i % 2 == 0
             run = create_run(
-                file_path=f"/path/to/file{i}.rac",
+                file_path=f"/path/to/file{i}.yaml",
                 citation="26 USC 32",
-                agent_type="autorac:encoder",
+                agent_type="axiom_encode:encoder",
                 agent_model="claude-opus-4-6",
-                rac_content="# content",
+                rulespec_content="# content",
                 review_results=ReviewResults(
                     reviews=[
                         ReviewResult(
-                            reviewer="rac_reviewer",
+                            reviewer="rulespec_reviewer",
                             passed=passes,
                             items_checked=10,
                             items_passed=8 if passes else 4,

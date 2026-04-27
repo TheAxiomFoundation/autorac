@@ -1,119 +1,40 @@
-# AutoRAC
+# Axiom Encode
 
-AI-assisted RAC encoding infrastructure. Fully self-contained -- `pip install autorac` is all you need.
+AI-assisted encoding infrastructure for Axiom RuleSpec YAML.
 
-## Quick start
-
-```bash
-pip install autorac
-autorac encode "26 USC 21"
-```
-
-This runs the full pipeline: analyze statute, encode subsections, validate against oracles (PolicyEngine/TAXSIM), run 4 LLM reviewers, and log everything.
-
-## Two backends
-
-### 1. CLI backend (default)
-
-Uses Claude Code CLI subprocess. Works with Max subscription. No API billing.
+## Quick Start
 
 ```bash
-autorac encode "26 USC 32"                  # default --backend cli
-autorac encode "26 USC 32" --backend cli    # explicit
+uv run axiom-encode encode "26 USC 21"
+uv run axiom-encode validate path/to/rules.yaml
+uv run axiom-encode eval-suite benchmarks/us_snap_eligibility_refresh.yaml
 ```
 
-### 2. API backend
+## Active Surface
 
-Uses Claude API directly (anthropic SDK). Requires `ANTHROPIC_API_KEY`. Works on Modal or any server.
+- Package: `axiom-encode`
+- Python module: `axiom_encode`
+- CLI binary: `axiom-encode`
+- Rule runtime repo: `axiom-rules`
+- Jurisdiction repos: canonical policy repositories such as `rules-us`, `rules-us-tn`, and `rules-us-nc`
+
+The encoder emits RuleSpec YAML artifacts. Source documents are expected to live in jurisdiction repositories as registries and AKN metadata pointing to durable source storage.
+
+## Main Components
+
+- `src/axiom_encode/cli.py` - public command surface
+- `src/axiom_encode/harness/evals.py` - model eval, prompt, artifact, and benchmark-suite orchestration
+- `src/axiom_encode/harness/validator_pipeline.py` - RuleSpec compile, CI, review, and oracle validation
+- `src/axiom_encode/harness/backends.py` - Codex/OpenAI/Claude runner adapters
+- `src/axiom_encode/harness/encoding_db.py` - local run/session logging
+- `src/axiom_encode/supabase_sync.py` - telemetry sync
+
+## Checks
 
 ```bash
-autorac encode "26 USC 32" --backend api
+uv run ruff check pyproject.toml src/axiom_encode scripts tests
+python -m compileall -q src/axiom_encode scripts
+uv run pytest -q tests/test_cli.py tests/test_rulespec_validation.py tests/test_evals.py -k "rulespec or EncoderPrompt"
 ```
 
-```python
-from autorac import Orchestrator
-
-orchestrator = Orchestrator(backend="api", model="claude-opus-4-6")
-run = await orchestrator.encode("26 USC 21")
-```
-
-For batch encoding:
-
-```python
-from autorac import AgentSDKBackend, EncoderRequest
-from pathlib import Path
-
-backend = AgentSDKBackend()  # Requires ANTHROPIC_API_KEY
-
-requests = [
-    EncoderRequest(
-        citation=f"26 USC {section}",
-        statute_text=texts[section],
-        output_path=Path(f"rac-us/statute/26/{section}.rac"),
-    )
-    for section in sections
-]
-
-responses = await backend.encode_batch(requests, max_concurrent=10)
-```
-
-## Architecture
-
-```
-+-----------------------------------------------------------------+
-|                          AutoRAC                                  |
-+-----------------------------------------------------------------+
-|  Orchestrator (self-contained, embedded prompts)                  |
-|    Phase 1: Analysis (subsection tree, encoding order)           |
-|    Phase 2: Encoding (parallel per-subsection)                   |
-|    Phase 3: Oracle validation (PE + TAXSIM)                      |
-|    Phase 4: LLM review (4 reviewers in parallel)                 |
-|    Phase 5: Logging and reporting                                |
-+-----------------------------------------------------------------+
-|  Embedded Prompts (src/autorac/prompts/)                          |
-|    encoder.py, validator.py, reviewers.py                        |
-+-----------------------------------------------------------------+
-|  Encoder Backends                                                 |
-|    ClaudeCodeBackend (subprocess)                                |
-|    AgentSDKBackend (API, parallelization)                        |
-+-----------------------------------------------------------------+
-|  3-Tier Validator Pipeline                                        |
-|    Tier 1: CI (rac pytest) - instant, catches syntax             |
-|    Tier 2: Oracles (PE/TAXSIM) - fast ~10s, comparison data     |
-|    Tier 3: LLM reviewers - uses oracle context to diagnose       |
-+-----------------------------------------------------------------+
-|  Encoding DB (SQLite)                                             |
-+-----------------------------------------------------------------+
-```
-
-## Components
-
-- `src/autorac/prompts/` - Embedded agent prompts (encoder, validator, 4 reviewers)
-- `src/autorac/harness/orchestrator.py` - Main pipeline orchestrator
-- `src/autorac/harness/backends.py` - Encoder backends (ClaudeCode, AgentSDK)
-- `src/autorac/harness/encoding_db.py` - SQLite encoding session logging
-- `src/autorac/harness/validator_pipeline.py` - Parallel validator execution
-- `src/autorac/harness/encoder_harness.py` - Low-level encoder harness
-- `src/autorac/harness/metrics.py` - Calibration computation
-
-## Commands
-
-```bash
-# Setup
-pip install -e .
-
-# Encode a statute (full pipeline)
-autorac encode "26 USC 21"
-
-# Validate a .rac file
-autorac validate path/to/file.rac
-
-# Run tests
-pytest tests/ -v
-```
-
-## Related repos
-
-- **rac** - DSL parser, executor, runtime
-- **rac-us** - US statute encodings
-- **rac-validators** - External calculator validation (PolicyEngine, TAXSIM)
+Run the full test suite with `uv run pytest` before publishing broad migration changes.

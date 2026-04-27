@@ -14,6 +14,6 @@ cases:
   - kind: source
     name: snap-fy2026-cola-allotments
     source_id: USDA SNAP FY 2026 COLA allotment table
-    source_file: ../../rac-us/sources/slices/usda/snap/fy-2026-cola/allotment-table.txt
+    source_file: ../../rules-us/sources/slices/usda/snap/fy-2026-cola/allotment-table.txt
     allow_context:
-      - ../../rac-us/statute/7/2017/a.rac
+      - ../../rules-us/statute/7/2017/a.yaml

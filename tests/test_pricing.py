@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from autorac.harness.pricing import (
+from axiom_encode.harness.pricing import (
     ModelPricing,
     PricingRates,
     _load_pricing_rates,

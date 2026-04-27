@@ -15,11 +15,11 @@ cases:
     source_ref: /uksi/2013/376/2025-04-07
     section_eid: regulation-22-1-b-i
     oracle: none
-    policyengine_rac_var_hint: uc_earned_income_taper_rate_without_work_allowance
+    policyengine_rule_hint: uc_earned_income_taper_rate_without_work_allowance
 
   - kind: uk_legislation
     name: uc-earned-income-taper-rate-with-work-allowance
     source_ref: /uksi/2013/376/2025-04-07
     section_eid: regulation-22-1-b-ii
     oracle: none
-    policyengine_rac_var_hint: uc_earned_income_taper_rate_with_work_allowance
+    policyengine_rule_hint: uc_earned_income_taper_rate_with_work_allowance

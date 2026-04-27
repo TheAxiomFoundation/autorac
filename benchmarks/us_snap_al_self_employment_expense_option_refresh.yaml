@@ -14,7 +14,7 @@ cases:
   - kind: source
     name: snap_self_employment_expense_based_deduction_applies_al
     source_id: Alabama SNAP self-employment expense option under DHR Food Assistance Program Points of Eligibility Manual Chapter 11 section D
-    source_file: ../../rac-us-al/sources/slices/aldhr/poe/current-effective/snap_self_employment_expense_based_deduction_applies_al.txt
+    source_file: ../../rules-us-al/sources/slices/aldhr/poe/current-effective/snap_self_employment_expense_based_deduction_applies_al.txt
     oracle: policyengine
     policyengine_country: auto
-    policyengine_rac_var_hint: snap_self_employment_expense_based_deduction_applies
+    policyengine_rule_hint: snap_self_employment_expense_based_deduction_applies

@@ -14,33 +14,33 @@ cases:
   - kind: source
     name: co-3-606-1-e
     source_id: 9 CCR 2503-6 3.606.1(E)
-    source_file: ../../rac-us-co/sources/slices/9-CCR-2503-6/3.606.1/E.txt
+    source_file: ../../rules-us-co/sources/slices/9-CCR-2503-6/3.606.1/E.txt
   - kind: source
     name: co-3-606-1-g
     source_id: 9 CCR 2503-6 3.606.1(G)
-    source_file: ../../rac-us-co/sources/slices/9-CCR-2503-6/3.606.1/G.txt
+    source_file: ../../rules-us-co/sources/slices/9-CCR-2503-6/3.606.1/G.txt
   - kind: source
     name: co-3-606-1-h
     source_id: 9 CCR 2503-6 3.606.1(H)
-    source_file: ../../rac-us-co/sources/slices/9-CCR-2503-6/3.606.1/H.txt
+    source_file: ../../rules-us-co/sources/slices/9-CCR-2503-6/3.606.1/H.txt
     allow_context:
-      - ../../rac-us-co/regulation/9-CCR-2503-6/3.606.1/F.rac
+      - ../../rules-us-co/regulation/9-CCR-2503-6/3.606.1/F.yaml
   - kind: source
     name: co-3-606-1-i
     source_id: 9 CCR 2503-6 3.606.1(I)
-    source_file: ../../rac-us-co/sources/slices/9-CCR-2503-6/3.606.1/I.txt
+    source_file: ../../rules-us-co/sources/slices/9-CCR-2503-6/3.606.1/I.txt
     allow_context:
-      - ../../rac-us-co/regulation/9-CCR-2503-6/3.606.1/F.rac
+      - ../../rules-us-co/regulation/9-CCR-2503-6/3.606.1/F.yaml
   - kind: source
     name: co-3-606-1-j
     source_id: 9 CCR 2503-6 3.606.1(J)
-    source_file: ../../rac-us-co/sources/slices/9-CCR-2503-6/3.606.1/J.txt
+    source_file: ../../rules-us-co/sources/slices/9-CCR-2503-6/3.606.1/J.txt
     allow_context:
-      - ../../rac-us-co/regulation/9-CCR-2503-6/3.606.1/F.rac
+      - ../../rules-us-co/regulation/9-CCR-2503-6/3.606.1/F.yaml
   - kind: source
     name: co-3-606-1-k
     source_id: 9 CCR 2503-6 3.606.1(K)
-    source_file: ../../rac-us-co/sources/slices/9-CCR-2503-6/3.606.1/K.txt
+    source_file: ../../rules-us-co/sources/slices/9-CCR-2503-6/3.606.1/K.txt
     allow_context:
-      - ../../rac-us-co/regulation/9-CCR-2503-6/3.606.1/F.rac
-      - ../../rac-us-co/regulation/9-CCR-2503-6/3.606.1/I.rac
+      - ../../rules-us-co/regulation/9-CCR-2503-6/3.606.1/F.yaml
+      - ../../rules-us-co/regulation/9-CCR-2503-6/3.606.1/I.yaml

@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from autorac.harness.validator_pipeline import (
+from axiom_encode.harness.validator_pipeline import (
     ValidatorPipeline,
     extract_embedded_source_text,
     extract_grounding_values,
@@ -54,8 +54,8 @@ rules:
     )
 
     pipeline = ValidatorPipeline(
-        rac_us_path=tmp_path,
-        rac_path=AXIOM_RULES_PATH,
+        policy_repo_path=tmp_path,
+        axiom_rules_path=AXIOM_RULES_PATH,
         enable_oracles=False,
     )
 
@@ -109,8 +109,8 @@ rules:
     )
 
     pipeline = ValidatorPipeline(
-        rac_us_path=tmp_path,
-        rac_path=AXIOM_RULES_PATH,
+        policy_repo_path=tmp_path,
+        axiom_rules_path=AXIOM_RULES_PATH,
         enable_oracles=False,
     )
     result = pipeline._run_ci(rules_file)
@@ -156,8 +156,8 @@ rules:
     )
 
     pipeline = ValidatorPipeline(
-        rac_us_path=tmp_path,
-        rac_path=AXIOM_RULES_PATH,
+        policy_repo_path=tmp_path,
+        axiom_rules_path=AXIOM_RULES_PATH,
         enable_oracles=False,
     )
 
@@ -195,8 +195,8 @@ rules:
     )
 
     pipeline = ValidatorPipeline(
-        rac_us_path=tmp_path,
-        rac_path=AXIOM_RULES_PATH,
+        policy_repo_path=tmp_path,
+        axiom_rules_path=AXIOM_RULES_PATH,
         enable_oracles=False,
     )
 
@@ -242,8 +242,8 @@ rules:
     )
 
     pipeline = ValidatorPipeline(
-        rac_us_path=tmp_path,
-        rac_path=AXIOM_RULES_PATH,
+        policy_repo_path=tmp_path,
+        axiom_rules_path=AXIOM_RULES_PATH,
         enable_oracles=False,
     )
     result = pipeline._run_ci(rules_file)
@@ -290,8 +290,8 @@ rules:
     )
 
     pipeline = ValidatorPipeline(
-        rac_us_path=tmp_path,
-        rac_path=AXIOM_RULES_PATH,
+        policy_repo_path=tmp_path,
+        axiom_rules_path=AXIOM_RULES_PATH,
         enable_oracles=False,
     )
     result = pipeline._run_ci(rules_file)
@@ -330,8 +330,8 @@ rules:
     )
 
     pipeline = ValidatorPipeline(
-        rac_us_path=tmp_path,
-        rac_path=AXIOM_RULES_PATH,
+        policy_repo_path=tmp_path,
+        axiom_rules_path=AXIOM_RULES_PATH,
         enable_oracles=False,
     )
     result = pipeline._run_ci(rules_file)
@@ -371,8 +371,8 @@ rules:
     )
 
     pipeline = ValidatorPipeline(
-        rac_us_path=tmp_path,
-        rac_path=AXIOM_RULES_PATH,
+        policy_repo_path=tmp_path,
+        axiom_rules_path=AXIOM_RULES_PATH,
         enable_oracles=False,
     )
 
@@ -385,16 +385,16 @@ rules:
     )
 
 
-def test_legacy_rac_artifact_is_rejected(tmp_path):
-    rac_file = tmp_path / "legacy.rac"
-    rac_file.write_text("legacy_amount:\n    from 2024-01-01: 451\n")
+def test_non_rulespec_yaml_artifact_is_rejected(tmp_path):
+    rules_file = tmp_path / "not-rulespec.yaml"
+    rules_file.write_text("rules:\n  - name: missing_format_header\n")
     pipeline = ValidatorPipeline(
-        rac_us_path=tmp_path,
-        rac_path=AXIOM_RULES_PATH,
+        policy_repo_path=tmp_path,
+        axiom_rules_path=AXIOM_RULES_PATH,
         enable_oracles=False,
     )
 
-    result = pipeline._run_compile_check(rac_file)
+    result = pipeline._run_compile_check(rules_file)
 
     assert result.passed is False
-    assert "Legacy .rac artifacts are no longer supported" in result.issues[0]
+    assert "RuleSpec YAML artifacts are required" in result.issues[0]

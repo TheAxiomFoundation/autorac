@@ -5,7 +5,7 @@ Usage:
     python extract_usc_section.py 26 25B
     python extract_usc_section.py 7 2017
 
-Returns plain text suitable for RAC encoding.
+Returns plain text suitable for RuleSpec encoding.
 """
 
 import html

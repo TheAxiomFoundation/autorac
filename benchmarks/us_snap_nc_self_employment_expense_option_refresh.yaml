@@ -14,7 +14,7 @@ cases:
   - kind: source
     name: snap_self_employment_expense_based_deduction_applies_nc
     source_id: North Carolina SNAP self-employment expense option under FNS 315 section 315.28
-    source_file: ../../rac-us-nc/sources/slices/ncdhhs/fns/315/current-effective/snap_self_employment_expense_based_deduction_applies_nc.txt
+    source_file: ../../rules-us-nc/sources/slices/ncdhhs/fns/315/current-effective/snap_self_employment_expense_based_deduction_applies_nc.txt
     oracle: policyengine
     policyengine_country: auto
-    policyengine_rac_var_hint: snap_self_employment_expense_based_deduction_applies
+    policyengine_rule_hint: snap_self_employment_expense_based_deduction_applies

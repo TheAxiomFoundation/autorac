@@ -14,7 +14,7 @@ cases:
   - kind: source
     name: snap_state_uses_child_support_deduction_co
     source_id: Colorado SNAP child support exclusion under 10 CCR 2506-1 section 4.407.5
-    source_file: ../../rac-us-co/sources/slices/cdhs/snap/current-effective/snap_state_uses_child_support_deduction_co.txt
+    source_file: ../../rules-us-co/sources/slices/cdhs/snap/current-effective/snap_state_uses_child_support_deduction_co.txt
     oracle: policyengine
     policyengine_country: auto
-    policyengine_rac_var_hint: snap_state_uses_child_support_deduction
+    policyengine_rule_hint: snap_state_uses_child_support_deduction

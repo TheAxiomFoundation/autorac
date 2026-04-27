@@ -1,7 +1,7 @@
 """Tests for observability helpers."""
 
-from autorac.harness.encoding_db import TokenUsage
-from autorac.harness.observability import (
+from axiom_encode.harness.encoding_db import TokenUsage
+from axiom_encode.harness.observability import (
     _base_llm_attributes,
     _normalize_otlp_endpoint,
     extract_reasoning_entries,
@@ -99,7 +99,7 @@ def test_extract_reasoning_entries_from_openai_response_payload():
                     "summary": [
                         {
                             "type": "summary_text",
-                            "text": "Need to emit only one .rac file and let the orchestrator write it.",
+                            "text": "Need to emit only one .yaml file and let the orchestrator write it.",
                         }
                     ],
                 }
@@ -146,6 +146,6 @@ def test_base_llm_attributes_include_reasoning_and_cost_breakdown():
     assert attrs["gen_ai.usage.input_tokens"] == 100
     assert attrs["gen_ai.usage.output_tokens"] == 40
     assert attrs["gen_ai.usage.cache_read.input_tokens"] == 60
-    assert attrs["autorac.usage.reasoning_output_tokens"] == 11
-    assert attrs["autorac.cost.total_usd"] == 1.23
-    assert attrs["autorac.usage.non_cached_input_tokens"] == 40
+    assert attrs["axiom_encode.usage.reasoning_output_tokens"] == 11
+    assert attrs["axiom_encode.cost.total_usd"] == 1.23
+    assert attrs["axiom_encode.usage.non_cached_input_tokens"] == 40

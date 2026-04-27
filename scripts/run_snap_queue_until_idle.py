@@ -28,12 +28,12 @@ import yaml
 CODEX_HOME = Path(
     os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))
 ).expanduser().resolve()
-AUTORAC_ROOT = Path(
-    os.environ.get("AUTORAC_ROOT", str(Path(__file__).resolve().parents[1]))
+AXIOM_ENCODE_ROOT = Path(
+    os.environ.get("AXIOM_ENCODE_ROOT", str(Path(__file__).resolve().parents[1]))
 ).expanduser().resolve()
 AUTOMATION_DIR = Path(
     os.environ.get(
-        "AUTORAC_SNAP_AUTOMATION_DIR",
+        "AXIOM_ENCODE_SNAP_AUTOMATION_DIR",
         str(CODEX_HOME / "automations" / "hourly-snap-encode"),
     )
 ).expanduser().resolve()
@@ -42,12 +42,12 @@ MEMORY_PATH = AUTOMATION_DIR / "memory.md"
 RUN_LEDGER_PATH = AUTOMATION_DIR / "run_ledger.ndjson"
 LOCK_PATH = AUTOMATION_DIR / "runner.lock"
 TMP_ROOT = Path(
-    os.environ.get("AUTORAC_TMP_ROOT", str(Path.home() / "tmp"))
+    os.environ.get("AXIOM_ENCODE_TMP_ROOT", str(Path.home() / "tmp"))
 ).expanduser().resolve()
 DEFAULT_ARCHIVE_ROOT = Path(
     os.environ.get(
-        "AUTORAC_EVAL_ARCHIVE_ROOT",
-        str(AUTORAC_ROOT / "artifacts" / "eval-suites"),
+        "AXIOM_ENCODE_EVAL_ARCHIVE_ROOT",
+        str(AXIOM_ENCODE_ROOT / "artifacts" / "eval-suites"),
     )
 ).expanduser().resolve()
 DEFAULT_ATLAS_ARCH_ROOT = Path.home() / ".arch"
@@ -73,8 +73,8 @@ POLICYENGINE_US_PYTHON_CANDIDATES = [
     Path.home() / "PolicyEngine" / "policyengine-us" / ".venv" / "bin" / "python",
 ]
 WORKSPACES = [
-    AUTORAC_ROOT,
-    *sorted(path for path in AUTORAC_ROOT.parent.glob("rac-*") if path.is_dir()),
+    AXIOM_ENCODE_ROOT,
+    *sorted(path for path in AXIOM_ENCODE_ROOT.parent.glob("rules-*") if path.is_dir()),
 ]
 RETRYABLE_PATTERNS = (
     "usage limit",
@@ -161,7 +161,7 @@ def sha256_paths(paths: list[Path | None]) -> str | None:
 
 
 def atlas_archive_root() -> Path:
-    override = os.environ.get("AUTORAC_ARCH_ROOT")
+    override = os.environ.get("AXIOM_ENCODE_EVAL_ARCHIVE_ROOT")
     if override:
         return Path(override).expanduser().resolve()
     return DEFAULT_ATLAS_ARCH_ROOT.resolve()
@@ -220,7 +220,7 @@ def build_subprocess_env() -> dict[str, str]:
     env["PATH"] = ":".join(merged)
     pe_python = resolve_policyengine_us_python()
     if pe_python:
-        env["AUTORAC_POLICYENGINE_US_PYTHON"] = pe_python
+        env["AXIOM_ENCODE_POLICYENGINE_US_PYTHON"] = pe_python
     return env
 
 
@@ -246,7 +246,7 @@ def infer_repo(source_file: str | None) -> str:
         return "none"
     path = Path(source_file)
     git_root = git_root_for_path(path)
-    if git_root and git_root.name.startswith("rac-"):
+    if git_root and git_root.name.startswith("rules-"):
         return git_root.name
     for workspace in WORKSPACES:
         try:
@@ -336,7 +336,7 @@ def resolve_manifest_case_source_inputs(
 
 def iter_manifest_queue_candidates() -> list[dict[str, str]]:
     candidates: list[dict[str, str]] = []
-    for manifest_path in sorted((AUTORAC_ROOT / "benchmarks").glob(BENCHMARK_GLOB)):
+    for manifest_path in sorted((AXIOM_ENCODE_ROOT / "benchmarks").glob(BENCHMARK_GLOB)):
         try:
             manifest = yaml.safe_load(manifest_path.read_text()) or {}
         except yaml.YAMLError:
@@ -459,7 +459,7 @@ def sync_queue_with_manifests(
             continue
         item["status"] = "retired"
         item["finished_at"] = now_utc()
-        item["note"] = "manifest removed from autorac benchmarks; retired from queue"
+        item["note"] = "manifest removed from Axiom Encode benchmarks; retired from queue"
         retired.append(str(name))
         changed = True
     return changed, added, retired, refreshed
@@ -478,8 +478,8 @@ def find_active_eval_processes() -> list[str]:
         if "run_queue_until_idle.py" in line:
             continue
         command = line.split(maxsplit=1)[1] if " " in line else ""
-        if re.search(r"(^|\\s)uv run autorac eval-suite(\\s|$)", command) or re.search(
-            r"(^|\\s)\\S+/autorac eval-suite(\\s|$)",
+        if re.search(r"(^|\\s)uv run axiom-encode eval-suite(\\s|$)", command) or re.search(
+            r"(^|\\s)\\S+/axiom-encode eval-suite(\\s|$)",
             command,
         ):
             active.append(line)
@@ -488,7 +488,7 @@ def find_active_eval_processes() -> list[str]:
 
 def build_output_dir(name: str) -> Path:
     timestamp = datetime.now().astimezone().strftime("%Y%m%dT%H%M%S")
-    return TMP_ROOT / f"autorac-{slugify(name)}-{timestamp}"
+    return TMP_ROOT / f"axiom-encode-{slugify(name)}-{timestamp}"
 
 
 def classify_status(returncode: int, summary: dict[str, Any] | None, results: dict[str, Any] | None) -> tuple[str, str]:
@@ -517,11 +517,11 @@ def classify_status(returncode: int, summary: dict[str, Any] | None, results: di
 def run_eval_item(item: dict[str, Any], backend: str, reviewer_cli: str, output_dir: Path) -> int:
     output_dir.parent.mkdir(parents=True, exist_ok=True)
     env = build_subprocess_env()
-    env["AUTORAC_REVIEWER_CLI"] = reviewer_cli
+    env["AXIOM_ENCODE_REVIEWER_CLI"] = reviewer_cli
     cmd = [
         resolve_uv_bin(),
         "run",
-        "autorac",
+        "axiom-encode",
         "eval-suite",
         item["manifest"],
         "--gpt-backend",
@@ -530,7 +530,7 @@ def run_eval_item(item: dict[str, Any], backend: str, reviewer_cli: str, output_
         str(output_dir),
     ]
     try:
-        result = subprocess.run(cmd, cwd=AUTORAC_ROOT, env=env, check=False)
+        result = subprocess.run(cmd, cwd=AXIOM_ENCODE_ROOT, env=env, check=False)
     except FileNotFoundError:
         return 127
     return result.returncode
@@ -540,14 +540,14 @@ def archive_eval(output_dir: Path) -> Path | None:
     cmd = [
         resolve_uv_bin(),
         "run",
-        "autorac",
+        "axiom-encode",
         "eval-suite-archive",
         str(output_dir),
     ]
     try:
         result = subprocess.run(
             cmd,
-            cwd=AUTORAC_ROOT,
+            cwd=AXIOM_ENCODE_ROOT,
             env=build_subprocess_env(),
             capture_output=True,
             text=True,
@@ -618,7 +618,7 @@ def classify_failure_class(
     for result in (results or {}).get("results", []):
         error = str(result.get("error") or "").lower()
         metrics = result.get("metrics") or {}
-        if "no rac content returned" in error:
+        if "no rulespec content returned" in error:
             return "generation_no_content"
         if metrics.get("compile_pass") is False:
             return "compile"
@@ -721,7 +721,7 @@ def build_run_record(
             "source_tracking_version", SOURCE_TRACKING_VERSION
         ),
         "source_repo": infer_repo(item.get("source_file")),
-        "autorac_sha": git_head(AUTORAC_ROOT),
+        "axiom_encode_sha": git_head(AXIOM_ENCODE_ROOT),
         "policy_repo_sha": git_head(policy_repo_root),
         "policyengine_sha": git_head(policyengine_root),
         "started_at": item.get("started_at"),
@@ -806,7 +806,7 @@ def render_memory(data: dict[str, Any], active: ActiveState) -> str:
         "",
         f"Last refreshed: {now_utc()}",
         f"Run ledger: `{RUN_LEDGER_PATH}`",
-        "Queue seeding: auto-sync from checked-in `autorac` SNAP refresh manifests on runner wakeup",
+        "Queue seeding: auto-sync from checked-in `axiom-encode` SNAP refresh manifests on runner wakeup",
         "",
         "## Active SNAP eval",
         "",
@@ -950,7 +950,7 @@ def process_queue(queue_path: Path) -> int:
         if active_processes:
             active = ActiveState(
                 status="waiting",
-                action="another SNAP-focused `autorac eval-suite` is already running; waiting for it to finish before starting the next queued item",
+                action="another SNAP-focused `axiom-encode eval-suite` is already running; waiting for it to finish before starting the next queued item",
                 outcome=f"external eval already active at {now_local()}",
             )
             write_memory(data, active)

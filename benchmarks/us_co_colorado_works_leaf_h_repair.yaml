@@ -14,6 +14,6 @@ cases:
   - kind: source
     name: co-3-606-1-h
     source_id: 9 CCR 2503-6 3.606.1(H)
-    source_file: ../../rac-us-co/sources/slices/9-CCR-2503-6/3.606.1/H.txt
+    source_file: ../../rules-us-co/sources/slices/9-CCR-2503-6/3.606.1/H.txt
     allow_context:
-      - ../../rac-us-co/regulation/9-CCR-2503-6/3.606.1/F.rac
+      - ../../rules-us-co/regulation/9-CCR-2503-6/3.606.1/F.yaml

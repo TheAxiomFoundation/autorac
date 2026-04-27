@@ -17,7 +17,7 @@ cases:
     source_file: ./sources/uk/uc_standard_allowance_single_under_25_2025.txt
     oracle: policyengine
     policyengine_country: uk
-    policyengine_rac_var_hint: uc_standard_allowance_single_claimant_aged_under_25
+    policyengine_rule_hint: uc_standard_allowance_single_claimant_aged_under_25
 
   - kind: source
     name: uc-standard-allowance-single-25-or-over
@@ -25,7 +25,7 @@ cases:
     source_file: ./sources/uk/uc_standard_allowance_single_25_or_over_2025.txt
     oracle: policyengine
     policyengine_country: uk
-    policyengine_rac_var_hint: uc_standard_allowance_single_claimant_aged_25_or_over
+    policyengine_rule_hint: uc_standard_allowance_single_claimant_aged_25_or_over
 
   - kind: source
     name: uc-standard-allowance-joint-under-25
@@ -33,7 +33,7 @@ cases:
     source_file: ./sources/uk/uc_standard_allowance_joint_under_25_2025.txt
     oracle: policyengine
     policyengine_country: uk
-    policyengine_rac_var_hint: uc_standard_allowance_joint_claimants_both_aged_under_25
+    policyengine_rule_hint: uc_standard_allowance_joint_claimants_both_aged_under_25
 
   - kind: source
     name: uc-standard-allowance-joint-25-or-over
@@ -41,7 +41,7 @@ cases:
     source_file: ./sources/uk/uc_standard_allowance_joint_25_or_over_2025.txt
     oracle: policyengine
     policyengine_country: uk
-    policyengine_rac_var_hint: uc_standard_allowance_joint_claimants_one_or_both_aged_25_or_over
+    policyengine_rule_hint: uc_standard_allowance_joint_claimants_one_or_both_aged_25_or_over
 
   - kind: source
     name: wtc-worker-element
@@ -49,4 +49,4 @@ cases:
     source_file: ./sources/uk/wtc_worker_element_2021.txt
     oracle: policyengine
     policyengine_country: uk
-    policyengine_rac_var_hint: wtc_worker_element_amount
+    policyengine_rule_hint: wtc_worker_element_amount

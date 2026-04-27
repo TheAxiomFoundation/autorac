@@ -14,7 +14,7 @@ cases:
   - kind: source
     name: snap_self_employment_simplified_deduction_rate_al
     source_id: Alabama SNAP self-employment simplified deduction rate under DHR Food Assistance Program Points of Eligibility Manual Chapter 11 section 1100
-    source_file: ../../rac-us-al/sources/slices/aldhr/poe/current-effective/snap_self_employment_simplified_deduction_rate_al.txt
+    source_file: ../../rules-us-al/sources/slices/aldhr/poe/current-effective/snap_self_employment_simplified_deduction_rate_al.txt
     oracle: policyengine
     policyengine_country: auto
-    policyengine_rac_var_hint: snap_self_employment_simplified_deduction_rate
+    policyengine_rule_hint: snap_self_employment_simplified_deduction_rate

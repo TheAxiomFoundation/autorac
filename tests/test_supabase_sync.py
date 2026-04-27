@@ -12,13 +12,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from autorac.supabase_sync import (
+from axiom_encode.supabase_sync import (
     fetch_runs_from_supabase,
     get_local_transcript_stats,
     get_supabase_client,
+    sync_agent_sessions_to_supabase,
     sync_all_runs,
     sync_run_to_supabase,
-    sync_sdk_sessions_to_supabase,
     sync_transcripts_to_supabase,
 )
 
@@ -35,7 +35,9 @@ class TestGetSupabaseClient:
 
     def test_missing_key(self):
         with patch.dict(
-            os.environ, {"RAC_SUPABASE_URL": "https://example.supabase.co"}, clear=True
+            os.environ,
+            {"AXIOM_ENCODE_SUPABASE_URL": "https://example.supabase.co"},
+            clear=True,
         ):
             with pytest.raises(ValueError, match="Missing Supabase write credentials"):
                 get_supabase_client()
@@ -44,12 +46,12 @@ class TestGetSupabaseClient:
         with patch.dict(
             os.environ,
             {
-                "RAC_SUPABASE_URL": "https://example.supabase.co",
-                "RAC_SUPABASE_SECRET_KEY": "secret-key",
+                "AXIOM_ENCODE_SUPABASE_URL": "https://example.supabase.co",
+                "AXIOM_ENCODE_SUPABASE_SECRET_KEY": "secret-key",
             },
             clear=True,
         ):
-            with patch("autorac.supabase_sync.create_client") as mock_create:
+            with patch("axiom_encode.supabase_sync.create_client") as mock_create:
                 mock_create.return_value = MagicMock()
                 get_supabase_client()
                 mock_create.assert_called_once_with(
@@ -60,12 +62,12 @@ class TestGetSupabaseClient:
         with patch.dict(
             os.environ,
             {
-                "RAC_SUPABASE_URL": "https://example.supabase.co",
-                "RAC_SUPABASE_ANON_KEY": "anon-key",
+                "AXIOM_ENCODE_SUPABASE_URL": "https://example.supabase.co",
+                "AXIOM_ENCODE_SUPABASE_ANON_KEY": "anon-key",
             },
             clear=True,
         ):
-            with patch("autorac.supabase_sync.create_client") as mock_create:
+            with patch("axiom_encode.supabase_sync.create_client") as mock_create:
                 mock_create.return_value = MagicMock()
                 get_supabase_client(require_write=False)
                 mock_create.assert_called_once_with(
@@ -76,8 +78,8 @@ class TestGetSupabaseClient:
         with patch.dict(
             os.environ,
             {
-                "RAC_SUPABASE_URL": "https://example.supabase.co",
-                "RAC_SUPABASE_ANON_KEY": "anon-key",
+                "AXIOM_ENCODE_SUPABASE_URL": "https://example.supabase.co",
+                "AXIOM_ENCODE_SUPABASE_ANON_KEY": "anon-key",
             },
             clear=True,
         ):
@@ -102,9 +104,9 @@ class TestSyncRunToSupabase:
             mock_run.id = "test-123"
             mock_run.timestamp = datetime.now()
             mock_run.citation = "26 USC 1"
-            mock_run.file_path = "test.rac"
-            mock_run.predicted_scores = None
-            mock_run.final_scores = None
+            mock_run.file_path = "test.yaml"
+            mock_run.rulespec_content = ""
+            mock_run.review_results = None
 
             mock_client = MagicMock()
             mock_client.table.return_value.upsert.return_value.execute.return_value = (
@@ -114,43 +116,28 @@ class TestSyncRunToSupabase:
             result = sync_run_to_supabase(mock_run, source, client=mock_client)
             assert result is True
 
-    def test_with_predicted_scores(self):
+    def test_with_review_results(self):
         mock_run = MagicMock()
         mock_run.id = "test-123"
         mock_run.timestamp = datetime.now()
         mock_run.citation = "26 USC 1"
-        mock_run.file_path = "test.rac"
-        mock_run.predicted_scores = MagicMock(
-            rac=7.0,
-            formula=6.5,
-            param=7.5,
-            integration=7.0,
-            iterations=3,
-            time_minutes=5,
-            confidence=0.8,
-        )
-        mock_run.final_scores = None
-
-        mock_client = MagicMock()
-        mock_client.table.return_value.upsert.return_value.execute.return_value = (
-            MagicMock(data=[{"id": "test-123"}])
-        )
-
-        result = sync_run_to_supabase(mock_run, "reviewer_agent", client=mock_client)
-        assert result is True
-
-    def test_with_final_scores(self):
-        mock_run = MagicMock()
-        mock_run.id = "test-123"
-        mock_run.timestamp = datetime.now()
-        mock_run.citation = "26 USC 1"
-        mock_run.file_path = "test.rac"
-        mock_run.predicted_scores = None
-        mock_run.final_scores = MagicMock(
-            rac_reviewer=8.0,
-            formula_reviewer=7.5,
-            parameter_reviewer=8.5,
-            integration_reviewer=8.0,
+        mock_run.file_path = "test.yaml"
+        mock_run.rulespec_content = "format: rulespec/v1"
+        mock_run.review_results = MagicMock(
+            reviews=[
+                MagicMock(
+                    reviewer="rulespec_reviewer",
+                    items_checked=10,
+                    items_passed=8,
+                    passed=True,
+                ),
+                MagicMock(
+                    reviewer="formula_reviewer",
+                    items_checked=10,
+                    items_passed=7,
+                    passed=True,
+                ),
+            ],
             policyengine_match=0.95,
             taxsim_match=0.90,
         )
@@ -162,15 +149,19 @@ class TestSyncRunToSupabase:
 
         result = sync_run_to_supabase(mock_run, "reviewer_agent", client=mock_client)
         assert result is True
+        upsert_payload = mock_client.table.return_value.upsert.call_args.args[0]
+        assert upsert_payload["rulespec_content"] == "format: rulespec/v1"
+        assert upsert_payload["review_scores"]["rulespec_reviewer"] == 8.0
+        assert upsert_payload["review_scores"]["formula_reviewer"] == 7.0
 
     def test_upsert_failure(self, capsys):
         mock_run = MagicMock()
         mock_run.id = "test-123"
         mock_run.timestamp = datetime.now()
         mock_run.citation = "26 USC 1"
-        mock_run.file_path = "test.rac"
-        mock_run.predicted_scores = None
-        mock_run.final_scores = None
+        mock_run.file_path = "test.yaml"
+        mock_run.rulespec_content = ""
+        mock_run.review_results = None
 
         mock_client = MagicMock()
         mock_client.table.return_value.upsert.return_value.execute.side_effect = (
@@ -185,9 +176,9 @@ class TestSyncRunToSupabase:
         mock_run.id = "test-123"
         mock_run.timestamp = datetime.now()
         mock_run.citation = "26 USC 1"
-        mock_run.file_path = "test.rac"
-        mock_run.predicted_scores = None
-        mock_run.final_scores = None
+        mock_run.file_path = "test.yaml"
+        mock_run.rulespec_content = ""
+        mock_run.review_results = None
 
         mock_client = MagicMock()
         mock_client.table.return_value.upsert.return_value.execute.return_value = (
@@ -202,9 +193,9 @@ class TestSyncRunToSupabase:
         mock_run.id = "test-123"
         mock_run.timestamp = datetime.now()
         mock_run.citation = "26 USC 1"
-        mock_run.file_path = "test.rac"
-        mock_run.predicted_scores = None
-        mock_run.final_scores = None
+        mock_run.file_path = "test.yaml"
+        mock_run.rulespec_content = ""
+        mock_run.review_results = None
 
         mock_client = MagicMock()
         mock_client.table.return_value.upsert.return_value.execute.return_value = (
@@ -212,7 +203,7 @@ class TestSyncRunToSupabase:
         )
 
         with patch(
-            "autorac.supabase_sync.get_supabase_client", return_value=mock_client
+            "axiom_encode.supabase_sync.get_supabase_client", return_value=mock_client
         ) as mock_get_client:
             result = sync_run_to_supabase(mock_run, "ci_only")
             assert result is True
@@ -226,7 +217,7 @@ class TestSyncRunToSupabase:
 
 class TestSyncAllRuns:
     def test_sync_all_runs(self, tmp_path):
-        from autorac.harness.encoding_db import (
+        from axiom_encode.harness.encoding_db import (
             EncodingDB,
             EncodingRun,
             Iteration,
@@ -236,7 +227,7 @@ class TestSyncAllRuns:
         db = EncodingDB(db_path)
         run = EncodingRun(
             citation="26 USC 1",
-            file_path="test.rac",
+            file_path="test.yaml",
             iterations=[Iteration(attempt=1, duration_ms=1000, success=True)],
         )
         db.log_run(run)
@@ -251,7 +242,7 @@ class TestSyncAllRuns:
         assert stats["synced"] >= 1
 
     def test_sync_all_runs_with_failure(self, tmp_path):
-        from autorac.harness.encoding_db import (
+        from axiom_encode.harness.encoding_db import (
             EncodingDB,
             EncodingRun,
             Iteration,
@@ -261,7 +252,7 @@ class TestSyncAllRuns:
         db = EncodingDB(db_path)
         run = EncodingRun(
             citation="26 USC 1",
-            file_path="test.rac",
+            file_path="test.yaml",
             iterations=[Iteration(attempt=1, duration_ms=1000, success=True)],
         )
         db.log_run(run)
@@ -275,7 +266,7 @@ class TestSyncAllRuns:
         assert stats["failed"] >= 1
 
     def test_creates_client_if_not_provided(self, tmp_path):
-        from autorac.harness.encoding_db import EncodingDB
+        from axiom_encode.harness.encoding_db import EncodingDB
 
         db_path = tmp_path / "test.db"
         EncodingDB(db_path)
@@ -286,7 +277,7 @@ class TestSyncAllRuns:
         )
 
         with patch(
-            "autorac.supabase_sync.get_supabase_client", return_value=mock_client
+            "axiom_encode.supabase_sync.get_supabase_client", return_value=mock_client
         ):
             stats = sync_all_runs(db_path, "ci_only")
             assert stats["total"] == 0
@@ -321,7 +312,7 @@ class TestFetchRunsFromSupabase:
         )
 
         with patch(
-            "autorac.supabase_sync.get_supabase_client", return_value=mock_client
+            "axiom_encode.supabase_sync.get_supabase_client", return_value=mock_client
         ) as mock_get_client:
             results = fetch_runs_from_supabase()
             assert results == []
@@ -370,7 +361,7 @@ class TestSyncTranscriptsToSupabase:
             data=[{"id": 1}]
         )
 
-        with patch("autorac.supabase_sync.TRANSCRIPT_DB", db_path):
+        with patch("axiom_encode.supabase_sync.TRANSCRIPT_DB", db_path):
             result = sync_transcripts_to_supabase(client=mock_client)
             assert result["synced"] == 1
             assert result["total"] == 1
@@ -407,7 +398,7 @@ class TestSyncTranscriptsToSupabase:
             data=[{"id": 1}]
         )
 
-        with patch("autorac.supabase_sync.TRANSCRIPT_DB", db_path):
+        with patch("axiom_encode.supabase_sync.TRANSCRIPT_DB", db_path):
             result = sync_transcripts_to_supabase(
                 session_id="sess-1", client=mock_client
             )
@@ -443,7 +434,7 @@ class TestSyncTranscriptsToSupabase:
             "Connection error"
         )
 
-        with patch("autorac.supabase_sync.TRANSCRIPT_DB", db_path):
+        with patch("axiom_encode.supabase_sync.TRANSCRIPT_DB", db_path):
             result = sync_transcripts_to_supabase(client=mock_client)
             assert result["failed"] == 1
 
@@ -476,7 +467,7 @@ class TestSyncTranscriptsToSupabase:
             data=[]
         )
 
-        with patch("autorac.supabase_sync.TRANSCRIPT_DB", db_path):
+        with patch("axiom_encode.supabase_sync.TRANSCRIPT_DB", db_path):
             result = sync_transcripts_to_supabase(client=mock_client)
             assert result["failed"] == 1
 
@@ -502,23 +493,23 @@ class TestSyncTranscriptsToSupabase:
         conn.close()
 
         mock_client = MagicMock()
-        with patch("autorac.supabase_sync.TRANSCRIPT_DB", db_path):
+        with patch("axiom_encode.supabase_sync.TRANSCRIPT_DB", db_path):
             with patch(
-                "autorac.supabase_sync.get_supabase_client", return_value=mock_client
+                "axiom_encode.supabase_sync.get_supabase_client", return_value=mock_client
             ):
                 result = sync_transcripts_to_supabase()
                 assert result["total"] == 0
 
 
 # =========================================================================
-# sync_sdk_sessions_to_supabase
+# sync_agent_sessions_to_supabase
 # =========================================================================
 
 
-class TestSyncSdkSessionsToSupabase:
+class TestSyncAgentSessionsToSupabase:
     def test_no_experiments_db(self):
-        with patch("autorac.supabase_sync.ENCODINGS_DB", Path("/nonexistent/path")):
-            result = sync_sdk_sessions_to_supabase()
+        with patch("axiom_encode.supabase_sync.ENCODINGS_DB", Path("/nonexistent/path")):
+            result = sync_agent_sessions_to_supabase()
             assert result["total"] == 0
 
     def test_sync_session(self, tmp_path):
@@ -551,13 +542,13 @@ class TestSyncSdkSessionsToSupabase:
             )
         """)
         conn.execute(
-            "INSERT INTO sessions VALUES ('sdk-test-1', '2024-01-01', '2024-01-01', 'opus', '/tmp', 2, 100, 50, 10, 0.01)"
+            "INSERT INTO sessions VALUES ('agent-test-1', '2024-01-01', '2024-01-01', 'opus', '/tmp', 2, 100, 50, 10, 0.01)"
         )
         conn.execute(
-            "INSERT INTO session_events VALUES ('ev-1', 'sdk-test-1', 1, '2024-01-01', 'tool_call', 'Read', 'content', '{}')"
+            "INSERT INTO session_events VALUES ('ev-1', 'agent-test-1', 1, '2024-01-01', 'tool_call', 'Read', 'content', '{}')"
         )
         conn.execute(
-            "INSERT INTO session_events VALUES ('ev-2', 'sdk-test-1', 2, '2024-01-01', 'tool_result', NULL, 'result', NULL)"
+            "INSERT INTO session_events VALUES ('ev-2', 'agent-test-1', 2, '2024-01-01', 'tool_result', NULL, 'result', NULL)"
         )
         conn.commit()
         conn.close()
@@ -567,8 +558,8 @@ class TestSyncSdkSessionsToSupabase:
             data=[{"id": "test"}]
         )
 
-        with patch("autorac.supabase_sync.ENCODINGS_DB", db_path):
-            result = sync_sdk_sessions_to_supabase(client=mock_client)
+        with patch("axiom_encode.supabase_sync.ENCODINGS_DB", db_path):
+            result = sync_agent_sessions_to_supabase(client=mock_client)
             assert result["synced"] == 1
             assert result["total"] == 1
 
@@ -602,7 +593,7 @@ class TestSyncSdkSessionsToSupabase:
             )
         """)
         conn.execute(
-            "INSERT INTO sessions VALUES ('sdk-test-1', '2024-01-01', '2024-01-01', 'opus', '/tmp', 0, 0, 0, 0, 0)"
+            "INSERT INTO sessions VALUES ('agent-test-1', '2024-01-01', '2024-01-01', 'opus', '/tmp', 0, 0, 0, 0, 0)"
         )
         conn.commit()
         conn.close()
@@ -612,9 +603,9 @@ class TestSyncSdkSessionsToSupabase:
             data=[{"id": "test"}]
         )
 
-        with patch("autorac.supabase_sync.ENCODINGS_DB", db_path):
-            result = sync_sdk_sessions_to_supabase(
-                session_id="sdk-test-1", client=mock_client
+        with patch("axiom_encode.supabase_sync.ENCODINGS_DB", db_path):
+            result = sync_agent_sessions_to_supabase(
+                session_id="agent-test-1", client=mock_client
             )
             assert result["synced"] == 1
 
@@ -648,7 +639,7 @@ class TestSyncSdkSessionsToSupabase:
             )
         """)
         conn.execute(
-            "INSERT INTO sessions VALUES ('sdk-test-1', '2024-01-01', '2024-01-01', 'opus', '/tmp', 0, 0, 0, 0, 0)"
+            "INSERT INTO sessions VALUES ('agent-test-1', '2024-01-01', '2024-01-01', 'opus', '/tmp', 0, 0, 0, 0, 0)"
         )
         conn.commit()
         conn.close()
@@ -658,8 +649,8 @@ class TestSyncSdkSessionsToSupabase:
             "Error"
         )
 
-        with patch("autorac.supabase_sync.ENCODINGS_DB", db_path):
-            result = sync_sdk_sessions_to_supabase(client=mock_client)
+        with patch("axiom_encode.supabase_sync.ENCODINGS_DB", db_path):
+            result = sync_agent_sessions_to_supabase(client=mock_client)
             assert result["failed"] == 1
 
     def test_creates_client_if_not_provided(self, tmp_path):
@@ -695,11 +686,11 @@ class TestSyncSdkSessionsToSupabase:
         conn.close()
 
         mock_client = MagicMock()
-        with patch("autorac.supabase_sync.ENCODINGS_DB", db_path):
+        with patch("axiom_encode.supabase_sync.ENCODINGS_DB", db_path):
             with patch(
-                "autorac.supabase_sync.get_supabase_client", return_value=mock_client
+                "axiom_encode.supabase_sync.get_supabase_client", return_value=mock_client
             ):
-                result = sync_sdk_sessions_to_supabase()
+                result = sync_agent_sessions_to_supabase()
                 assert result["total"] == 0
 
 
@@ -710,7 +701,7 @@ class TestSyncSdkSessionsToSupabase:
 
 class TestGetLocalTranscriptStats:
     def test_no_db(self):
-        with patch("autorac.supabase_sync.TRANSCRIPT_DB", Path("/nonexistent/path")):
+        with patch("axiom_encode.supabase_sync.TRANSCRIPT_DB", Path("/nonexistent/path")):
             result = get_local_transcript_stats()
             assert result["exists"] is False
 
@@ -741,7 +732,7 @@ class TestGetLocalTranscriptStats:
         conn.commit()
         conn.close()
 
-        with patch("autorac.supabase_sync.TRANSCRIPT_DB", db_path):
+        with patch("axiom_encode.supabase_sync.TRANSCRIPT_DB", db_path):
             result = get_local_transcript_stats()
             assert result["exists"] is True
             assert result["total"] == 2

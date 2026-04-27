@@ -1,5 +1,5 @@
 """
-Tests for autorac CLI (cli.py).
+Tests for axiom_encode CLI (cli.py).
 
 Tests all CLI commands using subprocess invocation and direct function calls.
 All external dependencies are mocked.
@@ -9,25 +9,22 @@ import json
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from autorac.cli import (
+from axiom_encode.cli import (
     _effective_runner_specs,
     _extract_subsections_from_xml,
     _rewrite_gpt_runner_backend,
-    cmd_benchmark,
     cmd_calibration,
     cmd_compile,
-    cmd_coverage,
     cmd_encode,
     cmd_eval_source,
     cmd_eval_suite,
     cmd_eval_suite_archive,
     cmd_eval_suite_report,
     cmd_eval_suite_revalidate,
-    cmd_init,
     cmd_log,
     cmd_log_event,
     cmd_runs,
@@ -38,13 +35,13 @@ from autorac.cli import (
     cmd_sessions,
     cmd_stats,
     cmd_statute,
-    cmd_sync_sdk_sessions,
+    cmd_sync_agent_sessions,
     cmd_sync_transcripts,
     cmd_transcript_stats,
     cmd_validate,
     main,
 )
-from autorac.harness.encoding_db import (
+from axiom_encode.harness.encoding_db import (
     EncodingDB,
     EncodingRun,
     Iteration,
@@ -52,7 +49,7 @@ from autorac.harness.encoding_db import (
     ReviewResult,
     ReviewResults,
 )
-from autorac.harness.evals import EvalArtifactMetrics
+from axiom_encode.harness.evals import EvalArtifactMetrics
 
 # =========================================================================
 # Test main() dispatch
@@ -78,7 +75,7 @@ class TestRunnerOverrides:
         ]
 
     def test_effective_runner_specs_uses_env_override(self, monkeypatch):
-        monkeypatch.setenv("AUTORAC_GPT_BACKEND", "codex")
+        monkeypatch.setenv("AXIOM_ENCODE_GPT_BACKEND", "codex")
         args = SimpleNamespace(gpt_backend=None)
 
         assert _effective_runner_specs(["openai:gpt-5.4", "claude:opus"], args) == [
@@ -87,7 +84,7 @@ class TestRunnerOverrides:
         ]
 
     def test_effective_runner_specs_allows_explicit_openai_override(self, monkeypatch):
-        monkeypatch.delenv("AUTORAC_GPT_BACKEND", raising=False)
+        monkeypatch.delenv("AXIOM_ENCODE_GPT_BACKEND", raising=False)
         args = SimpleNamespace(gpt_backend="openai")
 
         assert _effective_runner_specs(["codex:gpt-5.4", "claude:opus"], args) == [
@@ -99,25 +96,25 @@ class TestRunnerOverrides:
 class TestMain:
     def test_no_command_shows_help_and_exits(self):
         """main() with no command should print help and exit 1."""
-        with patch("sys.argv", ["autorac"]):
+        with patch("sys.argv", ["axiom_encode"]):
             with pytest.raises(SystemExit) as exc_info:
                 main()
             assert exc_info.value.code == 1
 
     def test_validate_command_dispatches(self):
         """main() with 'validate' should call cmd_validate."""
-        with tempfile.NamedTemporaryFile(suffix=".rac") as f:
-            with patch("sys.argv", ["autorac", "validate", f.name]):
-                with patch("autorac.cli.cmd_validate") as mock_cmd:
+        with tempfile.NamedTemporaryFile(suffix=".yaml") as f:
+            with patch("sys.argv", ["axiom_encode", "validate", f.name]):
+                with patch("axiom_encode.cli.cmd_validate") as mock_cmd:
                     main()
                     mock_cmd.assert_called_once()
 
     def test_log_command_dispatches(self):
-        with tempfile.NamedTemporaryFile(suffix=".rac") as f:
+        with tempfile.NamedTemporaryFile(suffix=".yaml") as f:
             with patch(
                 "sys.argv",
                 [
-                    "autorac",
+                    "axiom_encode",
                     "log",
                     "--citation",
                     "26 USC 1",
@@ -125,55 +122,43 @@ class TestMain:
                     f.name,
                 ],
             ):
-                with patch("autorac.cli.cmd_log") as mock_cmd:
+                with patch("axiom_encode.cli.cmd_log") as mock_cmd:
                     main()
                     mock_cmd.assert_called_once()
 
     def test_stats_command_dispatches(self):
-        with patch("sys.argv", ["autorac", "stats"]):
-            with patch("autorac.cli.cmd_stats") as mock_cmd:
+        with patch("sys.argv", ["axiom_encode", "stats"]):
+            with patch("axiom_encode.cli.cmd_stats") as mock_cmd:
                 main()
                 mock_cmd.assert_called_once()
 
     def test_calibration_command_dispatches(self):
-        with patch("sys.argv", ["autorac", "calibration"]):
-            with patch("autorac.cli.cmd_calibration") as mock_cmd:
+        with patch("sys.argv", ["axiom_encode", "calibration"]):
+            with patch("axiom_encode.cli.cmd_calibration") as mock_cmd:
                 main()
                 mock_cmd.assert_called_once()
 
     def test_statute_command_dispatches(self):
-        with patch("sys.argv", ["autorac", "statute", "26 USC 1"]):
-            with patch("autorac.cli.cmd_statute") as mock_cmd:
+        with patch("sys.argv", ["axiom_encode", "statute", "26 USC 1"]):
+            with patch("axiom_encode.cli.cmd_statute") as mock_cmd:
                 main()
                 mock_cmd.assert_called_once()
 
     def test_runs_command_dispatches(self):
-        with patch("sys.argv", ["autorac", "runs"]):
-            with patch("autorac.cli.cmd_runs") as mock_cmd:
-                main()
-                mock_cmd.assert_called_once()
-
-    def test_init_command_dispatches(self):
-        with patch("sys.argv", ["autorac", "init", "26 USC 1"]):
-            with patch("autorac.cli.cmd_init") as mock_cmd:
-                main()
-                mock_cmd.assert_called_once()
-
-    def test_coverage_command_dispatches(self):
-        with patch("sys.argv", ["autorac", "coverage", "26 USC 1"]):
-            with patch("autorac.cli.cmd_coverage") as mock_cmd:
+        with patch("sys.argv", ["axiom_encode", "runs"]):
+            with patch("axiom_encode.cli.cmd_runs") as mock_cmd:
                 main()
                 mock_cmd.assert_called_once()
 
     def test_encode_command_dispatches(self):
-        with patch("sys.argv", ["autorac", "encode", "26 USC 1"]):
-            with patch("autorac.cli.cmd_encode") as mock_cmd:
+        with patch("sys.argv", ["axiom_encode", "encode", "26 USC 1"]):
+            with patch("axiom_encode.cli.cmd_encode") as mock_cmd:
                 main()
                 mock_cmd.assert_called_once()
 
     def test_eval_command_dispatches(self):
-        with patch("sys.argv", ["autorac", "eval", "26 USC 24(a)"]):
-            with patch("autorac.cli.cmd_eval") as mock_cmd:
+        with patch("sys.argv", ["axiom_encode", "eval", "26 USC 24(a)"]):
+            with patch("axiom_encode.cli.cmd_eval") as mock_cmd:
                 main()
                 mock_cmd.assert_called_once()
 
@@ -181,9 +166,9 @@ class TestMain:
         with tempfile.NamedTemporaryFile() as f:
             with patch(
                 "sys.argv",
-                ["autorac", "eval-source", "CO TANF 3.606.1(F)", f.name],
+                ["axiom_encode", "eval-source", "CO TANF 3.606.1(F)", f.name],
             ):
-                with patch("autorac.cli.cmd_eval_source") as mock_cmd:
+                with patch("axiom_encode.cli.cmd_eval_source") as mock_cmd:
                     main()
                     mock_cmd.assert_called_once()
 
@@ -192,14 +177,14 @@ class TestMain:
             with patch(
                 "sys.argv",
                 [
-                    "autorac",
+                    "axiom_encode",
                     "eval-akn-section",
                     "CO TANF 3.606.1",
                     f.name,
                     "sec_3_606_1",
                 ],
             ):
-                with patch("autorac.cli.cmd_eval_akn_section") as mock_cmd:
+                with patch("axiom_encode.cli.cmd_eval_akn_section") as mock_cmd:
                     main()
                     mock_cmd.assert_called_once()
 
@@ -207,12 +192,12 @@ class TestMain:
         with patch(
             "sys.argv",
             [
-                "autorac",
+                "axiom_encode",
                 "eval-uk-legislation-section",
                 "https://www.legislation.gov.uk/ukpga/2010/1/section/1",
             ],
         ):
-            with patch("autorac.cli.cmd_eval_uk_legislation_section") as mock_cmd:
+            with patch("axiom_encode.cli.cmd_eval_uk_legislation_section") as mock_cmd:
                 main()
                 mock_cmd.assert_called_once()
 
@@ -220,7 +205,7 @@ class TestMain:
         with patch(
             "sys.argv",
             [
-                "autorac",
+                "axiom_encode",
                 "eval-uk-legislation-section",
                 "/uksi/2013/376/regulation/36/2025-04-01",
                 "--section-eid",
@@ -229,110 +214,103 @@ class TestMain:
                 "single claimant aged under 25",
             ],
         ):
-            with patch("autorac.cli.cmd_eval_uk_legislation_section") as mock_cmd:
+            with patch("axiom_encode.cli.cmd_eval_uk_legislation_section") as mock_cmd:
                 main()
                 mock_cmd.assert_called_once()
 
-    def test_eval_source_accepts_policyengine_rac_var_hint(self):
+    def test_eval_source_accepts_policyengine_rule_hint(self):
         with tempfile.NamedTemporaryFile() as f:
             with patch(
                 "sys.argv",
                 [
-                    "autorac",
+                    "axiom_encode",
                     "eval-source",
                     "UC row",
                     f.name,
-                    "--policyengine-rac-var-hint",
+                    "--policyengine-rule-hint",
                     "uc_standard_allowance_single_claimant_aged_under_25",
                 ],
             ):
-                with patch("autorac.cli.cmd_eval_source") as mock_cmd:
+                with patch("axiom_encode.cli.cmd_eval_source") as mock_cmd:
                     main()
                     mock_cmd.assert_called_once()
 
     def test_eval_suite_command_dispatches(self):
         with tempfile.NamedTemporaryFile(suffix=".yaml") as f:
-            with patch("sys.argv", ["autorac", "eval-suite", f.name]):
-                with patch("autorac.cli.cmd_eval_suite") as mock_cmd:
+            with patch("sys.argv", ["axiom_encode", "eval-suite", f.name]):
+                with patch("axiom_encode.cli.cmd_eval_suite") as mock_cmd:
                     main()
                     mock_cmd.assert_called_once()
 
     def test_eval_suite_report_command_dispatches(self):
         with tempfile.NamedTemporaryFile(suffix=".json") as f:
-            with patch("sys.argv", ["autorac", "eval-suite-report", f.name]):
-                with patch("autorac.cli.cmd_eval_suite_report") as mock_cmd:
+            with patch("sys.argv", ["axiom_encode", "eval-suite-report", f.name]):
+                with patch("axiom_encode.cli.cmd_eval_suite_report") as mock_cmd:
                     main()
                     mock_cmd.assert_called_once()
 
     def test_eval_suite_archive_command_dispatches(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("sys.argv", ["autorac", "eval-suite-archive", tmpdir]):
-                with patch("autorac.cli.cmd_eval_suite_archive") as mock_cmd:
+            with patch("sys.argv", ["axiom_encode", "eval-suite-archive", tmpdir]):
+                with patch("axiom_encode.cli.cmd_eval_suite_archive") as mock_cmd:
                     main()
                     mock_cmd.assert_called_once()
 
     def test_compile_command_dispatches(self):
-        with tempfile.NamedTemporaryFile(suffix=".rac") as f:
-            with patch("sys.argv", ["autorac", "compile", f.name]):
-                with patch("autorac.cli.cmd_compile") as mock_cmd:
-                    main()
-                    mock_cmd.assert_called_once()
-
-    def test_benchmark_command_dispatches(self):
-        with tempfile.NamedTemporaryFile(suffix=".rac") as f:
-            with patch("sys.argv", ["autorac", "benchmark", f.name]):
-                with patch("autorac.cli.cmd_benchmark") as mock_cmd:
+        with tempfile.NamedTemporaryFile(suffix=".yaml") as f:
+            with patch("sys.argv", ["axiom_encode", "compile", f.name]):
+                with patch("axiom_encode.cli.cmd_compile") as mock_cmd:
                     main()
                     mock_cmd.assert_called_once()
 
     def test_session_start_dispatches(self):
-        with patch("sys.argv", ["autorac", "session-start"]):
-            with patch("autorac.cli.cmd_session_start") as mock_cmd:
+        with patch("sys.argv", ["axiom_encode", "session-start"]):
+            with patch("axiom_encode.cli.cmd_session_start") as mock_cmd:
                 main()
                 mock_cmd.assert_called_once()
 
     def test_session_end_dispatches(self):
-        with patch("sys.argv", ["autorac", "session-end", "--session", "abc"]):
-            with patch("autorac.cli.cmd_session_end") as mock_cmd:
+        with patch("sys.argv", ["axiom_encode", "session-end", "--session", "abc"]):
+            with patch("axiom_encode.cli.cmd_session_end") as mock_cmd:
                 main()
                 mock_cmd.assert_called_once()
 
     def test_log_event_dispatches(self):
         with patch(
             "sys.argv",
-            ["autorac", "log-event", "--session", "abc", "--type", "tool_call"],
+            ["axiom_encode", "log-event", "--session", "abc", "--type", "tool_call"],
         ):
-            with patch("autorac.cli.cmd_log_event") as mock_cmd:
+            with patch("axiom_encode.cli.cmd_log_event") as mock_cmd:
                 main()
                 mock_cmd.assert_called_once()
 
     def test_sessions_dispatches(self):
-        with patch("sys.argv", ["autorac", "sessions"]):
-            with patch("autorac.cli.cmd_sessions") as mock_cmd:
+        with patch("sys.argv", ["axiom_encode", "sessions"]):
+            with patch("axiom_encode.cli.cmd_sessions") as mock_cmd:
                 main()
                 mock_cmd.assert_called_once()
 
     def test_session_show_dispatches(self):
-        with patch("sys.argv", ["autorac", "session-show", "abc123"]):
-            with patch("autorac.cli.cmd_session_show") as mock_cmd:
+        with patch("sys.argv", ["axiom_encode", "session-show", "abc123"]):
+            with patch("axiom_encode.cli.cmd_session_show") as mock_cmd:
                 main()
                 mock_cmd.assert_called_once()
 
     def test_session_stats_dispatches(self):
-        with patch("sys.argv", ["autorac", "session-stats"]):
-            with patch("autorac.cli.cmd_session_stats") as mock_cmd:
+        with patch("sys.argv", ["axiom_encode", "session-stats"]):
+            with patch("axiom_encode.cli.cmd_session_stats") as mock_cmd:
                 main()
                 mock_cmd.assert_called_once()
 
     def test_sync_transcripts_dispatches(self):
-        with patch("sys.argv", ["autorac", "sync-transcripts"]):
-            with patch("autorac.cli.cmd_sync_transcripts") as mock_cmd:
+        with patch("sys.argv", ["axiom_encode", "sync-transcripts"]):
+            with patch("axiom_encode.cli.cmd_sync_transcripts") as mock_cmd:
                 main()
                 mock_cmd.assert_called_once()
 
     def test_transcript_stats_dispatches(self):
-        with patch("sys.argv", ["autorac", "transcript-stats"]):
-            with patch("autorac.cli.cmd_transcript_stats") as mock_cmd:
+        with patch("sys.argv", ["axiom_encode", "transcript-stats"]):
+            with patch("axiom_encode.cli.cmd_transcript_stats") as mock_cmd:
                 main()
                 mock_cmd.assert_called_once()
 
@@ -349,14 +327,14 @@ class TestCmdEvalSuite:
             runner=None,
             output=tmp_path / "out",
             atlas_path=tmp_path / "atlas",
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             json=False,
             gpt_backend="codex",
             resume=False,
             auto_resume_attempts=0,
             auto_resume_delay_seconds=0,
         )
-        args.rac_path.mkdir()
+        args.axiom_rules_path.mkdir()
 
         fake_result = MagicMock()
         fake_result.runner = "codex-gpt-5.4"
@@ -396,9 +374,9 @@ class TestCmdEvalSuite:
         )
 
         with (
-            patch("autorac.cli.load_eval_suite_manifest") as mock_load,
-            patch("autorac.cli.run_eval_suite", return_value=[fake_result]) as mock_run,
-            patch("autorac.cli.summarize_readiness", return_value=fake_summary),
+            patch("axiom_encode.cli.load_eval_suite_manifest") as mock_load,
+            patch("axiom_encode.cli.run_eval_suite", return_value=[fake_result]) as mock_run,
+            patch("axiom_encode.cli.summarize_readiness", return_value=fake_summary),
         ):
             mock_load.return_value.name = "Readiness"
             mock_load.return_value.path = manifest_file
@@ -428,14 +406,14 @@ class TestCmdEvalSuite:
             runner=None,
             output=tmp_path / "out",
             atlas_path=tmp_path / "atlas",
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             json=False,
             gpt_backend="codex",
             resume=True,
             auto_resume_attempts=0,
             auto_resume_delay_seconds=0,
         )
-        args.rac_path.mkdir()
+        args.axiom_rules_path.mkdir()
 
         fake_result = MagicMock()
         fake_result.runner = "codex-gpt-5.4"
@@ -475,9 +453,9 @@ class TestCmdEvalSuite:
         )
 
         with (
-            patch("autorac.cli.load_eval_suite_manifest") as mock_load,
-            patch("autorac.cli.run_eval_suite", return_value=[fake_result]) as mock_run,
-            patch("autorac.cli.summarize_readiness", return_value=fake_summary),
+            patch("axiom_encode.cli.load_eval_suite_manifest") as mock_load,
+            patch("axiom_encode.cli.run_eval_suite", return_value=[fake_result]) as mock_run,
+            patch("axiom_encode.cli.summarize_readiness", return_value=fake_summary),
         ):
             mock_load.return_value.name = "Readiness"
             mock_load.return_value.path = manifest_file
@@ -501,14 +479,14 @@ class TestCmdEvalSuite:
             runner=None,
             output=tmp_path / "out",
             atlas_path=tmp_path / "atlas",
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             json=False,
             gpt_backend="codex",
             resume=False,
             auto_resume_attempts=1,
             auto_resume_delay_seconds=0,
         )
-        args.rac_path.mkdir()
+        args.axiom_rules_path.mkdir()
 
         fake_result = MagicMock()
         fake_result.runner = "codex-gpt-5.4"
@@ -548,13 +526,13 @@ class TestCmdEvalSuite:
         )
 
         with (
-            patch("autorac.cli.load_eval_suite_manifest") as mock_load,
+            patch("axiom_encode.cli.load_eval_suite_manifest") as mock_load,
             patch(
-                "autorac.cli.run_eval_suite",
+                "axiom_encode.cli.run_eval_suite",
                 side_effect=[RuntimeError("boom"), [fake_result]],
             ) as mock_run,
-            patch("autorac.cli.summarize_readiness", return_value=fake_summary),
-            patch("autorac.cli.time.sleep") as mock_sleep,
+            patch("axiom_encode.cli.summarize_readiness", return_value=fake_summary),
+            patch("axiom_encode.cli.time.sleep") as mock_sleep,
         ):
             mock_load.return_value.name = "Readiness"
             mock_load.return_value.path = manifest_file
@@ -582,14 +560,14 @@ class TestCmdEvalSuite:
             runner=None,
             output=tmp_path / "out",
             atlas_path=tmp_path / "atlas",
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             json=False,
             gpt_backend="codex",
             resume=False,
             auto_resume_attempts=2,
             auto_resume_delay_seconds=0,
         )
-        args.rac_path.mkdir()
+        args.axiom_rules_path.mkdir()
 
         fake_result = MagicMock()
         fake_result.runner = "codex-gpt-5.4"
@@ -654,13 +632,13 @@ class TestCmdEvalSuite:
             return [fake_result]
 
         with (
-            patch("autorac.cli.load_eval_suite_manifest") as mock_load,
+            patch("axiom_encode.cli.load_eval_suite_manifest") as mock_load,
             patch(
-                "autorac.cli.run_eval_suite",
+                "axiom_encode.cli.run_eval_suite",
                 side_effect=fake_run_eval_suite,
             ) as mock_run,
-            patch("autorac.cli.summarize_readiness", return_value=fake_summary),
-            patch("autorac.cli.time.sleep") as mock_sleep,
+            patch("axiom_encode.cli.summarize_readiness", return_value=fake_summary),
+            patch("axiom_encode.cli.time.sleep") as mock_sleep,
         ):
             mock_load.return_value.name = "Readiness"
             mock_load.return_value.path = manifest_file
@@ -690,7 +668,7 @@ class TestCmdEvalSuiteReport:
                     "success": True,
                     "duration_ms": 1000,
                     "estimated_cost_usd": 0.1,
-                    "output_file": "/tmp/gpt.rac",
+                    "output_file": "/tmp/gpt.yaml",
                     "metrics": {
                         "compile_pass": True,
                         "ci_pass": True,
@@ -704,7 +682,7 @@ class TestCmdEvalSuiteReport:
                     "success": True,
                     "duration_ms": 2000,
                     "estimated_cost_usd": 0.2,
-                    "output_file": "/tmp/claude.rac",
+                    "output_file": "/tmp/claude.yaml",
                     "metrics": {
                         "compile_pass": True,
                         "ci_pass": True,
@@ -760,9 +738,9 @@ class TestCmdEvalSuiteReport:
         assert md_out.exists()
         assert "case-a" in csv_out.read_text()
 
-    def test_sync_sdk_sessions_dispatches(self):
-        with patch("sys.argv", ["autorac", "sync-sdk-sessions"]):
-            with patch("autorac.cli.cmd_sync_sdk_sessions") as mock_cmd:
+    def test_sync_agent_sessions_dispatches(self):
+        with patch("sys.argv", ["axiom_encode", "sync-agent-sessions"]):
+            with patch("axiom_encode.cli.cmd_sync_agent_sessions") as mock_cmd:
                 main()
                 mock_cmd.assert_called_once()
 
@@ -785,18 +763,30 @@ class TestCmdEvalSuiteRevalidate:
                     f"    source_file: {source_file}",
                     "    oracle: policyengine",
                     "    policyengine_country: us",
-                    "    policyengine_rac_var_hint: snap_net_income_pre_shelter",
+                    "    policyengine_rule_hint: snap_net_income_pre_shelter",
                 ]
             )
         )
 
         source_output = tmp_path / "out"
-        rac_file = (
-            source_output / "01-case-a" / "openai-gpt-5.4" / "source" / "case-a.rac"
+        rulespec_file = (
+            source_output / "01-case-a" / "openai-gpt-5.4" / "source" / "case-a.yaml"
         )
-        rac_file.parent.mkdir(parents=True)
-        rac_file.write_text(
-            '"""\nauthoritative source text\n"""\n\ncase_a:\n    entity: Household\n    period: Month\n    dtype: Money\n    unit: USD\n    from 2024-01-01: 1\n'
+        rulespec_file.parent.mkdir(parents=True)
+        rulespec_file.write_text(
+            "format: rulespec/v1\n"
+            "module:\n"
+            "  summary: authoritative source text\n"
+            "rules:\n"
+            "  - name: case_a\n"
+            "    kind: parameter\n"
+            "    entity: Household\n"
+            "    dtype: Money\n"
+            "    period: Month\n"
+            "    unit: USD\n"
+            "    versions:\n"
+            "      - effective_from: '2024-01-01'\n"
+            "        formula: 1\n"
         )
         (source_output / "suite-run.json").write_text(
             json.dumps(
@@ -823,7 +813,7 @@ class TestCmdEvalSuiteRevalidate:
             "backend": "openai",
             "model": "gpt-5.4",
             "mode": "repo-augmented",
-            "output_file": str(rac_file),
+            "output_file": str(rulespec_file),
             "trace_file": str(source_output / "trace.json"),
             "context_manifest_file": str(source_output / "context.json"),
             "duration_ms": 1,
@@ -918,16 +908,16 @@ class TestCmdEvalSuiteRevalidate:
         args = SimpleNamespace(
             source_output=source_output,
             manifest=None,
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             json=True,
         )
-        args.rac_path.mkdir()
+        args.axiom_rules_path.mkdir()
 
         with (
             patch(
-                "autorac.cli.evaluate_artifact", return_value=fresh_metrics
+                "axiom_encode.cli.evaluate_artifact", return_value=fresh_metrics
             ) as mock_eval,
-            patch("autorac.cli.summarize_readiness", return_value=summary),
+            patch("axiom_encode.cli.summarize_readiness", return_value=summary),
         ):
             with pytest.raises(SystemExit) as exc_info:
                 cmd_eval_suite_revalidate(args)
@@ -955,7 +945,7 @@ class TestCmdEvalSuiteArchive:
         trace_dir.mkdir(parents=True)
         workspace_dir.mkdir(parents=True)
 
-        output_file = case_dir / "rule.rac"
+        output_file = case_dir / "rule.yaml"
         trace_file = trace_dir / "case-a.json"
         context_manifest_file = workspace_dir / "context-manifest.json"
         output_file.write_text("# rule\n")
@@ -1138,7 +1128,7 @@ class TestCmdEvalSuiteArchive:
 class TestCmdValidate:
     def test_file_not_found(self, capsys):
         args = MagicMock()
-        args.file = Path("/nonexistent/file.rac")
+        args.file = Path("/nonexistent/file.yaml")
         with pytest.raises(SystemExit) as exc_info:
             cmd_validate(args)
         assert exc_info.value.code == 1
@@ -1146,10 +1136,10 @@ class TestCmdValidate:
         assert "File not found" in captured.out
 
     def test_validate_pass_text_output(self, capsys, tmp_path):
-        rac_file = tmp_path / "test.rac"
-        rac_file.write_text("# test")
+        rulespec_file = tmp_path / "test.yaml"
+        rulespec_file.write_text("# test")
         args = MagicMock()
-        args.file = rac_file
+        args.file = rulespec_file
         args.json = False
         args.skip_reviewers = False
         args.oracle = None
@@ -1159,8 +1149,8 @@ class TestCmdValidate:
         mock_result.all_passed = True
         mock_result.ci_pass = True
         mock_result.results = {}
-        mock_result.to_actual_scores.return_value = MagicMock(
-            rac_reviewer=8.0,
+        mock_result.to_review_results.return_value = MagicMock(
+            rulespec_reviewer=8.0,
             formula_reviewer=7.5,
             parameter_reviewer=8.5,
             integration_reviewer=8.0,
@@ -1168,7 +1158,7 @@ class TestCmdValidate:
             taxsim_match=None,
         )
 
-        with patch("autorac.cli.ValidatorPipeline") as mock_pipeline_cls:
+        with patch("axiom_encode.cli.ValidatorPipeline") as mock_pipeline_cls:
             mock_pipeline_cls.return_value.validate.return_value = mock_result
             with pytest.raises(SystemExit) as exc_info:
                 cmd_validate(args)
@@ -1177,10 +1167,10 @@ class TestCmdValidate:
         assert "PASSED" in captured.out
 
     def test_validate_fail_json_output(self, capsys, tmp_path):
-        rac_file = tmp_path / "test.rac"
-        rac_file.write_text("# test")
+        rulespec_file = tmp_path / "test.yaml"
+        rulespec_file.write_text("# test")
         args = MagicMock()
-        args.file = rac_file
+        args.file = rulespec_file
         args.json = True
         args.skip_reviewers = False
         args.oracle = None
@@ -1192,8 +1182,8 @@ class TestCmdValidate:
         mock_result.results = {
             "ci": MagicMock(error="parse error"),
         }
-        mock_result.to_actual_scores.return_value = MagicMock(
-            rac_reviewer=5.0,
+        mock_result.to_review_results.return_value = MagicMock(
+            rulespec_reviewer=5.0,
             formula_reviewer=5.0,
             parameter_reviewer=5.0,
             integration_reviewer=5.0,
@@ -1202,7 +1192,7 @@ class TestCmdValidate:
         )
         mock_result.total_duration_ms = 100
 
-        with patch("autorac.cli.ValidatorPipeline") as mock_pipeline_cls:
+        with patch("axiom_encode.cli.ValidatorPipeline") as mock_pipeline_cls:
             mock_pipeline_cls.return_value.validate.return_value = mock_result
             with pytest.raises(SystemExit) as exc_info:
                 cmd_validate(args)
@@ -1212,10 +1202,10 @@ class TestCmdValidate:
         assert output["all_passed"] is False
 
     def test_validate_with_oracle_policyengine_pass(self, capsys, tmp_path):
-        rac_file = tmp_path / "test.rac"
-        rac_file.write_text("# test")
+        rulespec_file = tmp_path / "test.yaml"
+        rulespec_file.write_text("# test")
         args = MagicMock()
-        args.file = rac_file
+        args.file = rulespec_file
         args.json = False
         args.skip_reviewers = False
         args.oracle = "policyengine"
@@ -1227,8 +1217,8 @@ class TestCmdValidate:
         mock_result.results = {
             "policyengine": MagicMock(score=0.98, error=None),
         }
-        mock_result.to_actual_scores.return_value = MagicMock(
-            rac_reviewer=8.0,
+        mock_result.to_review_results.return_value = MagicMock(
+            rulespec_reviewer=8.0,
             formula_reviewer=7.5,
             parameter_reviewer=8.5,
             integration_reviewer=8.0,
@@ -1236,17 +1226,17 @@ class TestCmdValidate:
             taxsim_match=None,
         )
 
-        with patch("autorac.cli.ValidatorPipeline") as mock_pipeline_cls:
+        with patch("axiom_encode.cli.ValidatorPipeline") as mock_pipeline_cls:
             mock_pipeline_cls.return_value.validate.return_value = mock_result
             with pytest.raises(SystemExit) as exc_info:
                 cmd_validate(args)
             assert exc_info.value.code == 0
 
     def test_validate_with_oracle_policyengine_fail(self, capsys, tmp_path):
-        rac_file = tmp_path / "test.rac"
-        rac_file.write_text("# test")
+        rulespec_file = tmp_path / "test.yaml"
+        rulespec_file.write_text("# test")
         args = MagicMock()
-        args.file = rac_file
+        args.file = rulespec_file
         args.json = False
         args.skip_reviewers = False
         args.oracle = "policyengine"
@@ -1258,8 +1248,8 @@ class TestCmdValidate:
         mock_result.results = {
             "policyengine": MagicMock(score=0.80, error=None),
         }
-        mock_result.to_actual_scores.return_value = MagicMock(
-            rac_reviewer=8.0,
+        mock_result.to_review_results.return_value = MagicMock(
+            rulespec_reviewer=8.0,
             formula_reviewer=7.5,
             parameter_reviewer=8.5,
             integration_reviewer=8.0,
@@ -1267,17 +1257,17 @@ class TestCmdValidate:
             taxsim_match=None,
         )
 
-        with patch("autorac.cli.ValidatorPipeline") as mock_pipeline_cls:
+        with patch("axiom_encode.cli.ValidatorPipeline") as mock_pipeline_cls:
             mock_pipeline_cls.return_value.validate.return_value = mock_result
             with pytest.raises(SystemExit) as exc_info:
                 cmd_validate(args)
             assert exc_info.value.code == 1
 
     def test_validate_with_oracle_taxsim_fail(self, capsys, tmp_path):
-        rac_file = tmp_path / "test.rac"
-        rac_file.write_text("# test")
+        rulespec_file = tmp_path / "test.yaml"
+        rulespec_file.write_text("# test")
         args = MagicMock()
-        args.file = rac_file
+        args.file = rulespec_file
         args.json = True
         args.skip_reviewers = False
         args.oracle = "taxsim"
@@ -1289,8 +1279,8 @@ class TestCmdValidate:
         mock_result.results = {
             "taxsim": MagicMock(score=0.50, error=None),
         }
-        mock_result.to_actual_scores.return_value = MagicMock(
-            rac_reviewer=8.0,
+        mock_result.to_review_results.return_value = MagicMock(
+            rulespec_reviewer=8.0,
             formula_reviewer=7.5,
             parameter_reviewer=8.5,
             integration_reviewer=8.0,
@@ -1299,17 +1289,17 @@ class TestCmdValidate:
         )
         mock_result.total_duration_ms = 100
 
-        with patch("autorac.cli.ValidatorPipeline") as mock_pipeline_cls:
+        with patch("axiom_encode.cli.ValidatorPipeline") as mock_pipeline_cls:
             mock_pipeline_cls.return_value.validate.return_value = mock_result
             with pytest.raises(SystemExit) as exc_info:
                 cmd_validate(args)
             assert exc_info.value.code == 1
 
     def test_validate_with_oracle_all(self, capsys, tmp_path):
-        rac_file = tmp_path / "test.rac"
-        rac_file.write_text("# test")
+        rulespec_file = tmp_path / "test.yaml"
+        rulespec_file.write_text("# test")
         args = MagicMock()
-        args.file = rac_file
+        args.file = rulespec_file
         args.json = False
         args.skip_reviewers = False
         args.oracle = "all"
@@ -1322,8 +1312,8 @@ class TestCmdValidate:
             "policyengine": MagicMock(score=0.98, error=None),
             "taxsim": MagicMock(score=0.96, error=None),
         }
-        mock_result.to_actual_scores.return_value = MagicMock(
-            rac_reviewer=8.0,
+        mock_result.to_review_results.return_value = MagicMock(
+            rulespec_reviewer=8.0,
             formula_reviewer=7.5,
             parameter_reviewer=8.5,
             integration_reviewer=8.0,
@@ -1331,17 +1321,17 @@ class TestCmdValidate:
             taxsim_match=0.96,
         )
 
-        with patch("autorac.cli.ValidatorPipeline") as mock_pipeline_cls:
+        with patch("axiom_encode.cli.ValidatorPipeline") as mock_pipeline_cls:
             mock_pipeline_cls.return_value.validate.return_value = mock_result
             with pytest.raises(SystemExit) as exc_info:
                 cmd_validate(args)
             assert exc_info.value.code == 0
 
     def test_validate_json_output_with_reviewresults_object(self, capsys, tmp_path):
-        rac_file = tmp_path / "test.rac"
-        rac_file.write_text("# test")
+        rulespec_file = tmp_path / "test.yaml"
+        rulespec_file.write_text("# test")
         args = MagicMock()
-        args.file = rac_file
+        args.file = rulespec_file
         args.json = True
         args.skip_reviewers = False
         args.oracle = "policyengine"
@@ -1353,10 +1343,10 @@ class TestCmdValidate:
         mock_result.results = {
             "policyengine": MagicMock(score=1.0, error=None),
         }
-        mock_result.to_actual_scores.return_value = ReviewResults(
+        mock_result.to_review_results.return_value = ReviewResults(
             reviews=[
                 ReviewResult(
-                    reviewer="rac_reviewer",
+                    reviewer="rulespec_reviewer",
                     passed=True,
                     items_checked=1,
                     items_passed=1,
@@ -1385,22 +1375,22 @@ class TestCmdValidate:
         )
         mock_result.total_duration_ms = 100
 
-        with patch("autorac.cli.ValidatorPipeline") as mock_pipeline_cls:
+        with patch("axiom_encode.cli.ValidatorPipeline") as mock_pipeline_cls:
             mock_pipeline_cls.return_value.validate.return_value = mock_result
             with pytest.raises(SystemExit) as exc_info:
                 cmd_validate(args)
             assert exc_info.value.code == 0
 
         output = json.loads(capsys.readouterr().out)
-        assert output["scores"]["rac_reviewer"] == 10.0
+        assert output["scores"]["rulespec_reviewer"] == 10.0
         assert output["scores"]["parameter_reviewer"] == 5.0
         assert output["oracle_scores"]["policyengine"] == 1.0
 
     def test_validate_passes_skip_reviewers_to_pipeline(self, tmp_path):
-        rac_file = tmp_path / "test.rac"
-        rac_file.write_text("# test")
+        rulespec_file = tmp_path / "test.yaml"
+        rulespec_file.write_text("# test")
         args = MagicMock()
-        args.file = rac_file
+        args.file = rulespec_file
         args.json = False
         args.skip_reviewers = True
         args.oracle = None
@@ -1410,8 +1400,8 @@ class TestCmdValidate:
         mock_result.all_passed = True
         mock_result.ci_pass = True
         mock_result.results = {}
-        mock_result.to_actual_scores.return_value = MagicMock(
-            rac_reviewer=None,
+        mock_result.to_review_results.return_value = MagicMock(
+            rulespec_reviewer=None,
             formula_reviewer=None,
             parameter_reviewer=None,
             integration_reviewer=None,
@@ -1419,23 +1409,23 @@ class TestCmdValidate:
             taxsim_match=None,
         )
 
-        with patch("autorac.cli.ValidatorPipeline") as mock_pipeline_cls:
+        with patch("axiom_encode.cli.ValidatorPipeline") as mock_pipeline_cls:
             mock_pipeline = mock_pipeline_cls.return_value
             mock_pipeline.validate.return_value = mock_result
             with pytest.raises(SystemExit) as exc_info:
                 cmd_validate(args)
             assert exc_info.value.code == 0
             mock_pipeline.validate.assert_called_once_with(
-                rac_file.resolve(), skip_reviewers=True
+                rulespec_file.resolve(), skip_reviewers=True
             )
 
     def test_validate_json_output_uses_null_scores_when_reviewers_skipped(
         self, capsys, tmp_path
     ):
-        rac_file = tmp_path / "test.rac"
-        rac_file.write_text("# test")
+        rulespec_file = tmp_path / "test.yaml"
+        rulespec_file.write_text("# test")
         args = MagicMock()
-        args.file = rac_file
+        args.file = rulespec_file
         args.json = True
         args.skip_reviewers = True
         args.oracle = "policyengine"
@@ -1445,29 +1435,29 @@ class TestCmdValidate:
         mock_result.all_passed = True
         mock_result.ci_pass = True
         mock_result.results = {"policyengine": MagicMock(score=1.0, error=None)}
-        mock_result.to_actual_scores.return_value = ReviewResults(
+        mock_result.to_review_results.return_value = ReviewResults(
             reviews=[],
             policyengine_match=1.0,
             taxsim_match=None,
         )
         mock_result.total_duration_ms = 100
 
-        with patch("autorac.cli.ValidatorPipeline") as mock_pipeline_cls:
+        with patch("axiom_encode.cli.ValidatorPipeline") as mock_pipeline_cls:
             mock_pipeline_cls.return_value.validate.return_value = mock_result
             with pytest.raises(SystemExit) as exc_info:
                 cmd_validate(args)
             assert exc_info.value.code == 0
 
         output = json.loads(capsys.readouterr().out)
-        assert output["scores"]["rac_reviewer"] is None
+        assert output["scores"]["rulespec_reviewer"] is None
         assert output["scores"]["parameter_reviewer"] is None
 
-    def test_validate_rac_us_not_found_uses_defaults(self, capsys, tmp_path):
-        """When rac_us can't be found by walking, use default paths."""
-        rac_file = tmp_path / "test.rac"
-        rac_file.write_text("# test")
+    def test_validate_rules_us_not_found_uses_defaults(self, capsys, tmp_path):
+        """When rules_us can't be found by walking, use default paths."""
+        rulespec_file = tmp_path / "test.yaml"
+        rulespec_file.write_text("# test")
         args = MagicMock()
-        args.file = rac_file
+        args.file = rulespec_file
         args.json = False
         args.skip_reviewers = True
         args.oracle = None
@@ -1477,8 +1467,8 @@ class TestCmdValidate:
         mock_result.all_passed = True
         mock_result.ci_pass = True
         mock_result.results = {}
-        mock_result.to_actual_scores.return_value = MagicMock(
-            rac_reviewer=8.0,
+        mock_result.to_review_results.return_value = MagicMock(
+            rulespec_reviewer=8.0,
             formula_reviewer=7.5,
             parameter_reviewer=8.5,
             integration_reviewer=8.0,
@@ -1486,7 +1476,7 @@ class TestCmdValidate:
             taxsim_match=None,
         )
 
-        with patch("autorac.cli.ValidatorPipeline") as mock_pipeline_cls:
+        with patch("axiom_encode.cli.ValidatorPipeline") as mock_pipeline_cls:
             mock_pipeline_cls.return_value.validate.return_value = mock_result
             with pytest.raises(SystemExit) as exc_info:
                 cmd_validate(args)
@@ -1532,7 +1522,7 @@ rules:
         args.as_of = None
         args.execute = execute
         args.axiom_rules_path = self._require_axiom_rules_path()
-        args.rac_path = None
+        args.axiom_rules_path = None
         return args
 
     def test_file_not_found(self, capsys):
@@ -1625,93 +1615,6 @@ rules:
 
 
 # =========================================================================
-# Test cmd_benchmark
-# =========================================================================
-
-
-class TestCmdBenchmark:
-    def test_file_not_found(self, capsys):
-        args = MagicMock()
-        args.file = Path("/nonexistent/file.rac")
-        with pytest.raises(SystemExit) as exc_info:
-            cmd_benchmark(args)
-        assert exc_info.value.code == 1
-
-    def test_benchmark_success(self, capsys, tmp_path):
-        rac_file = tmp_path / "test.rac"
-        rac_file.write_text("# test")
-        args = MagicMock()
-        args.file = rac_file
-        args.as_of = "2024-01-01"
-        args.iterations = 3
-        args.rows = 10
-
-        mock_ir = MagicMock()
-        mock_ir.variables = {"var1": MagicMock(entity=None)}
-
-        mock_parse = MagicMock()
-
-        mock_compile = MagicMock(return_value=mock_ir)
-        mock_execute = MagicMock()
-
-        mock_rac = MagicMock()
-        mock_rac.parse = mock_parse
-        mock_rac.compile = mock_compile
-        mock_rac.execute = mock_execute
-        with patch.dict("sys.modules", {"rac": mock_rac}):
-            with pytest.raises(SystemExit) as exc_info:
-                cmd_benchmark(args)
-            assert exc_info.value.code == 0
-        captured = capsys.readouterr()
-        assert "Benchmark" in captured.out
-        assert "Avg" in captured.out
-
-    def test_benchmark_with_entities(self, capsys, tmp_path):
-        rac_file = tmp_path / "test.rac"
-        rac_file.write_text("# test")
-        args = MagicMock()
-        args.file = rac_file
-        args.as_of = None
-        args.iterations = 2
-        args.rows = 5
-
-        mock_var = MagicMock()
-        mock_var.entity = "Person"
-        mock_ir = MagicMock()
-        mock_ir.variables = {"var1": mock_var}
-
-        mock_parse = MagicMock()
-
-        mock_compile = MagicMock(return_value=mock_ir)
-        mock_execute = MagicMock()
-
-        mock_rac = MagicMock()
-        mock_rac.parse = mock_parse
-        mock_rac.compile = mock_compile
-        mock_rac.execute = mock_execute
-        with patch.dict("sys.modules", {"rac": mock_rac}):
-            with pytest.raises(SystemExit) as exc_info:
-                cmd_benchmark(args)
-            assert exc_info.value.code == 0
-
-    def test_benchmark_failure(self, capsys, tmp_path):
-        rac_file = tmp_path / "test.rac"
-        rac_file.write_text("# test")
-        args = MagicMock()
-        args.file = rac_file
-        args.as_of = None
-        args.iterations = 1
-        args.rows = 1
-
-        mock_rac = MagicMock()
-        mock_rac.parse = MagicMock(side_effect=Exception("Parse error"))
-        with patch.dict("sys.modules", {"rac": mock_rac}):
-            with pytest.raises(SystemExit) as exc_info:
-                cmd_benchmark(args)
-            assert exc_info.value.code == 1
-
-
-# =========================================================================
 # Test cmd_log
 # =========================================================================
 
@@ -1719,17 +1622,16 @@ class TestCmdBenchmark:
 class TestCmdLog:
     def test_log_basic(self, capsys, tmp_path):
         db_path = tmp_path / "test.db"
-        rac_file = tmp_path / "test.rac"
-        rac_file.write_text("# test content")
+        rulespec_file = tmp_path / "test.yaml"
+        rulespec_file.write_text("# test content")
         args = MagicMock()
         args.citation = "26 USC 1"
-        args.file = rac_file
+        args.file = rulespec_file
         args.iterations = 2
         args.errors = json.dumps([{"type": "parse", "message": "bad syntax"}])
         args.duration = 5000
-        args.scores = json.dumps({"rac": 8, "formula": 7, "param": 8, "integration": 7})
-        args.predicted = json.dumps(
-            {"rac": 7, "formula": 6, "param": 7, "integration": 6, "confidence": 0.5}
+        args.scores = json.dumps(
+            {"rulespec": 8, "formula": 7, "param": 8, "integration": 7}
         )
         args.session = "test-session"
         args.db = db_path
@@ -1743,16 +1645,15 @@ class TestCmdLog:
 
     def test_log_minimal(self, capsys, tmp_path):
         db_path = tmp_path / "test.db"
-        rac_file = tmp_path / "test.rac"
-        # File doesn't exist, so rac_content will be ""
+        rulespec_file = tmp_path / "test.yaml"
+        # File doesn't exist, so rulespec_content will be ""
         args = MagicMock()
         args.citation = "26 USC 1"
-        args.file = rac_file
+        args.file = rulespec_file
         args.iterations = 1
         args.errors = "[]"
         args.duration = 0
         args.scores = None
-        args.predicted = None
         args.session = None
         args.db = db_path
 
@@ -1760,27 +1661,18 @@ class TestCmdLog:
         captured = capsys.readouterr()
         assert "Logged" in captured.out
 
-    def test_log_with_alternative_score_keys(self, capsys, tmp_path):
-        """Test parsing of predicted scores with alternative key names."""
+    def test_log_without_scores(self, capsys, tmp_path):
+        """Test logging a run without reviewer scores."""
         db_path = tmp_path / "test.db"
-        rac_file = tmp_path / "test.rac"
-        rac_file.write_text("# test content")
+        rulespec_file = tmp_path / "test.yaml"
+        rulespec_file.write_text("# test content")
         args = MagicMock()
         args.citation = "26 USC 1"
-        args.file = rac_file
+        args.file = rulespec_file
         args.iterations = 1
         args.errors = "[]"
         args.duration = 0
         args.scores = None
-        # Use alternative key names (rac_reviewer instead of rac)
-        args.predicted = json.dumps(
-            {
-                "rac_reviewer": 7,
-                "formula_reviewer": 6,
-                "parameter_reviewer": 7,
-                "integration_reviewer": 6,
-            }
-        )
         args.session = None
         args.db = db_path
 
@@ -1807,7 +1699,7 @@ class TestCmdStats:
         db = EncodingDB(db_path)
         run = EncodingRun(
             citation="26 USC 1",
-            file_path="test.rac",
+            file_path="test.yaml",
             iterations=[
                 Iteration(
                     attempt=1,
@@ -1833,7 +1725,7 @@ class TestCmdStats:
         db = EncodingDB(db_path)
         run = EncodingRun(
             citation="26 USC 1",
-            file_path="test.rac",
+            file_path="test.yaml",
             iterations=[
                 Iteration(
                     attempt=1,
@@ -1856,7 +1748,7 @@ class TestCmdStats:
         db = EncodingDB(db_path)
         run = EncodingRun(
             citation="26 USC 1",
-            file_path="test.rac",
+            file_path="test.yaml",
             iterations=[
                 Iteration(
                     attempt=1,
@@ -1879,7 +1771,7 @@ class TestCmdStats:
         db = EncodingDB(db_path)
         run = EncodingRun(
             citation="26 USC 1",
-            file_path="test.rac",
+            file_path="test.yaml",
             iterations=[Iteration(attempt=1, duration_ms=1000, success=True)],
         )
         db.log_run(run)
@@ -1912,7 +1804,7 @@ class TestCmdCalibration:
         args.limit = 50
         cmd_calibration(args)
         captured = capsys.readouterr()
-        assert "No runs with both predictions" in captured.out
+        assert "No runs with review results yet" in captured.out
 
     def test_calibration_with_data(self, capsys, tmp_path):
         db_path = tmp_path / "test.db"
@@ -1921,11 +1813,11 @@ class TestCmdCalibration:
         for i in range(3):
             run = EncodingRun(
                 citation=f"26 USC {i}",
-                file_path="test.rac",
+                file_path="test.yaml",
                 review_results=ReviewResults(
                     reviews=[
                         ReviewResult(
-                            reviewer="rac_reviewer",
+                            reviewer="rulespec_reviewer",
                             passed=True,
                             items_checked=10,
                             items_passed=8,
@@ -2069,7 +1961,7 @@ class TestCmdRuns:
         db = EncodingDB(db_path)
         run = EncodingRun(
             citation="26 USC 1",
-            file_path="test.rac",
+            file_path="test.yaml",
             iterations=[Iteration(attempt=1, duration_ms=5000, success=True)],
             total_duration_ms=5000,
         )
@@ -2084,255 +1976,6 @@ class TestCmdRuns:
 
 
 # =========================================================================
-# Test cmd_init
-# =========================================================================
-
-
-class TestCmdInit:
-    def test_xml_not_found(self, capsys, tmp_path):
-        """Test cmd_init when xml file does not exist (lines 1155-1157)."""
-        args = MagicMock()
-        args.citation = "26 USC 1"
-        args.output = tmp_path / "out"
-        args.force = False
-
-        # tmp_path does NOT have the atlas xml structure, so xml won't be found
-        with patch("pathlib.Path.home", return_value=tmp_path):
-            with pytest.raises(SystemExit) as exc_info:
-                cmd_init(args)
-            assert exc_info.value.code == 1
-        captured = capsys.readouterr()
-        assert "USC XML not found" in captured.out
-
-    def test_no_subsections(self, capsys, tmp_path):
-        xml_path = (
-            tmp_path / "RulesFoundation" / "atlas" / "data" / "uscode" / "usc26.xml"
-        )
-        xml_path.parent.mkdir(parents=True)
-        xml_path.write_text("<root></root>")
-        args = MagicMock()
-        args.citation = "26 USC 999"
-        args.output = tmp_path / "out"
-        args.force = False
-
-        with patch("pathlib.Path.home", return_value=tmp_path):
-            with pytest.raises(SystemExit) as exc_info:
-                cmd_init(args)
-            assert exc_info.value.code == 1
-
-    def test_init_success(self, capsys, tmp_path):
-        args = MagicMock()
-        args.citation = "26 USC 1"
-        args.output = tmp_path / "out"
-        args.force = False
-
-        subsections = [
-            {
-                "source_path": "usc/26/1/a",
-                "heading": "General rule",
-                "body": "Tax is imposed at the following rates.",
-                "line_count": 1,
-            },
-            {
-                "source_path": "usc/26/1/b",
-                "heading": "Head of household",
-                "body": "For head of household filers.",
-                "line_count": 1,
-            },
-        ]
-
-        xml_path = (
-            tmp_path / "RulesFoundation" / "atlas" / "data" / "uscode" / "usc26.xml"
-        )
-        xml_path.parent.mkdir(parents=True)
-        xml_path.write_text("<root></root>")
-
-        with (
-            patch("pathlib.Path.home", return_value=tmp_path),
-            patch(
-                "autorac.cli._extract_subsections_from_xml", return_value=subsections
-            ),
-        ):
-            cmd_init(args)
-        captured = capsys.readouterr()
-        assert "Created" in captured.out
-
-    def test_init_with_slash_citation(self, capsys, tmp_path):
-        args = MagicMock()
-        args.citation = "26/1"
-        args.output = tmp_path / "out"
-        args.force = True
-
-        subsections = [
-            {
-                "source_path": "usc/26/1/a",
-                "heading": "General rule",
-                "body": "Tax rates.",
-                "line_count": 1,
-            },
-        ]
-
-        xml_path = (
-            tmp_path / "RulesFoundation" / "atlas" / "data" / "uscode" / "usc26.xml"
-        )
-        xml_path.parent.mkdir(parents=True)
-        xml_path.write_text("<root></root>")
-
-        with (
-            patch("pathlib.Path.home", return_value=tmp_path),
-            patch(
-                "autorac.cli._extract_subsections_from_xml", return_value=subsections
-            ),
-        ):
-            cmd_init(args)
-        captured = capsys.readouterr()
-        assert "Created" in captured.out
-
-    def test_init_skip_existing(self, capsys, tmp_path):
-        args = MagicMock()
-        args.citation = "26 USC 1"
-        args.output = tmp_path / "out"
-        args.force = False
-
-        subsections = [
-            {
-                "source_path": "usc/26/1/a",
-                "heading": "General rule",
-                "body": "Tax rates.",
-                "line_count": 1,
-            },
-        ]
-
-        # Create existing file
-        existing = tmp_path / "out" / "26" / "1/a.rac"
-        existing.parent.mkdir(parents=True)
-        existing.write_text("# existing")
-
-        xml_path = (
-            tmp_path / "RulesFoundation" / "atlas" / "data" / "uscode" / "usc26.xml"
-        )
-        xml_path.parent.mkdir(parents=True)
-        xml_path.write_text("<root></root>")
-
-        with (
-            patch("pathlib.Path.home", return_value=tmp_path),
-            patch(
-                "autorac.cli._extract_subsections_from_xml", return_value=subsections
-            ),
-        ):
-            cmd_init(args)
-        captured = capsys.readouterr()
-        assert "skipped" in captured.out
-
-
-# =========================================================================
-# Test cmd_coverage
-# =========================================================================
-
-
-class TestCmdCoverage:
-    def test_path_not_found(self, capsys, tmp_path):
-        args = MagicMock()
-        args.citation = "26 USC 999"
-        args.path = tmp_path / "nonexistent"
-        with pytest.raises(SystemExit) as exc_info:
-            cmd_coverage(args)
-        assert exc_info.value.code == 1
-
-    def test_no_rac_files(self, capsys, tmp_path):
-        search_path = tmp_path / "26" / "999"
-        search_path.mkdir(parents=True)
-        args = MagicMock()
-        args.citation = "26 USC 999"
-        args.path = tmp_path
-        with pytest.raises(SystemExit) as exc_info:
-            cmd_coverage(args)
-        assert exc_info.value.code == 1
-
-    def test_all_examined(self, capsys, tmp_path):
-        search_path = tmp_path / "26" / "1"
-        search_path.mkdir(parents=True)
-        (search_path / "a.rac").write_text("status: encoded\n# content")
-        (search_path / "b.rac").write_text("status: skip\n# content")
-        (search_path / "c.rac").write_text("status: stub\n# content")
-        (search_path / "d.rac").write_text("status: consolidated\n# content")
-
-        args = MagicMock()
-        args.citation = "26 USC 1"
-        args.path = tmp_path
-        with pytest.raises(SystemExit) as exc_info:
-            cmd_coverage(args)
-        assert exc_info.value.code == 0
-        captured = capsys.readouterr()
-        assert "COMPLETE" in captured.out
-
-    def test_some_unexamined(self, capsys, tmp_path):
-        search_path = tmp_path / "26" / "1"
-        search_path.mkdir(parents=True)
-        (search_path / "a.rac").write_text("status: encoded\n# content")
-        (search_path / "b.rac").write_text("status: unexamined\n# content")
-
-        args = MagicMock()
-        args.citation = "26 USC 1"
-        args.path = tmp_path
-        with pytest.raises(SystemExit) as exc_info:
-            cmd_coverage(args)
-        assert exc_info.value.code == 1
-        captured = capsys.readouterr()
-        assert "INCOMPLETE" in captured.out
-
-    def test_coverage_with_errors(self, capsys, tmp_path):
-        search_path = tmp_path / "26" / "1"
-        search_path.mkdir(parents=True)
-        (search_path / "a.rac").write_text("no status field here")
-        (search_path / "b.rac").write_text("status: unknownstatus\n# content")
-
-        args = MagicMock()
-        args.citation = "26 USC 1"
-        args.path = tmp_path
-        # Files with no status or unknown status count as errors
-        with pytest.raises(SystemExit):
-            cmd_coverage(args)
-
-    def test_coverage_absolute_path(self, capsys, tmp_path):
-        search_path = tmp_path / "test_coverage"
-        search_path.mkdir(parents=True)
-        (search_path / "a.rac").write_text("status: encoded\n# content")
-
-        args = MagicMock()
-        args.citation = str(search_path)
-        args.path = tmp_path
-        with pytest.raises(SystemExit) as exc_info:
-            cmd_coverage(args)
-        assert exc_info.value.code == 0
-
-    def test_coverage_slash_citation(self, capsys, tmp_path):
-        search_path = tmp_path / "26" / "1"
-        search_path.mkdir(parents=True)
-        (search_path / "a.rac").write_text("status: encoded\n")
-
-        args = MagicMock()
-        args.citation = "26/1"
-        args.path = tmp_path
-        with pytest.raises(SystemExit) as exc_info:
-            cmd_coverage(args)
-        assert exc_info.value.code == 0
-
-    def test_coverage_skips_underscore_files(self, capsys, tmp_path):
-        search_path = tmp_path / "26" / "1"
-        search_path.mkdir(parents=True)
-        (search_path / "a.rac").write_text("status: encoded\n")
-        (search_path / "_encoding_sequence.rac").write_text("no status here")
-
-        args = MagicMock()
-        args.citation = "26 USC 1"
-        args.path = tmp_path
-        with pytest.raises(SystemExit) as exc_info:
-            cmd_coverage(args)
-        assert exc_info.value.code == 0
-
-
-# =========================================================================
 # Test cmd_encode
 # =========================================================================
 
@@ -2340,181 +1983,71 @@ class TestCmdCoverage:
 class TestCmdEncode:
     def _make_args(self, tmp_path, **overrides):
         """Helper to create args with sensible defaults."""
+        atlas_path = tmp_path / "atlas"
+        axiom_rules_path = tmp_path / "axiom-rules"
+        atlas_path.mkdir(exist_ok=True)
+        axiom_rules_path.mkdir(exist_ok=True)
         args = MagicMock()
         args.citation = overrides.get("citation", "26 USC 1(j)(2)")
-        args.output = overrides.get("output", tmp_path / "statute")
+        args.output = overrides.get("output", tmp_path / "out")
         args.model = overrides.get("model", "test-model")
-        args.db = overrides.get("db", tmp_path / "test.db")
-        args.backend = overrides.get("backend", "cli")
-        args.atlas_path = overrides.get("atlas_path", None)
+        args.backend = overrides.get("backend", "codex")
+        args.atlas_path = overrides.get("atlas_path", atlas_path)
+        args.axiom_rules_path = overrides.get("axiom_rules_path", axiom_rules_path)
+        args.mode = overrides.get("mode", "repo-augmented")
+        args.allow_context = overrides.get("allow_context", [])
         return args
 
-    def _make_mock_run(self, success=True):
-        """Helper to create a mock encoding run."""
-        mock_run = MagicMock()
-        mock_run.session_id = "test-session"
-        if success:
-            mock_run.files_created = ["a.rac"]
-            mock_run.total_tokens = MagicMock(input_tokens=100, output_tokens=50)
-            mock_run.total_tokens.estimated_cost_usd = 0.01
-            mock_run.oracle_pe_match = 95.0
-            mock_run.oracle_taxsim_match = 90.0
-            mock_run.agent_runs = [MagicMock(error=None)]
-        else:
-            mock_run.files_created = []
-            mock_run.total_tokens = None
-            mock_run.oracle_pe_match = None
-            mock_run.oracle_taxsim_match = None
-            mock_run.agent_runs = [MagicMock(error="some error")]
-        return mock_run
+    def _make_eval_result(self, success=True):
+        result = MagicMock()
+        result.citation = "26 USC 1(j)(2)"
+        result.runner = "codex-test-model"
+        result.success = success
+        result.duration_ms = 123
+        result.estimated_cost_usd = 0.01
+        result.input_tokens = 100
+        result.output_tokens = 50
+        result.cache_read_tokens = 0
+        result.reasoning_output_tokens = 0
+        result.retrieved_files = []
+        result.unexpected_accesses = []
+        result.metrics = None
+        result.error = None if success else "failed"
+        result.output_file = "/tmp/out.yaml"
+        result.trace_file = "/tmp/trace.json"
+        result.context_manifest_file = "/tmp/context.json"
+        return result
 
-    def _run_encode(self, args, mock_run):
-        """Run cmd_encode with a mocked orchestrator, return (Orchestrator_cls, exit_code)."""
-        mock_orchestrator = MagicMock()
-        mock_orchestrator.print_report.return_value = "Report content"
-        mock_orchestrator.encode = AsyncMock(return_value=mock_run)
-
-        with patch(
-            "autorac.harness.orchestrator.Orchestrator",
-            return_value=mock_orchestrator,
-        ) as mock_cls:
+    def _run_encode(self, args, result):
+        with patch("axiom_encode.cli.run_model_eval", return_value=[result]) as mock_run:
             with pytest.raises(SystemExit) as exc_info:
                 cmd_encode(args)
-            return mock_cls, exc_info.value.code
+            return mock_run, exc_info.value.code
 
     def test_encode_success(self, capsys, tmp_path):
         args = self._make_args(tmp_path)
-        mock_cls, exit_code = self._run_encode(args, self._make_mock_run(success=True))
+        mock_run, exit_code = self._run_encode(args, self._make_eval_result(True))
         assert exit_code == 0
+        mock_run.assert_called_once()
+        assert mock_run.call_args.kwargs["runner_specs"] == ["codex:test-model"]
 
     def test_encode_with_errors(self, capsys, tmp_path):
         args = self._make_args(tmp_path, citation="26 USC 1", model=None)
-        mock_cls, exit_code = self._run_encode(args, self._make_mock_run(success=False))
+        mock_run, exit_code = self._run_encode(args, self._make_eval_result(False))
         assert exit_code == 1
-
-    def test_encode_path_format(self, capsys, tmp_path):
-        """Citation without spaces (e.g., '26/1') uses fallback parsing."""
-        args = self._make_args(tmp_path, citation="26/1", model=None)
-        mock_cls, exit_code = self._run_encode(args, self._make_mock_run(success=True))
-        assert exit_code == 0
-
-    def test_encode_leaf_citation_uses_parent_directory_output_path(
-        self, capsys, tmp_path
-    ):
-        args = self._make_args(tmp_path, citation="26 USC 24(a)")
-        mock_cls, exit_code = self._run_encode(args, self._make_mock_run(success=True))
-
-        assert exit_code == 0
-        mock_cls.return_value.encode.assert_awaited_once()
-        kwargs = mock_cls.return_value.encode.await_args.kwargs
-        assert kwargs["output_path"] == tmp_path / "statute" / "26" / "24"
-
-    def test_encode_defaults_to_cli_backend(self, capsys, tmp_path):
-        """No --backend flag defaults to CLI backend."""
-        args = self._make_args(tmp_path, backend="cli")
-        mock_cls, _ = self._run_encode(args, self._make_mock_run())
-        mock_cls.assert_called_once_with(
-            model="test-model",
-            db_path=tmp_path / "test.db",
-            backend="cli",
-            atlas_path=None,
-        )
-
-    def test_encode_api_backend(self, capsys, tmp_path):
-        """--backend api passes 'api' to Orchestrator."""
-        args = self._make_args(tmp_path, backend="api")
-        mock_cls, _ = self._run_encode(args, self._make_mock_run())
-        mock_cls.assert_called_once_with(
-            model="test-model",
-            db_path=tmp_path / "test.db",
-            backend="api",
-            atlas_path=None,
-        )
+        assert mock_run.call_args.kwargs["runner_specs"] == ["codex:gpt-5.5"]
 
     def test_encode_openai_backend(self, capsys, tmp_path):
-        """--backend openai passes 'openai' to Orchestrator."""
         args = self._make_args(tmp_path, backend="openai")
-        mock_cls, _ = self._run_encode(args, self._make_mock_run())
-        mock_cls.assert_called_once_with(
-            model="test-model",
-            db_path=tmp_path / "test.db",
-            backend="openai",
-            atlas_path=None,
-        )
-
-    def test_encode_cli_backend_explicit(self, capsys, tmp_path):
-        """--backend cli explicitly passes 'cli' to Orchestrator."""
-        args = self._make_args(tmp_path, backend="cli")
-        mock_cls, _ = self._run_encode(args, self._make_mock_run())
-        mock_cls.assert_called_once_with(
-            model="test-model",
-            db_path=tmp_path / "test.db",
-            backend="cli",
-            atlas_path=None,
-        )
-
-    def test_encode_api_backend_no_key_errors(self, tmp_path):
-        """API backend without ANTHROPIC_API_KEY raises clear error."""
-        from autorac.harness.orchestrator import Orchestrator
-
-        with patch.dict("os.environ", {}, clear=True):
-            # Remove key if present
-            import os
-
-            env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
-            with patch.dict("os.environ", env, clear=True):
-                with pytest.raises(ValueError, match="ANTHROPIC_API_KEY"):
-                    Orchestrator(backend="api")
-
-    def test_encode_openai_backend_no_key_errors(self, tmp_path):
-        """OpenAI backend without OPENAI_API_KEY raises clear error."""
-        from autorac.harness.orchestrator import Orchestrator
-
-        with patch.dict("os.environ", {}, clear=True):
-            import os
-
-            env = {k: v for k, v in os.environ.items() if k != "OPENAI_API_KEY"}
-            with patch.dict("os.environ", env, clear=True):
-                with pytest.raises(ValueError, match="OPENAI_API_KEY"):
-                    Orchestrator(backend="openai")
-
-    def test_encode_backend_shown_in_output(self, capsys, tmp_path):
-        """Backend name is printed in the output."""
-        args = self._make_args(tmp_path, backend="api")
-        self._run_encode(args, self._make_mock_run())
-        captured = capsys.readouterr()
-        assert "Backend: api" in captured.out
-
-    def test_encode_auto_syncs_to_supabase(self, capsys, tmp_path):
-        """Encoding auto-syncs session to Supabase when credentials are set."""
-        args = self._make_args(tmp_path)
-        mock_run = self._make_mock_run()
-
-        with patch(
-            "autorac.supabase_sync.sync_sdk_sessions_to_supabase",
-            return_value={"synced": 1, "failed": 0, "total": 1},
-            create=True,
-        ) as mock_sync:
-            self._run_encode(args, mock_run)
-            mock_sync.assert_called_once_with(session_id=mock_run.session_id)
-
-        captured = capsys.readouterr()
-        assert "Synced to Supabase" in captured.out
-
-    def test_encode_skips_sync_without_credentials(self, capsys, tmp_path):
-        """Encoding skips Supabase sync silently when credentials missing."""
-        args = self._make_args(tmp_path)
-
-        with patch(
-            "autorac.supabase_sync.sync_sdk_sessions_to_supabase",
-            side_effect=ValueError("Missing credentials"),
-            create=True,
-        ):
-            _, exit_code = self._run_encode(args, self._make_mock_run())
-
-        captured = capsys.readouterr()
-        assert "Synced to Supabase" not in captured.out
+        mock_run, exit_code = self._run_encode(args, self._make_eval_result(True))
         assert exit_code == 0
+        assert mock_run.call_args.kwargs["runner_specs"] == ["openai:test-model"]
+
+    def test_encode_runner_shown_in_output(self, capsys, tmp_path):
+        args = self._make_args(tmp_path, backend="codex")
+        self._run_encode(args, self._make_eval_result(True))
+        captured = capsys.readouterr()
+        assert "Runner: codex:test-model" in captured.out
 
 
 # =========================================================================
@@ -2586,7 +2119,7 @@ class TestSessionCommands:
     def test_sessions_list(self, capsys, tmp_path):
         db_path = tmp_path / "test.db"
         db = EncodingDB(db_path)
-        session = db.start_session(model="test-model", autorac_version="0.2.1")
+        session = db.start_session(model="test-model", axiom_encode_version="0.2.1")
         db.end_session(session.id)
 
         args = MagicMock()
@@ -2657,7 +2190,7 @@ class TestSessionCommands:
         captured = capsys.readouterr()
         output = json.loads(captured.out)
         assert output["session"]["id"] == session.id
-        assert "autorac_version" in output["session"]
+        assert "axiom_encode_version" in output["session"]
 
     def test_session_stats(self, capsys, tmp_path):
         db_path = tmp_path / "test.db"
@@ -2684,7 +2217,7 @@ class TestTranscriptSyncCommands:
         args.session = None
 
         with patch(
-            "autorac.supabase_sync.sync_transcripts_to_supabase",
+            "axiom_encode.supabase_sync.sync_transcripts_to_supabase",
             return_value={"total": 5, "synced": 5, "failed": 0},
         ):
             cmd_sync_transcripts(args)
@@ -2696,7 +2229,7 @@ class TestTranscriptSyncCommands:
         args.session = "test-session"
 
         with patch(
-            "autorac.supabase_sync.sync_transcripts_to_supabase",
+            "axiom_encode.supabase_sync.sync_transcripts_to_supabase",
             return_value={"total": 1, "synced": 1, "failed": 0},
         ):
             cmd_sync_transcripts(args)
@@ -2708,7 +2241,7 @@ class TestTranscriptSyncCommands:
         args.session = None
 
         with patch(
-            "autorac.supabase_sync.sync_transcripts_to_supabase",
+            "axiom_encode.supabase_sync.sync_transcripts_to_supabase",
             side_effect=ValueError("Missing credentials"),
         ):
             with pytest.raises(SystemExit) as exc_info:
@@ -2718,7 +2251,7 @@ class TestTranscriptSyncCommands:
     def test_transcript_stats_exists(self, capsys):
         args = MagicMock()
         with patch(
-            "autorac.supabase_sync.get_local_transcript_stats",
+            "axiom_encode.supabase_sync.get_local_transcript_stats",
             return_value={
                 "exists": True,
                 "total": 10,
@@ -2734,7 +2267,7 @@ class TestTranscriptSyncCommands:
     def test_transcript_stats_no_db(self, capsys):
         args = MagicMock()
         with patch(
-            "autorac.supabase_sync.get_local_transcript_stats",
+            "axiom_encode.supabase_sync.get_local_transcript_stats",
             return_value={"exists": False},
         ):
             cmd_transcript_stats(args)
@@ -2744,7 +2277,7 @@ class TestTranscriptSyncCommands:
     def test_transcript_stats_empty_by_type(self, capsys):
         args = MagicMock()
         with patch(
-            "autorac.supabase_sync.get_local_transcript_stats",
+            "axiom_encode.supabase_sync.get_local_transcript_stats",
             return_value={
                 "exists": True,
                 "total": 0,
@@ -2754,28 +2287,28 @@ class TestTranscriptSyncCommands:
         ):
             cmd_transcript_stats(args)
 
-    def test_sync_sdk_sessions_success(self, capsys):
+    def test_sync_agent_sessions_success(self, capsys):
         args = MagicMock()
         args.session = None
 
         with patch(
-            "autorac.supabase_sync.sync_sdk_sessions_to_supabase",
+            "axiom_encode.supabase_sync.sync_agent_sessions_to_supabase",
             return_value={"total": 2, "synced": 2, "failed": 0},
         ):
-            cmd_sync_sdk_sessions(args)
+            cmd_sync_agent_sessions(args)
         captured = capsys.readouterr()
         assert "2 synced" in captured.out
 
-    def test_sync_sdk_sessions_error(self, capsys):
+    def test_sync_agent_sessions_error(self, capsys):
         args = MagicMock()
         args.session = None
 
         with patch(
-            "autorac.supabase_sync.sync_sdk_sessions_to_supabase",
+            "axiom_encode.supabase_sync.sync_agent_sessions_to_supabase",
             side_effect=ValueError("Missing creds"),
         ):
             with pytest.raises(SystemExit) as exc_info:
-                cmd_sync_sdk_sessions(args)
+                cmd_sync_agent_sessions(args)
             assert exc_info.value.code == 1
 
 
@@ -2830,18 +2363,18 @@ class TestExtractSubsections:
 
 
 class TestCmdValidateEdgeCases:
-    def test_validate_rac_us_found_in_path(self, capsys, tmp_path):
-        """Test validate when file is inside a rac-us directory (line 350)."""
-        rac_us = tmp_path / "rac-us" / "statute" / "26" / "1"
-        rac_us.mkdir(parents=True)
-        rac_file = rac_us / "test.rac"
-        rac_file.write_text("# test")
-        # Create rac sibling
-        rac_path = tmp_path / "rac"
-        rac_path.mkdir(parents=True)
+    def test_validate_rules_us_found_in_path(self, capsys, tmp_path):
+        """Test validate when file is inside a rules-us directory (line 350)."""
+        rules_us = tmp_path / "rules-us" / "statute" / "26" / "1"
+        rules_us.mkdir(parents=True)
+        rulespec_file = rules_us / "test.yaml"
+        rulespec_file.write_text("# test")
+        # Create axiom-rules sibling
+        axiom_rules_path = tmp_path / "axiom-rules"
+        axiom_rules_path.mkdir(parents=True)
 
         args = MagicMock()
-        args.file = rac_file
+        args.file = rulespec_file
         args.json = False
         args.skip_reviewers = False
         args.oracle = None
@@ -2851,8 +2384,8 @@ class TestCmdValidateEdgeCases:
         mock_result.all_passed = True
         mock_result.ci_pass = True
         mock_result.results = {}
-        mock_result.to_actual_scores.return_value = MagicMock(
-            rac_reviewer=8.0,
+        mock_result.to_review_results.return_value = MagicMock(
+            rulespec_reviewer=8.0,
             formula_reviewer=7.5,
             parameter_reviewer=8.5,
             integration_reviewer=8.0,
@@ -2860,24 +2393,24 @@ class TestCmdValidateEdgeCases:
             taxsim_match=None,
         )
 
-        with patch("autorac.cli.ValidatorPipeline") as mock_pipeline_cls:
+        with patch("axiom_encode.cli.ValidatorPipeline") as mock_pipeline_cls:
             mock_pipeline_cls.return_value.validate.return_value = mock_result
             with pytest.raises(SystemExit) as exc_info:
                 cmd_validate(args)
             assert exc_info.value.code == 0
-            # Verify rac_path was resolved via rac_us.parent / "rac"
+            # Verify axiom_rules_path was resolved via rules_us.parent / "axiom-rules"
             call_kwargs = mock_pipeline_cls.call_args[1]
-            assert "rac-us" in str(call_kwargs["rac_us_path"])
+            assert "rules-us" in str(call_kwargs["policy_repo_path"])
 
     def test_validate_uses_enclosing_non_federal_policy_repo(self, tmp_path):
-        policy_repo = tmp_path / "rac-us-tn" / "sources"
+        policy_repo = tmp_path / "rules-us-tn" / "sources"
         policy_repo.mkdir(parents=True)
-        rac_file = policy_repo / "test.yaml"
-        rac_file.write_text("format: rulespec/v1\n")
+        rulespec_file = policy_repo / "test.yaml"
+        rulespec_file.write_text("format: rulespec/v1\n")
         (tmp_path / "axiom-rules").mkdir()
 
         args = MagicMock()
-        args.file = rac_file
+        args.file = rulespec_file
         args.json = False
         args.skip_reviewers = True
         args.oracle = None
@@ -2887,8 +2420,8 @@ class TestCmdValidateEdgeCases:
         mock_result.all_passed = True
         mock_result.ci_pass = True
         mock_result.results = {}
-        mock_result.to_actual_scores.return_value = MagicMock(
-            rac_reviewer=None,
+        mock_result.to_review_results.return_value = MagicMock(
+            rulespec_reviewer=None,
             formula_reviewer=None,
             parameter_reviewer=None,
             integration_reviewer=None,
@@ -2896,20 +2429,20 @@ class TestCmdValidateEdgeCases:
             taxsim_match=None,
         )
 
-        with patch("autorac.cli.ValidatorPipeline") as mock_pipeline_cls:
+        with patch("axiom_encode.cli.ValidatorPipeline") as mock_pipeline_cls:
             mock_pipeline_cls.return_value.validate.return_value = mock_result
             with pytest.raises(SystemExit) as exc_info:
                 cmd_validate(args)
             assert exc_info.value.code == 0
 
         call_kwargs = mock_pipeline_cls.call_args[1]
-        assert call_kwargs["rac_us_path"] == tmp_path / "rac-us-tn"
-        assert call_kwargs["rac_path"] == tmp_path / "axiom-rules"
+        assert call_kwargs["policy_repo_path"] == tmp_path / "rules-us-tn"
+        assert call_kwargs["axiom_rules_path"] == tmp_path / "axiom-rules"
 
     def test_eval_source_prefers_akn_backed_slice_text(self, tmp_path, monkeypatch):
         arch_root = tmp_path / "arch"
-        monkeypatch.setenv("AUTORAC_ARCH_ROOT", str(arch_root))
-        policy_repo = tmp_path / "rac-us-tx"
+        monkeypatch.setenv("AXIOM_ENCODE_EVAL_ARCHIVE_ROOT", str(arch_root))
+        policy_repo = tmp_path / "rules-us-tx"
         source_file = (
             policy_repo
             / "sources"
@@ -2958,34 +2491,34 @@ class TestCmdValidateEdgeCases:
             "    target: cfr/7/273.9/d/6/iii#snap_standard_utility_allowance\n"
             "    jurisdiction: TX\n"
         )
-        (tmp_path / "rac").mkdir()
+        (tmp_path / "axiom-rules").mkdir()
 
         args = SimpleNamespace(
             runner=[],
             gpt_backend=None,
-            rac_path=None,
+            axiom_rules_path=None,
             source_file=source_file,
             source_id="snap_standard_utility_allowance_tx",
             output=tmp_path / "out",
             mode="cold",
             allow_context=[],
-            policyengine_rac_var_hint="snap_standard_utility_allowance",
+            policyengine_rule_hint="snap_standard_utility_allowance",
             json=True,
         )
 
-        with patch("autorac.cli.run_source_eval", return_value=[]) as mock_run:
+        with patch("axiom_encode.cli.run_source_eval", return_value=[]) as mock_run:
             cmd_eval_source(args)
 
         assert "SUA - $445" in mock_run.call_args.kwargs["source_text"]
         assert "stale slice text" not in mock_run.call_args.kwargs["source_text"]
 
     def test_validate_fallback_prefers_workspace_repo_roots(self, tmp_path):
-        rac_file = tmp_path / "generated" / "test.rac"
-        rac_file.parent.mkdir(parents=True)
-        rac_file.write_text("# test")
+        rulespec_file = tmp_path / "generated" / "test.yaml"
+        rulespec_file.parent.mkdir(parents=True)
+        rulespec_file.write_text("# test")
 
         args = MagicMock()
-        args.file = rac_file
+        args.file = rulespec_file
         args.json = False
         args.skip_reviewers = True
         args.oracle = None
@@ -2995,8 +2528,8 @@ class TestCmdValidateEdgeCases:
         mock_result.all_passed = True
         mock_result.ci_pass = True
         mock_result.results = {}
-        mock_result.to_actual_scores.return_value = MagicMock(
-            rac_reviewer=None,
+        mock_result.to_review_results.return_value = MagicMock(
+            rulespec_reviewer=None,
             formula_reviewer=None,
             parameter_reviewer=None,
             integration_reviewer=None,
@@ -3004,7 +2537,7 @@ class TestCmdValidateEdgeCases:
             taxsim_match=None,
         )
 
-        with patch("autorac.cli.ValidatorPipeline") as mock_pipeline_cls:
+        with patch("axiom_encode.cli.ValidatorPipeline") as mock_pipeline_cls:
             mock_pipeline = mock_pipeline_cls.return_value
             mock_pipeline.validate.return_value = mock_result
             with pytest.raises(SystemExit) as exc_info:
@@ -3012,10 +2545,10 @@ class TestCmdValidateEdgeCases:
             assert exc_info.value.code == 0
 
         call_kwargs = mock_pipeline_cls.call_args[1]
-        assert call_kwargs["rac_us_path"] == Path(
-            "/Users/maxghenis/TheAxiomFoundation/rac-us"
+        assert call_kwargs["policy_repo_path"] == Path(
+            "/Users/maxghenis/TheAxiomFoundation/rules-us"
         )
-        assert call_kwargs["rac_path"] == Path(
+        assert call_kwargs["axiom_rules_path"] == Path(
             "/Users/maxghenis/TheAxiomFoundation/axiom-rules"
         )
 
@@ -3029,11 +2562,11 @@ class TestCmdCalibrationEdgeCases:
         for i in range(3):
             run = EncodingRun(
                 citation=f"26 USC {i}",
-                file_path="test.rac",
+                file_path="test.yaml",
                 review_results=ReviewResults(
                     reviews=[
                         ReviewResult(
-                            reviewer="rac_reviewer",
+                            reviewer="rulespec_reviewer",
                             passed=True,
                             items_checked=10,
                             items_passed=9,
@@ -3056,7 +2589,7 @@ class TestCmdCalibrationEdgeCases:
         cmd_calibration(args)
         captured = capsys.readouterr()
         assert "Calibration Report" in captured.out
-        assert "rac_reviewer" in captured.out
+        assert "rulespec_reviewer" in captured.out
 
     def test_calibration_some_fail(self, capsys, tmp_path):
         """Test calibration with some reviews failing."""
@@ -3066,11 +2599,11 @@ class TestCmdCalibrationEdgeCases:
         for i in range(3):
             run = EncodingRun(
                 citation=f"26 USC {i}",
-                file_path="test.rac",
+                file_path="test.yaml",
                 review_results=ReviewResults(
                     reviews=[
                         ReviewResult(
-                            reviewer="rac_reviewer",
+                            reviewer="rulespec_reviewer",
                             passed=False,
                             items_checked=10,
                             items_passed=3,
@@ -3184,74 +2717,6 @@ class TestCmdStatuteEdgeCases:
         cmd_statute(args)
         captured = capsys.readouterr()
         assert "Outer para" in captured.out
-
-
-class TestCmdInitEdgeCases:
-    def test_init_many_subsections(self, capsys, tmp_path):
-        """Test init with >10 subsections to cover 'and N more' line (1267)."""
-        args = MagicMock()
-        args.citation = "26 USC 1"
-        args.output = tmp_path / "out"
-        args.force = True
-
-        subsections = [
-            {
-                "source_path": f"usc/26/1/{chr(97 + i)}",
-                "heading": f"Subsection {chr(97 + i)}",
-                "body": f"Content for subsection {chr(97 + i)}.",
-                "line_count": 1,
-            }
-            for i in range(15)
-        ]
-
-        xml_path = (
-            tmp_path / "RulesFoundation" / "atlas" / "data" / "uscode" / "usc26.xml"
-        )
-        xml_path.parent.mkdir(parents=True)
-        xml_path.write_text("<root></root>")
-
-        with (
-            patch("pathlib.Path.home", return_value=tmp_path),
-            patch(
-                "autorac.cli._extract_subsections_from_xml", return_value=subsections
-            ),
-        ):
-            cmd_init(args)
-        captured = capsys.readouterr()
-        assert "Created" in captured.out
-        assert "more" in captured.out
-
-
-class TestCmdCoverageEdgeCases:
-    def test_coverage_exception_on_file(self, capsys, tmp_path):
-        """Coverage handles exceptions on individual files (lines 1328-1329)."""
-        search_path = tmp_path / "26" / "1"
-        search_path.mkdir(parents=True)
-        # Create a directory with .rac extension to cause an error when reading
-        bad_rac = search_path / "bad.rac"
-        bad_rac.mkdir()  # This is a directory, not a file
-
-        args = MagicMock()
-        args.citation = "26 USC 1"
-        args.path = tmp_path
-        with pytest.raises(SystemExit):
-            cmd_coverage(args)
-
-    def test_coverage_many_unexamined(self, capsys, tmp_path):
-        """Test coverage with >20 unexamined files (line 1350)."""
-        search_path = tmp_path / "26" / "1"
-        search_path.mkdir(parents=True)
-        for i in range(25):
-            (search_path / f"sub{i}.rac").write_text("status: unexamined\n")
-
-        args = MagicMock()
-        args.citation = "26 USC 1"
-        args.path = tmp_path
-        with pytest.raises(SystemExit) as exc_info:
-            cmd_coverage(args)
-        assert exc_info.value.code == 1
-        captured = capsys.readouterr()
-        assert "more" in captured.out
 
 
 class TestExtractSubsectionsEdgeCases:

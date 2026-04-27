@@ -41,12 +41,12 @@ def test_sha256_paths_ignores_file_names(tmp_path):
     assert left_digest == right_digest
 
 
-def test_iter_manifest_queue_candidates_includes_federal_rac_us(tmp_path, monkeypatch):
+def test_iter_manifest_queue_candidates_includes_federal_rules_us(tmp_path, monkeypatch):
     module = load_queue_runner_module()
-    autorac_root = tmp_path / "autorac"
-    benchmarks = autorac_root / "benchmarks"
+    axiom_encode_root = tmp_path / "axiom_encode"
+    benchmarks = axiom_encode_root / "benchmarks"
     benchmarks.mkdir(parents=True)
-    source_file = tmp_path / "rac-us" / "sources" / "slices" / "snap.txt"
+    source_file = tmp_path / "rules-us" / "sources" / "slices" / "snap.txt"
     source_file.parent.mkdir(parents=True)
     source_file.write_text("Federal SNAP source text.\n")
     manifest = benchmarks / "us_snap_federal_demo_refresh.yaml"
@@ -55,10 +55,10 @@ def test_iter_manifest_queue_candidates_includes_federal_rac_us(tmp_path, monkey
         "cases:\n"
         "  - kind: source\n"
         "    name: federal_snap_demo\n"
-        "    source_file: ../../rac-us/sources/slices/snap.txt\n"
+        "    source_file: ../../rules-us/sources/slices/snap.txt\n"
     )
-    monkeypatch.setattr(module, "AUTORAC_ROOT", autorac_root)
-    monkeypatch.setattr(module, "infer_repo", lambda source_file: "rac-us")
+    monkeypatch.setattr(module, "AXIOM_ENCODE_ROOT", axiom_encode_root)
+    monkeypatch.setattr(module, "infer_repo", lambda source_file: "rules-us")
 
     candidates = module.iter_manifest_queue_candidates()
 
@@ -68,7 +68,7 @@ def test_iter_manifest_queue_candidates_includes_federal_rac_us(tmp_path, monkey
             "manifest": str(manifest),
             "source_file": str(source_file.resolve()),
             "source_inputs": [str(source_file.resolve())],
-            "source_repo": "rac-us",
+            "source_repo": "rules-us",
         }
     ]
 
@@ -100,7 +100,7 @@ def test_sync_queue_with_manifests_skips_requeue_on_tracking_version_migration(
                 "manifest": "/tmp/demo.yaml",
                 "source_file": "/tmp/demo.txt",
                 "source_inputs": ["/tmp/demo.txt", "/tmp/demo.meta.yaml"],
-                "source_repo": "rac-us-demo",
+                "source_repo": "rules-us-demo",
             }
         ],
     )
@@ -149,7 +149,7 @@ def test_sync_queue_with_manifests_requeues_on_source_change_after_tracking_set(
                 "manifest": "/tmp/demo.yaml",
                 "source_file": "/tmp/demo.txt",
                 "source_inputs": ["/tmp/demo.txt", "/tmp/demo.meta.yaml"],
-                "source_repo": "rac-us-demo",
+                "source_repo": "rules-us-demo",
             }
         ],
     )

@@ -14,7 +14,7 @@ cases:
   - kind: source
     name: snap_state_uses_child_support_deduction_ny
     source_id: New York SNAP child support deduction election under OTDA SNAP Source Book section 13.G.2
-    source_file: ../../rac-us-ny/sources/slices/otda/snap/current-effective/snap_state_uses_child_support_deduction_ny.txt
+    source_file: ../../rules-us-ny/sources/slices/otda/snap/current-effective/snap_state_uses_child_support_deduction_ny.txt
     oracle: policyengine
     policyengine_country: auto
-    policyengine_rac_var_hint: snap_state_uses_child_support_deduction
+    policyengine_rule_hint: snap_state_uses_child_support_deduction

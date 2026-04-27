@@ -10,7 +10,7 @@ import pytest
 import requests
 import yaml
 
-from autorac.harness.evals import (
+from axiom_encode.harness.evals import (
     EvalArtifactMetrics,
     EvalReadinessGates,
     EvalResult,
@@ -47,7 +47,7 @@ from autorac.harness.evals import (
     select_context_files,
     summarize_readiness,
 )
-from autorac.harness.validator_pipeline import ValidationResult, ValidatorPipeline
+from axiom_encode.harness.validator_pipeline import ValidationResult, ValidatorPipeline
 
 
 @pytest.fixture(autouse=True)
@@ -129,7 +129,7 @@ def test_build_eval_prompt_targets_rulespec_yaml(tmp_path):
         runner=runner,
         output_root=tmp_path / "out",
         source_text="The standard utility allowance is $451.",
-        rac_path=tmp_path / "us-tn",
+        axiom_rules_path=tmp_path / "us-tn",
         mode="cold",
     )
 
@@ -140,7 +140,7 @@ def test_build_eval_prompt_targets_rulespec_yaml(tmp_path):
         [],
         target_file_name="tn-snap-standard-utility-allowance.yaml",
         include_tests=True,
-        policyengine_rac_var_hint="snap_standard_utility_allowance",
+        policyengine_rule_hint="snap_standard_utility_allowance",
     )
 
     assert "format: rulespec/v1" in prompt
@@ -148,6 +148,8 @@ def test_build_eval_prompt_targets_rulespec_yaml(tmp_path):
     assert "=== FILE: tn-snap-standard-utility-allowance.yaml ===" in prompt
     assert "=== FILE: tn-snap-standard-utility-allowance.test.yaml ===" in prompt
     assert "snap_standard_utility_allowance" in prompt
+    assert "Do not use bare year periods like `2024`" in prompt
+    assert "period_kind: custom" in prompt
     assert "Do not create named `parameter` rules for structural table row labels" in prompt
 
 
@@ -194,7 +196,7 @@ def test_eval_result_payload_round_trips_prompt_digests():
         backend="codex",
         model="gpt-5.4",
         mode="repo-augmented",
-        output_file="/tmp/snap_test.rac",
+        output_file="/tmp/snap_test.yaml",
         trace_file="/tmp/snap_test.trace.json",
         context_manifest_file="/tmp/snap_test.context.json",
         duration_ms=1234,
@@ -207,7 +209,7 @@ def test_eval_result_payload_round_trips_prompt_digests():
         reasoning_output_tokens=55,
         estimated_cost_usd=0.12,
         actual_cost_usd=None,
-        retrieved_files=["/tmp/context.rac"],
+        retrieved_files=["/tmp/context.yaml"],
         unexpected_accesses=[],
         metrics=EvalArtifactMetrics(
             compile_pass=True,
@@ -322,12 +324,12 @@ def test_eval_result_payload_round_trips_prompt_digests():
             runner=runner,
             output_root=tmp_path / "out",
             source_text="nil amount",
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
 
-        bundle = "=== FILE: example.rac ===\nstatus: encoded\n"
+        bundle = "=== FILE: example.yaml ===\nformat: rulespec/v1\nrules: []\n"
         event_lines = "\n".join(
             [
                 json.dumps(
@@ -384,9 +386,9 @@ def test_eval_result_payload_round_trips_prompt_digests():
             return True
 
         with (
-            patch("autorac.harness.evals.subprocess.Popen", FakePopen),
+            patch("axiom_encode.harness.evals.subprocess.Popen", FakePopen),
             patch(
-                "autorac.harness.evals._wait_for_codex_process",
+                "axiom_encode.harness.evals._wait_for_codex_process",
                 side_effect=fake_wait,
             ),
         ):
@@ -405,12 +407,12 @@ def test_eval_result_payload_round_trips_prompt_digests():
             runner=runner,
             output_root=tmp_path / "out",
             source_text="maximum disregard",
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
 
-        bundle = "=== FILE: example.rac ===\nstatus: encoded\n"
+        bundle = "=== FILE: example.yaml ===\nformat: rulespec/v1\nrules: []\n"
 
         class FakePopen:
             def __init__(self, cmd, stdout, stderr, text, cwd):
@@ -431,9 +433,9 @@ def test_eval_result_payload_round_trips_prompt_digests():
                 self.returncode = -9
 
         with (
-            patch("autorac.harness.evals.subprocess.Popen", FakePopen),
+            patch("axiom_encode.harness.evals.subprocess.Popen", FakePopen),
             patch(
-                "autorac.harness.evals._wait_for_codex_process",
+                "axiom_encode.harness.evals._wait_for_codex_process",
                 side_effect=subprocess.TimeoutExpired(
                     cmd=["codex", "exec"], timeout=600
                 ),
@@ -451,7 +453,7 @@ def test_eval_result_payload_round_trips_prompt_digests():
             runner=runner,
             output_root=tmp_path / "out",
             source_text="self-employment expenses",
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -490,9 +492,9 @@ def test_eval_result_payload_round_trips_prompt_digests():
             return False
 
         with (
-            patch("autorac.harness.evals.subprocess.Popen", FakePopen),
+            patch("axiom_encode.harness.evals.subprocess.Popen", FakePopen),
             patch(
-                "autorac.harness.evals._wait_for_codex_process",
+                "axiom_encode.harness.evals._wait_for_codex_process",
                 side_effect=fake_wait,
             ),
         ):
@@ -504,16 +506,22 @@ def test_eval_result_payload_round_trips_prompt_digests():
 
 class TestEvaluateArtifact:
     def test_uses_fallback_source_text_for_grounding(self, tmp_path):
-        rac_file = tmp_path / "24" / "a.rac"
-        rac_file.parent.mkdir(parents=True)
-        rac_file.write_text(
-            '"""\n(a) Allowance of credit There shall be allowed a credit of $1,000.\n"""\n'
-            "status: encoded\n\n"
-            "ctc_amount:\n"
-            '    description: "Child tax credit amount"\n'
+        rulespec_file = tmp_path / "24" / "a.yaml"
+        rulespec_file.parent.mkdir(parents=True)
+        rulespec_file.write_text(
+            "format: rulespec/v1\n"
+            "module:\n"
+            "  summary: (a) Allowance of credit There shall be allowed a credit of $1,000.\n"
+            "rules:\n"
+            "  - name: ctc_amount\n"
+            "    kind: parameter\n"
+            "    dtype: Money\n"
             "    unit: USD\n"
-            "    from 2018-01-01: 1000\n"
-            "    from 2025-01-01: 2200\n"
+            "    versions:\n"
+            "      - effective_from: '2018-01-01'\n"
+            "        formula: 1000\n"
+            "      - effective_from: '2025-01-01'\n"
+            "        formula: 2200\n"
         )
 
         compile_result = ValidationResult("compile", passed=True)
@@ -521,18 +529,18 @@ class TestEvaluateArtifact:
 
         with (
             patch(
-                "autorac.harness.validator_pipeline.ValidatorPipeline._run_compile_check",
+                "axiom_encode.harness.validator_pipeline.ValidatorPipeline._run_compile_check",
                 return_value=compile_result,
             ),
             patch(
-                "autorac.harness.validator_pipeline.ValidatorPipeline._run_ci",
+                "axiom_encode.harness.validator_pipeline.ValidatorPipeline._run_ci",
                 return_value=ci_result,
             ),
         ):
             metrics = evaluate_artifact(
-                rac_file=rac_file,
-                rac_root=tmp_path,
-                rac_path=Path("/tmp/rac"),
+                rulespec_file=rulespec_file,
+                policy_repo_root=tmp_path,
+                axiom_rules_path=Path("/tmp/axiom-rules"),
                 source_text=(
                     "(a) Allowance of credit There shall be allowed a credit of "
                     "$1,000."
@@ -552,19 +560,22 @@ class TestEvaluateArtifact:
     def test_fails_ci_when_repeated_source_scalar_has_only_one_named_definition(
         self, tmp_path
     ):
-        rac_file = tmp_path / "example.rac"
-        rac_file.write_text(
-            '''"""
-2A. Where earnings are less than £20 in any week and would not exceed £20.
-"""
-
-pc_special_employment_maximum_weekly_amount:
+        rulespec_file = tmp_path / "example.yaml"
+        rulespec_file.write_text(
+            """format: rulespec/v1
+module:
+  summary: |-
+    2A. Where earnings are less than £20 in any week and would not exceed £20.
+rules:
+  - name: pc_special_employment_maximum_weekly_amount
+    kind: parameter
     entity: Person
-    period: Week
     dtype: Money
-    from 2025-03-31:
-        20
-'''
+    period: Week
+    versions:
+      - effective_from: '2025-03-31'
+        formula: 20
+"""
         )
 
         compile_result = ValidationResult("compile", True, issues=[])
@@ -577,9 +588,9 @@ pc_special_employment_maximum_weekly_amount:
             patch.object(ValidatorPipeline, "_run_ci", return_value=ci_result),
         ):
             metrics = evaluate_artifact(
-                rac_file=rac_file,
-                rac_root=tmp_path,
-                rac_path=Path("/tmp/rac"),
+                rulespec_file=rulespec_file,
+                policy_repo_root=tmp_path,
+                axiom_rules_path=Path("/tmp/axiom-rules"),
                 source_text=(
                     "2A. Where earnings are less than £20 in any week and "
                     "would not exceed £20."
@@ -594,37 +605,41 @@ pc_special_employment_maximum_weekly_amount:
         )
 
     def test_accepts_pence_threshold_grounded_as_decimal_gbp(self, tmp_path):
-        rac_file = tmp_path / "example.rac"
-        rac_file.write_text(
-            '''"""
-13. Small amounts of state pension credit
+        rulespec_file = tmp_path / "example.yaml"
+        rulespec_file.write_text(
+            """format: rulespec/v1
+module:
+  summary: |-
+    13. Small amounts of state pension credit
 
-Where the amount of state pension credit payable is less than 10 pence per week,
-the credit shall not be payable unless the claimant is in receipt of another benefit
-payable with the credit.
-"""
-
-small_amount_threshold:
+    Where the amount of state pension credit payable is less than 10 pence per week,
+    the credit shall not be payable unless the claimant is in receipt of another benefit
+    payable with the credit.
+rules:
+  - name: small_amount_threshold
+    kind: parameter
     entity: Person
-    period: Week
     dtype: Money
-    unit: GBP
-    from 2025-03-21:
-        0.10
-
-amount_payable:
-    entity: Person
     period: Week
+    unit: GBP
+    versions:
+      - effective_from: '2025-03-21'
+        formula: 0.10
+  - name: amount_payable
+    kind: input
+    entity: Person
     dtype: Money
-    unit: GBP
-
-is_payable:
-    entity: Person
     period: Week
+    unit: GBP
+  - name: is_payable
+    kind: derived
+    entity: Person
     dtype: Boolean
-    from 2025-03-21:
-        amount_payable >= small_amount_threshold
-'''
+    period: Week
+    versions:
+      - effective_from: '2025-03-21'
+        formula: amount_payable >= small_amount_threshold
+"""
         )
 
         compile_result = ValidationResult("compile", True, issues=[])
@@ -637,9 +652,9 @@ is_payable:
             patch.object(ValidatorPipeline, "_run_ci", return_value=ci_result),
         ):
             metrics = evaluate_artifact(
-                rac_file=rac_file,
-                rac_root=tmp_path,
-                rac_path=Path("/tmp/rac"),
+                rulespec_file=rulespec_file,
+                policy_repo_root=tmp_path,
+                axiom_rules_path=Path("/tmp/axiom-rules"),
                 source_text=(
                     "Where the amount of state pension credit payable is less than "
                     "10 pence per week, the credit shall not be payable."
@@ -652,20 +667,21 @@ is_payable:
         assert metrics.missing_source_numeric_occurrence_count == 0
 
     def test_runs_generalist_reviewer_and_records_result(self, tmp_path):
-        rac_file = tmp_path / "example.rac"
-        rac_file.write_text(
-            '''"""
-Provision text with £10.
-"""
-status: encoded
-
-example_amount:
+        rulespec_file = tmp_path / "example.yaml"
+        rulespec_file.write_text(
+            """format: rulespec/v1
+module:
+  summary: Provision text with £10.
+rules:
+  - name: example_amount
+    kind: parameter
     entity: Person
-    period: Year
     dtype: Money
-    from 2025-01-01:
-        10
-'''
+    period: Year
+    versions:
+      - effective_from: '2025-01-01'
+        formula: 10
+"""
         )
 
         compile_result = ValidationResult("compile", True, issues=[])
@@ -687,9 +703,9 @@ example_amount:
             ) as mock_reviewer,
         ):
             metrics = evaluate_artifact(
-                rac_file=rac_file,
-                rac_root=tmp_path,
-                rac_path=Path("/tmp/rac"),
+                rulespec_file=rulespec_file,
+                policy_repo_root=tmp_path,
+                axiom_rules_path=Path("/tmp/axiom-rules"),
                 source_text="Provision text with £10.",
             )
 
@@ -711,20 +727,21 @@ example_amount:
     def test_timing_clause_review_context_mentions_boolean_day_predicate(
         self, tmp_path
     ):
-        rac_file = tmp_path / "example.rac"
-        rac_file.write_text(
-            '''"""
-On the first day of the next benefit week.
-"""
-status: encoded
-
-example_timing_rule:
+        rulespec_file = tmp_path / "example.yaml"
+        rulespec_file.write_text(
+            """format: rulespec/v1
+module:
+  summary: On the first day of the next benefit week.
+rules:
+  - name: example_timing_rule
+    kind: parameter
     entity: Person
-    period: Day
     dtype: Boolean
-    from 2025-01-01:
-        true
-'''
+    period: Day
+    versions:
+      - effective_from: '2025-01-01'
+        formula: true
+"""
         )
 
         compile_result = ValidationResult("compile", True, issues=[])
@@ -746,9 +763,9 @@ example_timing_rule:
             ) as mock_reviewer,
         ):
             evaluate_artifact(
-                rac_file=rac_file,
-                rac_root=tmp_path,
-                rac_path=Path("/tmp/rac"),
+                rulespec_file=rulespec_file,
+                policy_repo_root=tmp_path,
+                axiom_rules_path=Path("/tmp/axiom-rules"),
                 source_text="On the first day of the next benefit week.",
             )
 
@@ -770,7 +787,7 @@ example_timing_rule:
                 "week to commence on or after the day on which the income increases "
                 "or decreases."
             ),
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -780,7 +797,7 @@ example_timing_rule:
             "cold",
             workspace,
             [],
-            target_file_name="uksi-2002-1792-regulation-10.rac",
+            target_file_name="uksi-2002-1792-regulation-10.yaml",
             include_tests=True,
             runner_backend="openai",
         )
@@ -801,7 +818,7 @@ example_timing_rule:
                 "(b)\n\n"
                 "for the date on which the increase is to be paid; and"
             ),
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -811,7 +828,7 @@ example_timing_rule:
             "cold",
             workspace,
             [],
-            target_file_name="uksi-2002-1792-regulation-10.rac",
+            target_file_name="uksi-2002-1792-regulation-10.yaml",
             include_tests=True,
             runner_backend="openai",
         )
@@ -833,7 +850,7 @@ example_timing_rule:
             source_text=(
                 "the last four payments if the last two payments are less than one month apart; or"
             ),
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -843,7 +860,7 @@ example_timing_rule:
             "cold",
             workspace,
             [],
-            target_file_name="uksi-2002-1792-regulation-17.rac",
+            target_file_name="uksi-2002-1792-regulation-17.yaml",
             include_tests=True,
             runner_backend="openai",
         )
@@ -877,7 +894,7 @@ example_timing_rule:
                 "where the period in respect of which a payment is made exceeds a week, "
                 "and in a case where that period is three months, the amount is calculated ..."
             ),
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -887,7 +904,7 @@ example_timing_rule:
             "cold",
             workspace,
             [],
-            target_file_name="uksi-2002-1792-regulation-17.rac",
+            target_file_name="uksi-2002-1792-regulation-17.yaml",
             include_tests=True,
             runner_backend="openai",
         )
@@ -914,7 +931,7 @@ example_timing_rule:
                 "(ii)\n\n"
                 "in a case where that period is three months, by multiplying the amount of the payment by 4 and dividing the product by 52;"
             ),
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -924,7 +941,7 @@ example_timing_rule:
             "cold",
             workspace,
             [],
-            target_file_name="uksi-2002-1792-regulation-17.rac",
+            target_file_name="uksi-2002-1792-regulation-17.yaml",
             include_tests=True,
             runner_backend="openai",
         )
@@ -950,7 +967,7 @@ example_timing_rule:
                 "(a)\n\n"
                 "any bonus or commission;"
             ),
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -960,7 +977,7 @@ example_timing_rule:
             "cold",
             workspace,
             [],
-            target_file_name="uksi-2002-1792-regulation-17A.rac",
+            target_file_name="uksi-2002-1792-regulation-17A.yaml",
             include_tests=True,
             runner_backend="openai",
         )
@@ -990,7 +1007,7 @@ example_timing_rule:
                 "of which a payment is made does not exceed a week, the whole of that "
                 "payment shall be included in the claimant's weekly income."
             ),
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -1000,7 +1017,7 @@ example_timing_rule:
             "cold",
             workspace,
             [],
-            target_file_name="uksi-2002-1792-regulation-17.rac",
+            target_file_name="uksi-2002-1792-regulation-17.yaml",
             include_tests=True,
             runner_backend="openai",
         )
@@ -1027,7 +1044,7 @@ example_timing_rule:
                 "Except where paragraph (2) and (4) apply, the amount to be included "
                 "shall be determined—"
             ),
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -1037,7 +1054,7 @@ example_timing_rule:
             "cold",
             workspace,
             [],
-            target_file_name="uksi-2002-1792-regulation-17.rac",
+            target_file_name="uksi-2002-1792-regulation-17.yaml",
             include_tests=True,
             runner_backend="openai",
         )
@@ -1062,7 +1079,7 @@ example_timing_rule:
                 "statutory sick pay and statutory maternity pay payable by the "
                 "employer under the 1992 Act;"
             ),
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -1072,7 +1089,7 @@ example_timing_rule:
             "cold",
             workspace,
             [],
-            target_file_name="uksi-2002-1792-regulation-17A.rac",
+            target_file_name="uksi-2002-1792-regulation-17A.yaml",
             include_tests=True,
             runner_backend="openai",
         )
@@ -1091,7 +1108,7 @@ example_timing_rule:
                 "the claimant's regular pattern of work is such that he does not "
                 "work the same hours every week;"
             ),
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -1101,7 +1118,7 @@ example_timing_rule:
             "cold",
             workspace,
             [],
-            target_file_name="uksi-2002-1792-regulation-17.rac",
+            target_file_name="uksi-2002-1792-regulation-17.yaml",
             include_tests=True,
             runner_backend="openai",
         )
@@ -1123,7 +1140,7 @@ example_timing_rule:
                 "statutory sick pay and statutory maternity pay payable by the "
                 "employer under the 1992 Act;"
             ),
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -1133,7 +1150,7 @@ example_timing_rule:
             "cold",
             workspace,
             [],
-            target_file_name="uksi-2002-1792-regulation-17A.rac",
+            target_file_name="uksi-2002-1792-regulation-17A.yaml",
             include_tests=True,
             runner_backend="openai",
         )
@@ -1155,7 +1172,7 @@ example_timing_rule:
                 "(b)\n\n"
                 "ends on the first increased payment date,"
             ),
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -1165,7 +1182,7 @@ example_timing_rule:
             "cold",
             workspace,
             [],
-            target_file_name="uksi-2002-1792-regulation-10.rac",
+            target_file_name="uksi-2002-1792-regulation-10.yaml",
             include_tests=True,
             runner_backend="openai",
         )
@@ -1190,7 +1207,7 @@ example_timing_rule:
                 "where the benefit is paid in arrears, on the last day of the benefit week "
                 "in which the benefit is payable."
             ),
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -1200,7 +1217,7 @@ example_timing_rule:
             "cold",
             workspace,
             [],
-            target_file_name="uksi-2002-1792-regulation-13B.rac",
+            target_file_name="uksi-2002-1792-regulation-13B.yaml",
             include_tests=True,
             runner_backend="openai",
         )
@@ -1231,7 +1248,7 @@ example_timing_rule:
                 "in respect of any retired pay or pension granted in respect of disablement, where such payment "
                 "does not fall within paragraph (b) of that definition;"
             ),
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -1241,7 +1258,7 @@ example_timing_rule:
             "cold",
             workspace,
             [],
-            target_file_name="uksi-2002-1792-regulation-15.rac",
+            target_file_name="uksi-2002-1792-regulation-15.yaml",
             include_tests=True,
             runner_backend="openai",
         )
@@ -1272,7 +1289,7 @@ example_timing_rule:
                 "royalties or other sums received as a consideration for the use of, or the "
                 "right to use, any copyright, design, patent or trade mark;"
             ),
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -1282,7 +1299,7 @@ example_timing_rule:
             "cold",
             workspace,
             [],
-            target_file_name="uksi-2002-1792-regulation-17-5-a.rac",
+            target_file_name="uksi-2002-1792-regulation-17-5-a.yaml",
             include_tests=True,
             runner_backend="openai",
         )
@@ -1309,7 +1326,7 @@ example_timing_rule:
                 "office (including elective office) with emoluments chargeable to income "
                 "tax under Schedule E."
             ),
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -1319,7 +1336,7 @@ example_timing_rule:
             "cold",
             workspace,
             [],
-            target_file_name="uksi-2002-1792-regulation-17A-5.rac",
+            target_file_name="uksi-2002-1792-regulation-17A-5.yaml",
             include_tests=True,
             runner_backend="openai",
         )
@@ -1351,7 +1368,7 @@ example_timing_rule:
                 "(a)\n\n"
                 "£1 for each £500 in excess of £10,000; and"
             ),
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -1361,7 +1378,7 @@ example_timing_rule:
             "cold",
             workspace,
             [],
-            target_file_name="uksi-2002-1792-regulation-15.rac",
+            target_file_name="uksi-2002-1792-regulation-15.yaml",
             include_tests=True,
             runner_backend="openai",
         )
@@ -1396,229 +1413,51 @@ class TestGeneratedBundleCleaning:
 
     def test_clean_generated_file_content_strips_inline_currency_suffixes(self):
         content = (
-            "child_benefit_enhanced_rate_amount:\n"
-            "  from 2025-04-07: 26.05 GBP\n"
-            "- name: base\n"
-            "  output:\n"
-            "    child_benefit_enhanced_rate_amount: 26.05 GBP\n"
+            "format: rulespec/v1\n"
+            "module:\n"
+            "  summary: The enhanced rate is 26.05 GBP.\n"
+            "rules:\n"
+            "  - name: child_benefit_enhanced_rate_amount\n"
+            "    kind: parameter\n"
+            "    dtype: Money\n"
+            "    unit: GBP\n"
+            "    versions:\n"
+            "      - effective_from: '2025-04-07'\n"
+            "        formula: 26.05 GBP\n"
         )
 
         cleaned = _clean_generated_file_content(content)
 
-        assert "26.05 GBP" not in cleaned
-        assert "26.05" in cleaned
+        assert "26.05 GBP" not in cleaned.split("formula:", 1)[1]
+        assert "formula: 26.05" in cleaned
 
-    def test_materialize_eval_artifact_normalizes_arithmetic_single_amount_rows(
-        self, tmp_path
-    ):
-        response = (
-            "=== FILE: example.rac ===\n"
-            '"""\n£22,020 for joint claimants not resident in Greater London.\n"""\n\n'
-            "benefit_cap_amount:\n"
-            "    entity: Family\n"
-            "    period: Day\n"
-            "    dtype: Money\n"
-            "    unit: GBP\n"
-            "    from 2025-03-21:\n"
-            "        if is_joint_claimant and not resident_in_greater_london: 2025 * (7 + 3 + 1) - 21 * (7 + 3 + 2) - 3 else: 0\n"
-            "=== FILE: example.rac.test ===\n"
-            "- name: base\n"
-            "  period: 2025-03-21\n"
-            "  input:\n"
-            "    is_joint_claimant: true\n"
-            "    resident_in_greater_london: false\n"
-            "  output:\n"
-            "    benefit_cap_amount: 22020\n"
-        )
-        expected = tmp_path / "source" / "example.rac"
+    def test_materialize_eval_artifact_rejects_non_rulespec_bundle(self, tmp_path):
+        output_file = tmp_path / "source" / "example.yaml"
+        response = "=== FILE: example.yaml ===\nrules:\n  - name: missing_format_header\n"
 
-        wrote = _materialize_eval_artifact(
-            response,
-            expected,
-            source_text=(
-                "Editorial note: current text valid from 2025-03-21.\n\n"
-                "£22,020 for joint claimants not resident in Greater London.\n"
-            ),
-        )
+        wrote = _materialize_eval_artifact(response, output_file)
 
-        assert wrote is True
-        content = expected.read_text()
-        assert "2025 * (7 + 3 + 1)" not in content
-        assert "from 2025-03-21: 22020" in content
+        assert wrote is False
+        assert not output_file.exists()
 
-    def test_materialize_eval_artifact_normalizes_direct_scalar_expression(
-        self, tmp_path
-    ):
-        response = (
-            "=== FILE: example.rac ===\n"
-            '"""\nWhere the amount payable is less than 10 pence per week.\n"""\n\n'
-            "small_amount_threshold:\n"
-            "    entity: Person\n"
-            "    period: Week\n"
-            "    dtype: Money\n"
-            "    unit: GBP\n"
-            "    from 2025-03-21:\n"
-            "        1 / 10\n"
-            "=== FILE: example.rac.test ===\n"
-            "- name: base\n"
-            "  period: 2025-03-21\n"
-            "  output:\n"
-            "    small_amount_threshold: 0.1\n"
-        )
-        expected = tmp_path / "source" / "example.rac"
-
-        wrote = _materialize_eval_artifact(
-            response,
-            expected,
-            source_text=(
-                "Editorial note: current text valid from 2025-03-21.\n\n"
-                "Where the amount payable is less than 10 pence per week.\n"
-            ),
-        )
-
-        assert wrote is True
-        assert "1 / 10" not in expected.read_text()
-        assert "from 2025-03-21: 0.1" in expected.read_text()
-
-    def test_materialize_eval_artifact_adds_missing_oracle_hint_output(self, tmp_path):
-        response = (
-            "=== FILE: example.rac ===\n"
-            '"""\nHomeless Shelter Deduction - $198.99\n"""\n\n'
-            "snap_homeless_shelter_deduction_amount:\n"
-            "    entity: SnapUnit\n"
-            "    period: Month\n"
-            "    dtype: Money\n"
-            "    unit: USD\n"
-            "    from 2025-10-01: 198.99\n\n"
-            "snap_homeless_shelter_deduction_available:\n"
-            "    entity: SnapUnit\n"
-            "    period: Month\n"
-            "    dtype: Boolean\n"
-            "    from 2025-10-01:\n"
-            "        true\n"
-            "=== FILE: example.rac.test ===\n"
-            "- name: base\n"
-            "  period: 2025-10\n"
-            "  output:\n"
-            "    snap_homeless_shelter_deduction_amount: 198.99\n"
-        )
-        expected = tmp_path / "source" / "example.rac"
-
-        wrote = _materialize_eval_artifact(
-            response,
-            expected,
-            policyengine_rac_var_hint="snap_homeless_shelter_deduction_available",
-        )
-
-        assert wrote is True
-        test_payload = yaml.safe_load(expected.with_suffix(".rac.test").read_text())
-        assert (
-            test_payload[0]["output"]["snap_homeless_shelter_deduction_available"]
-            is True
-        )
-
-    def test_materialize_eval_artifact_normalizes_test_arithmetic_literals(
-        self, tmp_path
-    ):
-        response = (
-            "=== FILE: example.rac ===\n"
-            '"""\nDeduction equals allowable expenses over £35.\n"""\n\n'
-            "allowable_expenses:\n"
-            "    entity: Person\n"
-            "    period: Month\n"
-            "    dtype: Money\n"
-            "    unit: GBP\n"
-            "threshold:\n"
-            "    entity: Person\n"
-            "    period: Month\n"
-            "    dtype: Money\n"
-            "    unit: GBP\n"
-            "    from 2025-03-21: 35\n"
-            "deduction:\n"
-            "    entity: Person\n"
-            "    period: Month\n"
-            "    dtype: Money\n"
-            "    unit: GBP\n"
-            "    from 2025-03-21: max(0, allowable_expenses - threshold)\n"
-            "=== FILE: example.rac.test ===\n"
-            "- name: positive\n"
-            "  period: 2025-03-21\n"
-            "  input:\n"
-            "    allowable_expenses: 35 + 3\n"
-            "  output:\n"
-            "    deduction: 1 + 2\n"
-        )
-        expected = tmp_path / "source" / "example.rac"
-
-        wrote = _materialize_eval_artifact(
-            response,
-            expected,
-            source_text="Deduction equals allowable expenses over £35.\n",
-        )
-
-        assert wrote is True
-        test_text = expected.with_suffix(".rac.test").read_text()
-        assert "35 + 3" not in test_text
-        assert "1 + 2" not in test_text
-        assert "allowable_expenses: 38" in test_text
-        assert "deduction: 3" in test_text
-
-    def test_materialize_eval_artifact_does_not_crash_for_conditional_money_leaf(
-        self, tmp_path
-    ):
-        response = (
-            "=== FILE: example.rac ===\n"
-            '"""\n£20 is disregarded if the claimant is in receipt of Scottish adult disability living allowance.\n"""\n\n'
-            "claimant_receives_benefit:\n"
-            "    entity: Person\n"
-            "    period: Week\n"
-            "    dtype: Boolean\n\n"
-            "earnings_disregard_amount:\n"
-            "    entity: Person\n"
-            "    period: Week\n"
-            "    dtype: Money\n"
-            "    unit: GBP\n"
-            "    from 2025-03-21: 20\n\n"
-            "sum_disregarded:\n"
-            "    entity: Person\n"
-            "    period: Week\n"
-            "    dtype: Money\n"
-            "    unit: GBP\n"
-            "    from 2025-03-21:\n"
-            "        if claimant_receives_benefit: earnings_disregard_amount else: 0\n"
-            "=== FILE: example.rac.test ===\n"
-            "- name: base\n"
-            "  period: 2025-03-21\n"
-            "  input:\n"
-            "    claimant_receives_benefit: true\n"
-            "  output:\n"
-            "    sum_disregarded: 20\n"
-        )
-        expected = tmp_path / "source" / "example.rac"
-
-        wrote = _materialize_eval_artifact(
-            response,
-            expected,
-            source_text=(
-                "Editorial note: current text valid from 2025-03-21.\n\n"
-                "£20 is disregarded if the claimant is in receipt of Scottish adult disability living allowance.\n"
-            ),
-        )
-
-        assert wrote is True
-        assert "if claimant_receives_benefit" in expected.read_text()
-
-    def test_materialize_eval_artifact_cleans_bundled_fences(self, tmp_path):
-        output_file = tmp_path / "source" / "uksi-2006-965-regulation-2.rac"
+    def test_materialize_eval_artifact_cleans_bundled_rulespec_fences(self, tmp_path):
+        output_file = tmp_path / "source" / "uksi-2006-965-regulation-2.yaml"
         llm_response = (
-            "=== FILE: uksi-2006-965-regulation-2.rac ===\n"
-            "```\n"
-            "child_benefit_enhanced_rate:\n"
-            "    entity: Person\n"
-            "    period: Week\n"
+            "=== FILE: uksi-2006-965-regulation-2.yaml ===\n"
+            "```yaml\n"
+            "format: rulespec/v1\n"
+            "module:\n"
+            "  summary: The enhanced rate is £26.05.\n"
+            "rules:\n"
+            "  - name: child_benefit_enhanced_rate\n"
+            "    kind: parameter\n"
             "    dtype: Money\n"
+            "    unit: GBP\n"
+            "    versions:\n"
+            "      - effective_from: '2025-04-07'\n"
+            "        formula: 26.05\n"
             "```\n"
-            "=== FILE: uksi-2006-965-regulation-2.rac.test ===\n"
+            "=== FILE: uksi-2006-965-regulation-2.test.yaml ===\n"
             "```yaml\n"
             "- name: base\n"
             "  output:\n"
@@ -1630,32 +1469,31 @@ class TestGeneratedBundleCleaning:
         wrote = _materialize_eval_artifact(llm_response, output_file)
 
         assert wrote is True
-        assert output_file.read_text() == (
-            "child_benefit_enhanced_rate:\n"
-            "    entity: Person\n"
-            "    period: Week\n"
-            "    dtype: Money\n"
-        )
-        assert output_file.with_suffix(".rac.test").read_text() == (
-            "- name: base\n  output:\n    child_benefit_enhanced_rate: 26.05\n"
-        )
+        assert output_file.read_text().startswith("format: rulespec/v1\n")
+        test_text = output_file.with_suffix(".test.yaml").read_text()
+        assert "child_benefit_enhanced_rate: 26.05" in test_text
+        assert "period: '2025-04-07'" in test_text
 
-    def test_materialize_eval_artifact_salvages_workspace_files_when_response_is_summary(
+    def test_materialize_eval_artifact_salvages_rulespec_workspace_files_when_response_is_summary(
         self, tmp_path
     ):
-        output_file = tmp_path / "source" / "uksi-2002-1792-2025-03-31.rac"
+        output_file = tmp_path / "source" / "uksi-2002-1792-2025-03-31.yaml"
         workspace_root = tmp_path / "workspace"
         workspace_root.mkdir(parents=True)
         (workspace_root / output_file.name).write_text(
-            "pc_housing_non_dependant_deduction_other_weekly_amount:\n"
-            "    entity: Person\n"
-            "    period: Week\n"
+            "format: rulespec/v1\n"
+            "module:\n"
+            "  summary: The weekly amount is £19.30.\n"
+            "rules:\n"
+            "  - name: pc_housing_non_dependant_deduction_other_weekly_amount\n"
+            "    kind: parameter\n"
             "    dtype: Money\n"
             "    unit: GBP\n"
-            "    from 2025-03-21:\n"
-            "        19.30\n"
+            "    versions:\n"
+            "      - effective_from: '2025-03-21'\n"
+            "        formula: 19.30\n"
         )
-        (workspace_root / output_file.with_suffix(".rac.test").name).write_text(
+        (workspace_root / output_file.with_suffix(".test.yaml").name).write_text(
             "- name: base_case\n"
             "  period: 2025-04-01\n"
             "  input: {}\n"
@@ -1671,325 +1509,95 @@ class TestGeneratedBundleCleaning:
         )
 
         assert wrote is True
-        assert output_file.read_text().startswith(
-            "pc_housing_non_dependant_deduction_other_weekly_amount:\n"
-        )
-        assert output_file.with_suffix(".rac.test").exists()
+        assert output_file.read_text().startswith("format: rulespec/v1\n")
+        assert output_file.with_suffix(".test.yaml").exists()
 
-    def test_materialize_eval_artifact_normalizes_bundled_day_periods_with_dotted_paths(
+    def test_materialize_eval_artifact_rejects_non_rulespec_workspace_main(
         self, tmp_path
     ):
-        output_file = tmp_path / "source" / "9-CCR-2503-6-3.606.1-K.rac"
-        llm_response = (
-            "=== FILE: ./9-CCR-2503-6-3.606.1-K.rac ===\n"
-            "authorized_basic_cash_assistance_grant_amount:\n"
-            "    entity: TanfUnit\n"
-            "    period: Month\n"
-            "    dtype: Money\n"
-            "    from 2026-04-02: 0\n"
-            "=== FILE: ./9-CCR-2503-6-3.606.1-K.rac.test ===\n"
-            "- name: base_case\n"
-            "  period: 2026-04-01\n"
-            "  output:\n"
-            "    authorized_basic_cash_assistance_grant_amount: 0\n"
-        )
-
-        wrote = _materialize_eval_artifact(llm_response, output_file)
-
-        assert wrote is True
-        test_text = output_file.with_suffix(".rac.test").read_text()
-        assert "period: '2026-04'" in test_text or "period: 2026-04" in test_text
-
-    def test_materialize_eval_artifact_prefers_workspace_files_over_prose_bundle(
-        self, tmp_path
-    ):
-        output_file = tmp_path / "source" / "uksi-2013-376-2025-04-07.rac"
+        output_file = tmp_path / "source" / "example.yaml"
         workspace_root = tmp_path / "workspace"
         workspace_root.mkdir(parents=True)
         (workspace_root / output_file.name).write_text(
-            '"""\nCapital limit.\n"""\n\n'
-            "uc_capital_limit_single_claimant_amount:\n"
-            "    entity: Person\n"
-            "    period: Year\n"
-            "    dtype: Money\n"
-            "    unit: GBP\n"
-            "    from 2025-04-07:\n"
-            "        16000\n"
-        )
-        (workspace_root / output_file.with_suffix(".rac.test").name).write_text(
-            "- name: base_case\n"
-            "  period: 2025\n"
-            "  input: {}\n"
-            "  output:\n"
-            "    uc_capital_limit_single_claimant_amount: 16000\n"
-        )
-        llm_response = (
-            "=== FILE: uksi-2013-376-2025-04-07.rac ===\n"
-            "Encodes regulation 18(1)(a) of UKSI 2013/376.\n\n"
-            "=== FILE: uksi-2013-376-2025-04-07.rac.test ===\n"
-            "Single base case confirming the amount is 16000.\n"
+            "rules:\n  - name: missing_format_header\n"
         )
 
         wrote = _materialize_eval_artifact(
-            llm_response,
+            "Both files written.",
             output_file,
-            source_text="£16,000",
             workspace_root=workspace_root,
         )
 
-        assert wrote is True
-        assert output_file.read_text().startswith('"""')
-        assert "Encodes regulation" not in output_file.read_text()
+        assert wrote is False
+        assert not output_file.exists()
 
-    def test_materialize_eval_artifact_normalizes_single_row_block_conditional_and_tests(
-        self, tmp_path
-    ):
-        output_file = (
-            tmp_path / "source" / "uksi-2002-2005-schedule-2-second-adult-element.rac"
-        )
-        source_text = (
-            "Editorial note: current text valid from 2024-04-06.\n\n"
-            "Structured table:\n"
-            "Relevant element of working tax credit | Maximum annual rate\n"
-            "4. Second adult element | £2,500"
-        )
-        llm_response = (
-            "=== FILE: uksi-2002-2005-schedule-2-second-adult-element.rac ===\n"
-            "wtc_second_adult_element_eligible:\n"
-            "    entity: TaxUnit\n"
-            "    period: Year\n"
-            "    dtype: Boolean\n\n"
-            "wtc_second_adult_element_amount:\n"
-            "    entity: TaxUnit\n"
-            "    period: Year\n"
-            "    dtype: Money\n"
-            "    unit: GBP\n"
-            "    from 2024-04-06:\n"
-            "        if wtc_second_adult_element_eligible: 2,500 else: 0\n"
-            "=== FILE: uksi-2002-2005-schedule-2-second-adult-element.rac.test ===\n"
-            "base_case:\n"
-            "  period: 2024-04-06\n"
-            "  input:\n"
-            "    wtc_second_adult_element_eligible: true\n"
-            "  output:\n"
-            "    wtc_second_adult_element_amount: 2,500\n\n"
-            "alternate_branch:\n"
-            "  period: 2024-04-06\n"
-            "  input:\n"
-            "    wtc_second_adult_element_eligible: false\n"
-            "  output:\n"
-            "    wtc_second_adult_element_amount: 0\n"
-        )
+    def test_materialize_eval_artifact_normalizes_rulespec_test_periods(self, tmp_path):
+        output_file = tmp_path / "source" / "example.yaml"
+        response = """=== FILE: example.yaml ===
+format: rulespec/v1
+module:
+  summary: |-
+    The standard utility allowance is $451, effective October 1, 2025.
+rules:
+  - name: snap_standard_utility_allowance
+    kind: parameter
+    entity: SnapUnit
+    dtype: Money
+    period: Month
+    unit: USD
+    versions:
+      - effective_from: '2025-10-01'
+        formula: 451
+=== FILE: example.test.yaml ===
+- name: pre_effective_zero
+  period: 2025-09
+  input: {}
+  output:
+    snap_standard_utility_allowance: 0
+- name: applies
+  period: 2026-01
+  input: {}
+  output:
+    snap_standard_utility_allowance: 451
+"""
 
-        wrote = _materialize_eval_artifact(
-            llm_response,
-            output_file,
-            source_text=source_text,
-        )
+        wrote = _materialize_eval_artifact(response, output_file)
 
         assert wrote is True
-        assert "2,500" not in output_file.read_text()
-        assert "if wtc_second_adult_element_eligible" not in output_file.read_text()
-        assert "from 2024-04-06: 2500" in output_file.read_text()
-        test_text = output_file.with_suffix(".rac.test").read_text()
-        assert "alternate_branch" not in test_text
-        assert "2500" in test_text
-
-    def test_materialize_eval_artifact_drops_annual_effective_date_boundary_for_single_row(
-        self, tmp_path
-    ):
-        output_file = (
-            tmp_path / "source" / "uksi-2002-2005-schedule-2-worker-element.rac"
-        )
-        source_text = (
-            "Editorial note: text valid from 2021-04-06.\n\n"
-            "Structured table:\n"
-            "Relevant element of working tax credit | Maximum annual rate\n"
-            "30 hour element | £830"
-        )
-        llm_response = (
-            "=== FILE: uksi-2002-2005-schedule-2-worker-element.rac ===\n"
-            "wtc_worker_element_amount:\n"
-            "    entity: TaxUnit\n"
-            "    period: Year\n"
-            "    dtype: Money\n"
-            "    unit: GBP\n"
-            "    from 2021-04-06: 830\n"
-            "=== FILE: uksi-2002-2005-schedule-2-worker-element.rac.test ===\n"
-            "- name: base_case\n"
-            "  period: 2021\n"
-            "  output:\n"
-            "    wtc_worker_element_amount: 830\n"
-            "- name: effective_date_boundary\n"
-            "  period: 2022\n"
-            "  output:\n"
-            "    wtc_worker_element_amount: 830\n"
-        )
-
-        wrote = _materialize_eval_artifact(
-            llm_response,
-            output_file,
-            source_text=source_text,
-        )
-
-        assert wrote is True
-        test_text = output_file.with_suffix(".rac.test").read_text()
-        assert "base_case" in test_text
-        assert "effective_date_boundary" not in test_text
-        assert "period: '2021-04-06'" in test_text or "period: 2021-04-06" in test_text
-
-    def test_materialize_eval_artifact_infers_annual_base_period_when_missing(
-        self, tmp_path
-    ):
-        output_file = (
-            tmp_path / "source" / "uksi-2002-2005-schedule-2-worker-element.rac"
-        )
-        source_text = (
-            "Editorial note: text valid from 2021-04-06.\n\n"
-            "Structured table:\n"
-            "Relevant element of working tax credit | Maximum annual rate\n"
-            "30 hour element | £830"
-        )
-        llm_response = (
-            "=== FILE: uksi-2002-2005-schedule-2-worker-element.rac ===\n"
-            "wtc_worker_element_amount:\n"
-            "    entity: TaxUnit\n"
-            "    period: Year\n"
-            "    dtype: Money\n"
-            "    unit: GBP\n"
-            "    from 2021-04-06: 830\n"
-            "=== FILE: uksi-2002-2005-schedule-2-worker-element.rac.test ===\n"
-            "- name: base_case\n"
-            "  output:\n"
-            "    wtc_worker_element_amount: 830\n"
-        )
-
-        wrote = _materialize_eval_artifact(
-            llm_response,
-            output_file,
-            source_text=source_text,
-        )
-
-        assert wrote is True
-        test_text = output_file.with_suffix(".rac.test").read_text()
-        assert "period: '2021-04-06'" in test_text or "period: 2021-04-06" in test_text
-
-    def test_materialize_eval_artifact_normalizes_year_only_annual_test_periods(
-        self, tmp_path
-    ):
-        output_file = tmp_path / "source" / "uksi-2002-1792-regulation-9-a.rac"
-        source_text = (
-            "Editorial note: current text valid from 2025-03-21.\n\nworking tax credit;"
-        )
-        llm_response = (
-            "=== FILE: uksi-2002-1792-regulation-9-a.rac ===\n"
-            "working_tax_credit:\n"
-            "    entity: Person\n"
-            "    period: Year\n"
-            "    dtype: Money\n\n"
-            "qualifying_income_excluded_9_a:\n"
-            "    entity: Person\n"
-            "    period: Year\n"
-            "    dtype: Money\n"
-            "    from 2025-03-21:\n"
-            "        working_tax_credit\n"
-            "=== FILE: uksi-2002-1792-regulation-9-a.rac.test ===\n"
-            "- name: base_case\n"
-            "  period: 2025\n"
-            "  input:\n"
-            "    working_tax_credit: 1\n"
-            "  output:\n"
-            "    qualifying_income_excluded_9_a: 1\n"
-        )
-
-        wrote = _materialize_eval_artifact(
-            llm_response,
-            output_file,
-            source_text=source_text,
-        )
-
-        assert wrote is True
-        test_text = output_file.with_suffix(".rac.test").read_text()
-        assert "period: '2025-03-21'" in test_text or "period: 2025-03-21" in test_text
-
-    def test_materialize_eval_artifact_normalizes_placeholder_monthly_periods_without_effective_date(
-        self, tmp_path
-    ):
-        output_file = tmp_path / "source" / "alabama-snap-expense-option.rac"
-        llm_response = (
-            "=== FILE: alabama-snap-expense-option.rac ===\n"
-            "snap_self_employment_expense_based_deduction_applies:\n"
-            "    entity: SnapUnit\n"
-            "    period: Month\n"
-            "    dtype: Boolean\n"
-            "    from 0001-01-01:\n"
-            "        false\n"
-            "=== FILE: alabama-snap-expense-option.rac.test ===\n"
-            "- name: expense_based_option_not_used\n"
-            "  period: 0001-01-01\n"
-            "  input: {}\n"
-            "  output:\n"
-            "    snap_self_employment_expense_based_deduction_applies: false\n"
-            "- name: expense_based_option_still_not_used\n"
-            "  period: 0001-02-01\n"
-            "  input: {}\n"
-            "  output:\n"
-            "    snap_self_employment_expense_based_deduction_applies: false\n"
-        )
-
-        wrote = _materialize_eval_artifact(
-            llm_response,
-            output_file,
-            source_text=(
-                "Current-effective Alabama SNAP rule excerpt:\n\n"
-                '"The standard will be used for all food assistance households '
-                'reporting self-employment income. This procedure is automated."'
-            ),
-        )
-
-        assert wrote is True
-        test_text = output_file.with_suffix(".rac.test").read_text()
-        assert "period: 0001-01-01" not in test_text
-        assert "period: 0001-02-01" not in test_text
-        assert (
-            test_text.count("period: '2024-01'") + test_text.count("period: 2024-01")
-            == 2
-        )
+        test_text = output_file.with_suffix(".test.yaml").read_text()
+        assert "pre_effective_zero" not in test_text
+        assert "period: 2026-01" in test_text
 
     def test_materialize_eval_artifact_normalizes_mapping_style_tests_to_list(
         self, tmp_path
     ):
-        output_file = tmp_path / "source" / "uksi-2002-1792-regulation-10-5-b-ii.rac"
-        source_text = (
-            "Editorial note: current text valid from 2025-03-21.\n\n"
-            "where head (i) does not apply, the first day of the next benefit week "
-            "following that increased payment date."
-        )
-        llm_response = (
-            "=== FILE: uksi-2002-1792-regulation-10-5-b-ii.rac ===\n"
-            "day_referred_to_10_5_b_ii:\n"
-            "    entity: Person\n"
-            "    period: Day\n"
-            "    dtype: Boolean\n"
-            "    from 2025-03-21:\n"
-            "        some_fact\n"
-            "=== FILE: uksi-2002-1792-regulation-10-5-b-ii.rac.test ===\n"
-            "case_branch_ii_applies:\n"
-            "  period: 2025-03-21\n"
-            "  input:\n"
-            "    some_fact: true\n"
-            "  output:\n"
-            "    day_referred_to_10_5_b_ii: true\n"
-        )
+        output_file = tmp_path / "source" / "uksi-2002-1792-regulation-10-5-b-ii.yaml"
+        response = """=== FILE: uksi-2002-1792-regulation-10-5-b-ii.yaml ===
+format: rulespec/v1
+module:
+  summary: The day referred to in branch ii is true when the condition applies.
+rules:
+  - name: day_referred_to_10_5_b_ii
+    kind: derived
+    entity: Person
+    dtype: Boolean
+    period: Day
+    versions:
+      - effective_from: '2025-03-21'
+        formula: some_fact
+=== FILE: uksi-2002-1792-regulation-10-5-b-ii.test.yaml ===
+case_branch_ii_applies:
+  period: 2025-03-21
+  input:
+    some_fact: true
+  output:
+    day_referred_to_10_5_b_ii: true
+"""
 
-        wrote = _materialize_eval_artifact(
-            llm_response,
-            output_file,
-            source_text=source_text,
-        )
+        wrote = _materialize_eval_artifact(response, output_file)
 
         assert wrote is True
-        test_text = output_file.with_suffix(".rac.test").read_text()
+        test_text = output_file.with_suffix(".test.yaml").read_text()
         assert test_text.lstrip().startswith("- ")
         assert "name: case_branch_ii_applies" in test_text
         assert "case_branch_ii_applies:" not in test_text
@@ -1997,14 +1605,20 @@ class TestGeneratedBundleCleaning:
     def test_normalize_test_periods_drops_speculative_pre_effective_zero_case_for_monthly_update(
         self,
     ):
-        rac_text = (
-            "snap_standard_utility_allowance:\n"
-            "    entity: SnapUnit\n"
-            "    period: Month\n"
-            "    dtype: Money\n"
-            "    unit: USD\n"
-            "    from 2025-10-01: 451\n"
-        )
+        rulespec_text = """format: rulespec/v1
+module:
+  summary: The SUA is $451 effective October 1, 2025.
+rules:
+  - name: snap_standard_utility_allowance
+    kind: parameter
+    entity: SnapUnit
+    dtype: Money
+    period: Month
+    unit: USD
+    versions:
+      - effective_from: '2025-10-01'
+        formula: 451
+"""
         source_text = (
             "Current-effective Tennessee utility allowance slice.\n\n"
             "The Standard Utility Allowance (SUA) is used when the household is\n"
@@ -2020,184 +1634,70 @@ class TestGeneratedBundleCleaning:
             "  period: 2025-09\n"
             "  output:\n"
             "    snap_standard_utility_allowance: 0\n",
-            rac_content=rac_text,
+            rulespec_content=rulespec_text,
             source_text=source_text,
         )
 
         assert "pre_effective_month_zero" not in test_text
         assert "period: 2026-01" in test_text
 
-    def test_materialize_eval_artifact_rewrites_source_text_wrapper_to_docstring(
+    def test_materialize_eval_artifact_adds_missing_oracle_hint_output_from_rulespec(
         self, tmp_path
     ):
-        output_file = tmp_path / "source" / "uksi-2002-1792-regulation-10-6-a.rac"
-        llm_response = (
-            "=== FILE: uksi-2002-1792-regulation-10-6-a.rac ===\n"
-            "source_text:\n"
-            "    entity: Person\n"
-            "    period: Day\n"
-            "    dtype: String\n"
-            "    from 2025-03-21:\n"
-            '        """\n'
-            "        Example source line.\n"
-            '        """\n\n'
-            "example_fact:\n"
-            "    entity: Person\n"
-            "    period: Day\n"
-            "    dtype: Boolean\n"
-        )
-
-        wrote = _materialize_eval_artifact(llm_response, output_file, source_text=None)
-
-        assert wrote is True
-        rac_text = output_file.read_text()
-        assert rac_text.startswith('"""\nExample source line.\n"""')
-        assert "source_text:" not in rac_text
-
-    def test_materialize_eval_artifact_fills_missing_period_and_flattens_wrappers(
-        self, tmp_path
-    ):
-        output_file = tmp_path / "source" / "uksi-2002-1792-regulation-9-e.rac"
-        source_text = (
-            "Editorial note: current text valid from 2025-03-21.\n\n"
-            "maternity allowance;"
-        )
-        llm_response = (
-            "=== FILE: uksi-2002-1792-regulation-9-e.rac ===\n"
-            "maternity_allowance_amount:\n"
-            "    entity: Person\n"
-            "    period: Month\n"
-            "    dtype: Money\n\n"
-            "qualifying_income_exclusion_9_e_maternity_allowance:\n"
-            "    entity: Person\n"
-            "    period: Month\n"
-            "    dtype: Money\n"
-            "    from 2025-03-21:\n"
-            "        maternity_allowance_amount\n"
-            "=== FILE: uksi-2002-1792-regulation-9-e.rac.test ===\n"
-            "- name: base_case\n"
-            "  input:\n"
-            "    maternity_allowance_amount:\n"
-            "      entity: Person\n"
-            "      period: Month\n"
-            "      dtype: Money\n"
-            "      values:\n"
-            "        2025-03: 3\n"
-            "  output:\n"
-            "    qualifying_income_exclusion_9_e_maternity_allowance:\n"
-            "      2025-03: 3\n"
-        )
+        output_file = tmp_path / "source" / "example.yaml"
+        response = """=== FILE: example.yaml ===
+format: rulespec/v1
+module:
+  summary: Homeless Shelter Deduction - $198.99.
+rules:
+  - name: snap_homeless_shelter_deduction_amount
+    kind: parameter
+    dtype: Money
+    unit: USD
+    versions:
+      - effective_from: '2025-10-01'
+        formula: 198.99
+  - name: snap_homeless_shelter_deduction_available
+    kind: parameter
+    dtype: Boolean
+    versions:
+      - effective_from: '2025-10-01'
+        formula: true
+=== FILE: example.test.yaml ===
+- name: base
+  period: 2025-10
+  output:
+    snap_homeless_shelter_deduction_amount: 198.99
+"""
 
         wrote = _materialize_eval_artifact(
-            llm_response,
+            response,
             output_file,
-            source_text=source_text,
+            policyengine_rule_hint="snap_homeless_shelter_deduction_available",
         )
 
         assert wrote is True
-        test_text = output_file.with_suffix(".rac.test").read_text()
-        assert "period: '2025-03-21'" in test_text or "period: 2025-03-21" in test_text
-        assert "entity: Person" not in test_text
-        assert "values:" not in test_text
-        assert "qualifying_income_exclusion_9_e_maternity_allowance: 3" in test_text
-
-    def test_materialize_eval_artifact_normalizes_single_row_inline_conditional_without_else(
-        self, tmp_path
-    ):
-        output_file = (
-            tmp_path / "source" / "uksi-2013-376-regulation-36-3-single-25-or-over.rac"
-        )
-        source_text = (
-            "Editorial note: current text valid from 2025-04-07.\n\n"
-            "Structured table:\n"
-            "Element | Amount for each assessment period\n"
-            "single claimant aged 25 or over | £400.14"
-        )
-        llm_response = (
-            "=== FILE: uksi-2013-376-regulation-36-3-single-25-or-over.rac ===\n"
-            "uc_claimant_is_single:\n"
-            "    entity: TaxUnit\n"
-            "    period: Month\n"
-            "    dtype: Boolean\n\n"
-            "uc_claimant_aged_25_or_over:\n"
-            "    entity: TaxUnit\n"
-            "    period: Month\n"
-            "    dtype: Boolean\n\n"
-            "uc_standard_allowance_single_claimant_aged_25_or_over:\n"
-            "    entity: TaxUnit\n"
-            "    period: Month\n"
-            "    dtype: Money\n"
-            "    unit: GBP\n"
-            "    from 2025-04-07: if uc_claimant_is_single and uc_claimant_aged_25_or_over: 400.14\n"
-            "=== FILE: uksi-2013-376-regulation-36-3-single-25-or-over.rac.test ===\n"
-            "- name: base_case\n"
-            "  period: 2025-04\n"
-            "  input:\n"
-            "    uc_claimant_is_single: true\n"
-            "    uc_claimant_aged_25_or_over: true\n"
-            "  output:\n"
-            "    joint_claimants_where_either_is_aged_25_or_over: true\n"
-            "    uc_standard_allowance_single_claimant_aged_25_or_over: 400.14\n"
-            "- name: alternate_real_condition_single_status_varied\n"
-            "  period: 2025-04\n"
-            "  input:\n"
-            "    uc_claimant_is_single: false\n"
-            "    uc_claimant_aged_25_or_over: true\n"
-            "  output:\n"
-            "    uc_standard_allowance_single_claimant_aged_25_or_over: 400.14\n"
-        )
-
-        wrote = _materialize_eval_artifact(
-            llm_response,
-            output_file,
-            source_text=source_text,
-        )
-
-        assert wrote is True
-        rac_text = output_file.read_text()
-        assert "from 2025-04-07: 400.14" in rac_text
-        assert "if uc_claimant_is_single" not in rac_text
-        test_text = output_file.with_suffix(".rac.test").read_text()
-        assert "alternate_real_condition_single_status_varied" not in test_text
-        assert "joint_claimants_where_either_is_aged_25_or_over" not in test_text
-
-    def test_materialize_eval_artifact_normalizes_non_slice_code_numeric_literals(
-        self, tmp_path
-    ):
-        output_file = (
-            tmp_path / "source" / "uksi-2013-376-regulation-80A-2025-04-01.rac"
-        )
-        llm_response = (
-            '"""\n'
-            "The applicable annual limit is £25,323 for joint claimants.\n"
-            '"""\n\n'
-            "regulation_80A_2_b_i_applicable_annual_limit:\n"
-            "    entity: Family\n"
-            "    period: Year\n"
-            "    dtype: Money\n"
-            "    from 2025-03-21:\n"
-            "        if is_joint_claimant and either_joint_claimant_resident_in_greater_london: 25,323\n"
-            "        else: 0\n"
-        )
-
-        wrote = _materialize_eval_artifact(llm_response, output_file)
-
-        assert wrote is True
-        artifact_text = output_file.read_text()
-        assert "£25,323" in artifact_text
-        code_text = artifact_text.split('"""', 2)[-1]
-        assert "25,323" not in code_text
+        test_payload = yaml.safe_load(output_file.with_suffix(".test.yaml").read_text())
         assert (
-            "if is_joint_claimant and either_joint_claimant_resident_in_greater_london: 25323"
-            in artifact_text
+            test_payload[0]["output"]["snap_homeless_shelter_deduction_available"]
+            is True
         )
 
     def test_can_include_policyengine_metrics_for_uk_artifact(self, tmp_path):
-        rac_file = tmp_path / "source" / "uksi-2006-965-regulation-2.rac"
-        rac_file.parent.mkdir(parents=True)
-        rac_file.write_text(
-            '"""\nhttps://www.legislation.gov.uk/uksi/2006/965/regulation/2\n"""\n'
-            "status: encoded\n"
+        rules_file = tmp_path / "source" / "uksi-2006-965-regulation-2.yaml"
+        rules_file.parent.mkdir(parents=True)
+        rules_file.write_text(
+            "format: rulespec/v1\n"
+            "module:\n"
+            "  summary: https://www.legislation.gov.uk/uksi/2006/965/regulation/2 states the enhanced rate is £26.05.\n"
+            "rules:\n"
+            "  - name: child_benefit_enhanced_rate\n"
+            "    kind: parameter\n"
+            "    dtype: Money\n"
+            "    unit: GBP\n"
+            "    versions:\n"
+            "      - effective_from: '2025-04-07'\n"
+            "        formula: 26.05\n"
         )
 
         compile_result = ValidationResult("compile", passed=True)
@@ -2211,23 +1711,23 @@ class TestGeneratedBundleCleaning:
 
         with (
             patch(
-                "autorac.harness.validator_pipeline.ValidatorPipeline._run_compile_check",
+                "axiom_encode.harness.validator_pipeline.ValidatorPipeline._run_compile_check",
                 return_value=compile_result,
             ),
             patch(
-                "autorac.harness.validator_pipeline.ValidatorPipeline._run_ci",
+                "axiom_encode.harness.validator_pipeline.ValidatorPipeline._run_ci",
                 return_value=ci_result,
             ),
             patch(
-                "autorac.harness.validator_pipeline.ValidatorPipeline._run_policyengine",
+                "axiom_encode.harness.validator_pipeline.ValidatorPipeline._run_policyengine",
                 return_value=pe_result,
             ) as mock_policyengine,
         ):
             metrics = evaluate_artifact(
-                rac_file=rac_file,
-                rac_root=tmp_path,
-                rac_path=Path("/tmp/rac"),
-                source_text="26.05",
+                rulespec_file=rules_file,
+                policy_repo_root=tmp_path,
+                axiom_rules_path=Path("/tmp/axiom-rules"),
+                source_text="The enhanced rate is £26.05 from 2025-04-07.",
                 oracle="policyengine",
                 policyengine_country="uk",
             )
@@ -2511,7 +2011,7 @@ class TestAknSectionEval:
         )
 
         with patch(
-            "autorac.harness.evals.run_source_eval",
+            "axiom_encode.harness.evals.run_source_eval",
             return_value=["ok"],
         ) as mock_run_source_eval:
             results = run_akn_section_eval(
@@ -2520,7 +2020,7 @@ class TestAknSectionEval:
                 section_eid="sec_3_606_1",
                 runner_specs=["codex:gpt-5.4"],
                 output_root=tmp_path / "out",
-                rac_path=tmp_path / "rac",
+                axiom_rules_path=tmp_path / "axiom-rules",
                 mode="cold",
                 extra_context_paths=[],
             )
@@ -2538,7 +2038,7 @@ class TestAknSectionEval:
         self, tmp_path, monkeypatch
     ):
         arch_root = tmp_path / "arch"
-        monkeypatch.setenv("AUTORAC_ARCH_ROOT", str(arch_root))
+        monkeypatch.setenv("AXIOM_ENCODE_EVAL_ARCHIVE_ROOT", str(arch_root))
         akn_file = (
             arch_root
             / "us-tx"
@@ -2577,7 +2077,7 @@ class TestAknSectionEval:
         )
 
         with patch(
-            "autorac.harness.evals.run_source_eval",
+            "axiom_encode.harness.evals.run_source_eval",
             return_value=["ok"],
         ) as mock_run_source_eval:
             results = run_akn_section_eval(
@@ -2586,7 +2086,7 @@ class TestAknSectionEval:
                 section_eid=None,
                 runner_specs=["codex:gpt-5.4"],
                 output_root=tmp_path / "out",
-                rac_path=tmp_path / "rac",
+                axiom_rules_path=tmp_path / "axiom-rules",
                 mode="cold",
                 extra_context_paths=[],
                 source_metadata_path=metadata_file,
@@ -2629,7 +2129,7 @@ class TestAknSectionEval:
             """.strip()
         )
 
-        with patch("autorac.harness.evals.run_source_eval") as mock_run_source_eval:
+        with patch("axiom_encode.harness.evals.run_source_eval") as mock_run_source_eval:
             try:
                 run_akn_section_eval(
                     source_id="9 CCR 2503-6 3.606.1",
@@ -2637,7 +2137,7 @@ class TestAknSectionEval:
                     section_eid="sec_3_606_1",
                     runner_specs=["codex:gpt-5.4"],
                     output_root=tmp_path / "out",
-                    rac_path=tmp_path / "rac",
+                    axiom_rules_path=tmp_path / "axiom-rules",
                     mode="cold",
                     extra_context_paths=[],
                 )
@@ -2812,7 +2312,7 @@ class TestUkLegislationFetch:
         override = tmp_path / "shared-cache"
         with patch.dict(
             "os.environ",
-            {"AUTORAC_SHARED_LEGISLATION_CACHE": str(override)},
+            {"AXIOM_ENCODE_SHARED_LEGISLATION_CACHE": str(override)},
             clear=False,
         ):
             resolved = _resolve_legislation_gov_uk_fetch_cache_root(
@@ -2836,15 +2336,15 @@ class TestUkLegislationFetch:
 
         with (
             patch(
-                "autorac.harness.evals._resolve_legislation_gov_uk_fetch_cache_root",
+                "axiom_encode.harness.evals._resolve_legislation_gov_uk_fetch_cache_root",
                 return_value=shared_root,
             ),
             patch(
-                "autorac.harness.evals._fetch_legislation_gov_uk_document",
+                "axiom_encode.harness.evals._fetch_legislation_gov_uk_document",
                 return_value=fetched,
             ) as mock_fetch,
             patch(
-                "autorac.harness.evals.run_akn_section_eval",
+                "axiom_encode.harness.evals.run_akn_section_eval",
                 return_value=[],
             ) as mock_run,
         ):
@@ -2853,7 +2353,7 @@ class TestUkLegislationFetch:
                 section_eid="regulation-1",
                 runner_specs=["codex:gpt-5.4"],
                 output_root=tmp_path / "out",
-                rac_path=tmp_path / "rac",
+                axiom_rules_path=tmp_path / "axiom-rules",
             )
 
         assert results == []
@@ -2959,10 +2459,10 @@ class TestUkLegislationFetch:
 
         with (
             patch(
-                "autorac.harness.evals._fetch_legislation_gov_uk_document"
+                "axiom_encode.harness.evals._fetch_legislation_gov_uk_document"
             ) as mock_fetch,
             patch(
-                "autorac.harness.evals.run_akn_section_eval",
+                "axiom_encode.harness.evals.run_akn_section_eval",
                 return_value=["ok"],
             ) as mock_run,
         ):
@@ -2977,7 +2477,7 @@ class TestUkLegislationFetch:
                 source_ref="https://www.legislation.gov.uk/ukpga/2010/1/section/1",
                 runner_specs=["codex:gpt-5.4"],
                 output_root=tmp_path / "out",
-                rac_path=tmp_path / "rac",
+                axiom_rules_path=tmp_path / "axiom-rules",
                 mode="cold",
                 extra_context_paths=[],
             )
@@ -2991,13 +2491,13 @@ class TestUkLegislationFetch:
 
 
 class TestEvalPrompt:
-    def test_build_eval_prompt_includes_rac_syntax_guardrails(self, tmp_path):
+    def test_build_eval_prompt_includes_rulespec_schema_guardrails(self, tmp_path):
         workspace = prepare_eval_workspace(
             citation="9 CCR 2503-6 3.606.1",
             runner=parse_runner_spec("codex:gpt-5.4"),
             output_root=tmp_path / "out",
             source_text="Grant standard is 165 for one child.",
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -3007,7 +2507,7 @@ class TestEvalPrompt:
             "cold",
             workspace,
             [],
-            target_file_name="9-CCR-2503-6-3.606.1.rac",
+            target_file_name="9-CCR-2503-6-3.606.1.yaml",
             include_tests=True,
         )
 
@@ -3018,14 +2518,10 @@ class TestEvalPrompt:
         assert "entity:" in prompt
         assert "period:" in prompt
         assert "dtype:" in prompt
-        assert "Hard oracle rule" in prompt
-        assert "Avoid `match ...:` in generated RAC" in prompt
-        assert "Use chained `if ...: value else:` expressions" in prompt
-        assert "encode the rate scalar itself" in prompt
-        assert "direct assertion requirement is a hard gate" in prompt
-        assert "`170 - 35`" in prompt
-        assert "do not use `0001`" in prompt
-        assert "value `1.65`" in prompt
+        assert "RuleSpec requirements:" in prompt
+        assert "The programme file must begin with `format: rulespec/v1`" in prompt
+        assert "Use chained `if condition: value else: other_value` expressions" in prompt
+        assert "Do not use bare year periods like `2024`" in prompt
 
     def test_build_eval_prompt_includes_supported_schema_enums(self, tmp_path):
         workspace = prepare_eval_workspace(
@@ -3033,7 +2529,7 @@ class TestEvalPrompt:
             runner=parse_runner_spec("codex:gpt-5.4"),
             output_root=tmp_path / "out",
             source_text="2. Rate of child benefit ... 25.60 ... 16.95",
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -3043,7 +2539,7 @@ class TestEvalPrompt:
             "cold",
             workspace,
             [],
-            target_file_name="uksi-2006-965-regulation-2.rac",
+            target_file_name="uksi-2006-965-regulation-2.yaml",
             include_tests=True,
         )
 
@@ -3065,7 +2561,7 @@ class TestEvalPrompt:
             runner=parse_runner_spec("codex:gpt-5.4"),
             output_root=tmp_path / "out",
             source_text="(a) cease to be in force",
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -3075,7 +2571,7 @@ class TestEvalPrompt:
             "cold",
             workspace,
             [],
-            target_file_name="ukpga-2010-1-section-1.rac",
+            target_file_name="ukpga-2010-1-section-1.yaml",
             include_tests=True,
         )
 
@@ -3083,11 +2579,10 @@ class TestEvalPrompt:
             "If the source cannot be represented faithfully with the supported schema"
             in prompt
         )
-        assert "`status: entity_not_supported`" in prompt
-        assert "`status: deferred`" in prompt
-        assert "leave `.rac.test` empty" in prompt
+        assert "`module.status: entity_not_supported`" in prompt
+        assert "`module.status: deferred`" in prompt
+        assert "leave the companion `.test.yaml` empty" in prompt
         assert "assertions against deferred symbols" in prompt
-        assert "emit only a top-level `status: deferred`" in prompt
 
     def test_build_eval_prompt_for_editorially_omitted_slice_allows_deferred_docstring(
         self, tmp_path
@@ -3101,7 +2596,7 @@ class TestEvalPrompt:
                 "(c)\n\n"
                 ". . . . . . . . . . . . . . . . . . . . . . . ."
             ),
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -3111,17 +2606,15 @@ class TestEvalPrompt:
             "cold",
             workspace,
             [],
-            target_file_name="uksi-2002-1792-regulation-17-10-c.rac",
+            target_file_name="uksi-2002-1792-regulation-17-10-c.yaml",
             include_tests=True,
         )
 
-        assert "omitted/repealed text shown only by ellipses" in prompt
-        assert "keep the embedded source/docstring showing that omission" in prompt
         assert (
             "editorially omitted or repealed text shown by ellipses or dotted placeholders"
             in prompt
         )
-        assert "leave `.rac.test` empty" in prompt
+        assert "leave `.test.yaml` empty" in prompt
 
     def test_build_eval_prompt_forbids_python_inline_ternaries(self, tmp_path):
         workspace = prepare_eval_workspace(
@@ -3129,7 +2622,7 @@ class TestEvalPrompt:
             runner=parse_runner_spec("codex:gpt-5.4"),
             output_root=tmp_path / "out",
             source_text="2. Rate of child benefit ... 26.05",
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -3139,14 +2632,14 @@ class TestEvalPrompt:
             "cold",
             workspace,
             [],
-            target_file_name="uksi-2006-965-regulation-2.rac",
+            target_file_name="uksi-2006-965-regulation-2.yaml",
             include_tests=True,
         )
 
         assert "Do not use Python inline ternaries" in prompt
         assert "`x if cond else y`" in prompt
 
-    def test_build_eval_prompt_requires_rac_conditional_expression_syntax(
+    def test_build_eval_prompt_requires_rulespec_conditional_expression_syntax(
         self, tmp_path
     ):
         workspace = prepare_eval_workspace(
@@ -3154,7 +2647,7 @@ class TestEvalPrompt:
             runner=parse_runner_spec("codex:gpt-5.4"),
             output_root=tmp_path / "out",
             source_text="2. Rate of child benefit ... 26.05",
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -3164,12 +2657,12 @@ class TestEvalPrompt:
             "cold",
             workspace,
             [],
-            target_file_name="uksi-2006-965-regulation-2.rac",
+            target_file_name="uksi-2006-965-regulation-2.yaml",
             include_tests=True,
         )
 
         assert "`if condition: value else: other_value`" in prompt
-        assert "Do not use YAML-style `if:` / `then:` / `else:` blocks." in prompt
+        assert "do not use YAML-style `if:` / `then:` / `else:` blocks" in prompt
         assert (
             "Do not append a multiline conditional directly onto another expression"
             in prompt
@@ -3181,7 +2674,7 @@ class TestEvalPrompt:
             runner=parse_runner_spec("codex:gpt-5.4"),
             output_root=tmp_path / "out",
             source_text="The percentage prescribed is 60 per cent.",
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -3191,7 +2684,7 @@ class TestEvalPrompt:
             "cold",
             workspace,
             [],
-            target_file_name="uksi-2002-1792-regulation-7.rac",
+            target_file_name="uksi-2002-1792-regulation-7.yaml",
             include_tests=True,
         )
 
@@ -3199,39 +2692,11 @@ class TestEvalPrompt:
             "For `dtype: Rate`, encode percentages as decimal ratios like `0.60` or `0.40`, never as `%` literals."
             in prompt
         )
-        assert "Do not respond with summaries like `Both files written`" in prompt
+        assert "Do not respond with summaries, markdown prose, or file-write confirmations" in prompt
         assert (
-            "Do not use inline assignment syntax like `:=` inside `from` blocks"
+            "do not use inline assignment syntax like `:=` inside formula blocks"
             in prompt
         )
-        assert (
-            "model truncation toward zero rather than toward negative infinity"
-            in prompt
-        )
-        assert "rounded to the nearest whole dollar" in prompt
-        assert "Model explicit half-up rounding instead" in prompt
-        assert "keep that rounding on the downstream output" in prompt
-        assert "Do not push it upstream into an intermediate component" in prompt
-        assert (
-            "Wrong for a clause like `allotment equals the thrifty food plan reduced by 30 per centum of income"
-            in prompt
-        )
-        assert "keep `snap_expected_contribution = snap_net_income * 0.3`" in prompt
-        assert (
-            "Do not fabricate an `imports:` target from a cited section unless that exact `path#symbol` import target is listed"
-            in prompt
-        )
-        assert "instead of guessing a broken import like `statute/...#symbol`" in prompt
-        assert "compute the pre-rounding amount exactly" in prompt
-        assert "`251 * 0.08 = 20.08`, which still rounds to `20`, not `21`" in prompt
-        assert "floor(amount + 0.5)" in prompt
-        assert "if amount >= 0: floor(amount) else: ceil(amount)" in prompt
-        assert (
-            "Reserve bare `floor(...)` for instructions that explicitly say `round down`"
-            in prompt
-        )
-        assert "unsupported operators such as `%`" in prompt
-        assert "include a `.rac.test` case with a negative fractional amount" in prompt
 
     def test_build_eval_prompt_for_uk_leaf_prefers_person_over_family_constant(
         self, tmp_path
@@ -3245,7 +2710,7 @@ class TestEvalPrompt:
                 "The weekly rate of child benefit payable in respect of a child "
                 "or qualifying young person shall be 26.05."
             ),
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -3255,7 +2720,7 @@ class TestEvalPrompt:
             "cold",
             workspace,
             [],
-            target_file_name="uksi-2006-965-regulation-2.rac",
+            target_file_name="uksi-2006-965-regulation-2.yaml",
             include_tests=True,
         )
 
@@ -3280,7 +2745,7 @@ class TestEvalPrompt:
                 "the credit shall not be payable unless the claimant is in receipt of another "
                 "benefit payable with the credit."
             ),
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -3290,7 +2755,7 @@ class TestEvalPrompt:
             "cold",
             workspace,
             [],
-            target_file_name="uksi-2002-1792-regulation-13.rac",
+            target_file_name="uksi-2002-1792-regulation-13.yaml",
             include_tests=True,
             runner_backend="openai",
         )
@@ -3312,7 +2777,7 @@ class TestEvalPrompt:
                 "£20 is disregarded if the claimant or, if he has a partner, his partner "
                 "is in receipt of Scottish adult disability living allowance."
             ),
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -3322,7 +2787,7 @@ class TestEvalPrompt:
             "cold",
             workspace,
             [],
-            target_file_name="uksi-2002-1792-schedule-vi-paragraph-4-1-a-iva.rac",
+            target_file_name="uksi-2002-1792-schedule-vi-paragraph-4-1-a-iva.yaml",
             include_tests=True,
             runner_backend="openai",
         )
@@ -3339,7 +2804,7 @@ class TestEvalPrompt:
         )
         assert "do not leave that money output unconditional" in prompt
         assert (
-            "do not collapse those facts into an opaque local input like `*_eligible_for_*`"
+            "do not collapse source-stated component facts into an opaque local input like `*_eligible_for_*`"
             in prompt
         )
         assert "prefer direct facts like `client_is_pregnant_parent`" in prompt
@@ -3357,7 +2822,7 @@ class TestEvalPrompt:
                 "if there is a recognised cycle of work, by reference to his average "
                 "weekly income over the period of the complete cycle; or"
             ),
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -3367,7 +2832,7 @@ class TestEvalPrompt:
             "cold",
             workspace,
             [],
-            target_file_name="uksi-2002-1792-regulation-17.rac",
+            target_file_name="uksi-2002-1792-regulation-17.yaml",
             include_tests=True,
             runner_backend="openai",
         )
@@ -3425,7 +2890,7 @@ class TestEvalPrompt:
                 "the amounts specified in paragraph (5) shall be treated as though "
                 "they were earnings."
             ),
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -3435,7 +2900,7 @@ class TestEvalPrompt:
             "cold",
             workspace,
             [],
-            target_file_name="uksi-2002-1792-regulation-17-9A.rac",
+            target_file_name="uksi-2002-1792-regulation-17-9A.yaml",
             include_tests=True,
             runner_backend="openai",
         )
@@ -3460,7 +2925,7 @@ class TestEvalPrompt:
                 "in any other case, by multiplying the amount of the payment by 7 and dividing "
                 "the product by the number of days in the period in respect of which it is made."
             ),
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -3470,7 +2935,7 @@ class TestEvalPrompt:
             "cold",
             workspace,
             [],
-            target_file_name="uksi-2002-1792-regulation-17.rac",
+            target_file_name="uksi-2002-1792-regulation-17.yaml",
             include_tests=True,
             runner_backend="openai",
         )
@@ -3496,7 +2961,7 @@ class TestEvalPrompt:
                 "applies, the amount of that payment shall be treated as if made in "
                 "respect of a period of a year."
             ),
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -3506,7 +2971,7 @@ class TestEvalPrompt:
             "cold",
             workspace,
             [],
-            target_file_name="uksi-2002-1792-regulation-17.rac",
+            target_file_name="uksi-2002-1792-regulation-17.yaml",
             include_tests=True,
             runner_backend="openai",
         )
@@ -3537,7 +3002,7 @@ class TestEvalPrompt:
                 "travelling expenses incurred by the claimant between his home and place "
                 "of employment;"
             ),
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -3547,7 +3012,7 @@ class TestEvalPrompt:
             "cold",
             workspace,
             [],
-            target_file_name="uksi-2002-1792-regulation-17A-2-f-i.rac",
+            target_file_name="uksi-2002-1792-regulation-17A-2-f-i.yaml",
             include_tests=True,
             runner_backend="openai",
         )
@@ -3572,7 +3037,7 @@ class TestEvalPrompt:
                 "subsequent supersession under section 10 of the Social Security Act 1998, "
                 "the last payments before the date of the supersession."
             ),
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -3582,7 +3047,7 @@ class TestEvalPrompt:
             "cold",
             workspace,
             [],
-            target_file_name="uksi-2002-1792-regulation-17.rac",
+            target_file_name="uksi-2002-1792-regulation-17.yaml",
             include_tests=True,
             runner_backend="openai",
         )
@@ -3610,7 +3075,7 @@ class TestEvalPrompt:
                 "account for the purpose of calculating a person's income, there shall "
                 "be disregarded any amount payable by way of tax."
             ),
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -3620,7 +3085,7 @@ class TestEvalPrompt:
             "cold",
             workspace,
             [],
-            target_file_name="uksi-2002-1792-regulation-17.rac",
+            target_file_name="uksi-2002-1792-regulation-17.yaml",
             include_tests=True,
             runner_backend="openai",
         )
@@ -3646,7 +3111,7 @@ class TestEvalPrompt:
                 "employment as an employed earner, means any remuneration or profit "
                 "derived from that employment and includes any payment by way of a retainer."
             ),
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -3656,7 +3121,7 @@ class TestEvalPrompt:
             "cold",
             workspace,
             [],
-            target_file_name="uksi-2002-1792-regulation-17A-2-e.rac",
+            target_file_name="uksi-2002-1792-regulation-17A-2-e.yaml",
             include_tests=True,
             runner_backend="openai",
         )
@@ -3688,7 +3153,7 @@ class TestEvalPrompt:
                 "13 of the Computation of Earnings Regulations, as having effect in the "
                 "case of state pension credit."
             ),
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -3698,7 +3163,7 @@ class TestEvalPrompt:
             "cold",
             workspace,
             [],
-            target_file_name="uksi-2002-1792-regulation-17.rac",
+            target_file_name="uksi-2002-1792-regulation-17.yaml",
             include_tests=True,
             runner_backend="openai",
         )
@@ -3762,7 +3227,7 @@ class TestEvalPrompt:
                 "shall be determined by multiplying the resulting figure by the number "
                 "of days in the part-week."
             ),
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -3772,7 +3237,7 @@ class TestEvalPrompt:
             "cold",
             workspace,
             [],
-            target_file_name="uksi-2002-1792-regulation-13A-3-b.rac",
+            target_file_name="uksi-2002-1792-regulation-13A-3-b.yaml",
             include_tests=True,
             runner_backend="openai",
         )
@@ -3788,7 +3253,7 @@ class TestEvalPrompt:
             runner=parse_runner_spec("claude:opus"),
             output_root=tmp_path / "out",
             source_text="Editorial note: current text valid from 2025-04-07.\n26.05",
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -3798,19 +3263,19 @@ class TestEvalPrompt:
             "cold",
             workspace,
             [],
-            target_file_name="uksi-2006-965-regulation-2.rac",
+            target_file_name="uksi-2006-965-regulation-2.yaml",
             include_tests=True,
         )
 
-        assert "The `.rac.test` file must contain YAML only" in prompt
-        assert "must be a YAML list of cases beginning with `- name:`" in prompt
+        assert "The test file must contain YAML only" in prompt
+        assert "must be a YAML list beginning with `- name:` entries" in prompt
         assert "Do not add speculative future-period tests" in prompt
         assert (
-            "must contain factual predicates or quantities, not the output variable"
+            "Use factual predicates or quantities in `input:`, not the output variable being asserted"
             in prompt
         )
-        assert "use concrete numeric literals in inputs and outputs" in prompt
-        assert "Use `output:` mappings in `.rac.test` cases" in prompt
+        assert "Use concrete scalar values, not formula strings" in prompt
+        assert "Use `period`, `input`, and `output` keys" in prompt
 
     def test_build_eval_prompt_for_uk_branch_leaves_requires_branch_specific_names(
         self, tmp_path
@@ -3820,7 +3285,7 @@ class TestEvalPrompt:
             runner=parse_runner_spec("openai:gpt-5.4"),
             output_root=tmp_path / "out",
             source_text="(a) 332.95 per week in the case of a claimant who has a partner.",
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -3830,7 +3295,7 @@ class TestEvalPrompt:
             "cold",
             workspace,
             [],
-            target_file_name="uksi-2002-1792-regulation-6.rac",
+            target_file_name="uksi-2002-1792-regulation-6.yaml",
             include_tests=True,
             runner_backend="openai",
         )
@@ -3851,7 +3316,7 @@ class TestEvalPrompt:
                 "Where the young person is aged 19, he or she must have started the education "
                 "or training before reaching that age."
             ),
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -3861,13 +3326,13 @@ class TestEvalPrompt:
             "cold",
             workspace,
             [],
-            target_file_name="uksi-2002-1792-regulation-4A.rac",
+            target_file_name="uksi-2002-1792-regulation-4A.yaml",
             include_tests=True,
             runner_backend="openai",
         )
 
         assert "Where X, Y must ..." in prompt
-        assert "Include a `.rac.test` case where `X` is false" in prompt
+        assert "Include a `.test.yaml` case where `X` is false" in prompt
 
     def test_build_eval_prompt_for_uk_leaf_discourages_opaque_condition_helpers(
         self, tmp_path
@@ -3877,7 +3342,7 @@ class TestEvalPrompt:
             runner=parse_runner_spec("openai:gpt-5.4"),
             output_root=tmp_path / "out",
             source_text="(a) ... only person or elder or eldest person ... £26.05.",
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -3887,7 +3352,7 @@ class TestEvalPrompt:
             "cold",
             workspace,
             [],
-            target_file_name="uksi-2006-965-regulation-2.rac",
+            target_file_name="uksi-2006-965-regulation-2.yaml",
             include_tests=True,
             runner_backend="openai",
         )
@@ -3910,7 +3375,7 @@ class TestEvalPrompt:
                 "Element | Amount for each assessment period\n"
                 "single claimant aged under 25 | £316.98"
             ),
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -3920,7 +3385,7 @@ class TestEvalPrompt:
             "cold",
             workspace,
             [],
-            target_file_name="uksi-2013-376-regulation-36.rac",
+            target_file_name="uksi-2013-376-regulation-36.yaml",
             include_tests=True,
             runner_backend="openai",
         )
@@ -3931,13 +3396,13 @@ class TestEvalPrompt:
         assert "do not invent alternate zero-amount tests" in prompt
         assert "Do not emit `otherwise:`" in prompt
         assert "Do not emit `before YYYY-MM-DD: 0`" in prompt
-        assert "Do not emit stray blocks like `from 0:`" in prompt
+        assert "Do not emit malformed date blocks like `from 0:`" in prompt
         assert "use boolean or fact-shaped helper inputs" in prompt
         assert "Do not invent sample ages like `2`, `3`, `24`, or `25`" in prompt
-        assert "keep `.rac.test` outputs scalar" in prompt
+        assert "keep `.test.yaml` outputs scalar" in prompt
         assert "keep the row-defining conditions satisfied" in prompt
         assert (
-            "principal amount variable should usually be a grounded constant" in prompt
+            "principal amount rule should usually be a grounded constant" in prompt
         )
         assert "Do not include `alternate_branch_*` tests" in prompt
         assert "write `2500`, not `2,500`" in prompt
@@ -3956,7 +3421,7 @@ class TestEvalPrompt:
                 "A non-dependant aged 18 or over is treated differently. "
                 "See section 3(4)."
             ),
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -3966,13 +3431,13 @@ class TestEvalPrompt:
             "cold",
             workspace,
             [],
-            target_file_name="example.rac",
+            target_file_name="example.yaml",
             include_tests=True,
             runner_backend="openai",
         )
 
         assert (
-            "Every substantive numeric occurrence in `./source.txt` must be represented by a named scalar definition in RAC"
+            "Every substantive numeric occurrence in `./source.txt` must be represented by a named scalar definition in RuleSpec"
             in prompt
         )
         assert (
@@ -3995,8 +3460,7 @@ class TestEvalPrompt:
             "Do not decompose legal dates into numeric `year`, `month`, or `day` scalar variables"
             in prompt
         )
-        assert "1st September following the person's 19th birthday" in prompt
-        assert "Use `==` for equality comparisons inside RAC expressions" in prompt
+        assert "`==` for equality" in prompt
 
     def test_prepare_eval_workspace_injects_resolved_defined_term_stub(self, tmp_path):
         workspace = prepare_eval_workspace(
@@ -4004,7 +3468,7 @@ class TestEvalPrompt:
             runner=parse_runner_spec("openai:gpt-5.4"),
             output_root=tmp_path / "out",
             source_text="A person who is a member of a mixed-age couple is not entitled.",
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -4015,7 +3479,7 @@ class TestEvalPrompt:
         assert len(definition_files) == 1
         assert (
             definition_files[0].workspace_path
-            == "context/legislation/ukpga/2002/16/section/3ZA/3.rac"
+            == "context/legislation/ukpga/2002/16/section/3ZA/3.yaml"
         )
         assert (
             definition_files[0].import_path == "legislation/ukpga/2002/16/section/3ZA/3"
@@ -4027,23 +3491,24 @@ class TestEvalPrompt:
     def test_prepare_eval_workspace_copies_resolved_canonical_concept_file(
         self, tmp_path
     ):
-        rac_root = tmp_path / "rac-us-co"
-        concept_file = rac_root / "statute" / "crs" / "26-2-703" / "12.rac"
+        policy_repo_root = tmp_path / "rules-us-co"
+        concept_file = policy_repo_root / "statute" / "crs" / "26-2-703" / "12.yaml"
         concept_file.parent.mkdir(parents=True, exist_ok=True)
         concept_file.write_text(
-            '''
-"""
-C.R.S. § 26-2-703(12)
-Definitions
+            """format: rulespec/v1
+module:
+  summary: |-
+    C.R.S. § 26-2-703(12)
+    Definitions
 
-"Individual responsibility contract" or "IRC" means the contract entered into by the participant and the county department pursuant to section 26-2-708.
-"""
-
-is_individual_responsibility_contract:
+    "Individual responsibility contract" or "IRC" means the contract entered into by the participant and the county department pursuant to section 26-2-708.
+rules:
+  - name: is_individual_responsibility_contract
+    kind: input
     entity: Person
-    period: Month
     dtype: Boolean
-'''
+    period: Month
+"""
         )
 
         workspace = prepare_eval_workspace(
@@ -4051,7 +3516,7 @@ is_individual_responsibility_contract:
             runner=parse_runner_spec("openai:gpt-5.4"),
             output_root=tmp_path / "out",
             source_text="The participant must comply with the individual responsibility contract.",
-            rac_path=rac_root,
+            axiom_rules_path=policy_repo_root,
             mode="cold",
             extra_context_paths=[],
         )
@@ -4060,7 +3525,7 @@ is_individual_responsibility_contract:
             item for item in workspace.context_files if item.kind == "canonical_concept"
         ]
         assert len(concept_files) == 1
-        assert concept_files[0].workspace_path == "context/statute/crs/26-2-703/12.rac"
+        assert concept_files[0].workspace_path == "context/statute/crs/26-2-703/12.yaml"
         assert concept_files[0].import_path == "statute/crs/26-2-703/12"
         copied_path = workspace.root / concept_files[0].workspace_path
         assert copied_path.exists()
@@ -4074,7 +3539,7 @@ is_individual_responsibility_contract:
             runner=parse_runner_spec("openai:gpt-5.4"),
             output_root=tmp_path / "out",
             source_text="A person who is a member of a mixed-age couple is not entitled.",
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -4082,7 +3547,7 @@ is_individual_responsibility_contract:
         runner_root = tmp_path / "case" / "openai-gpt-5.4"
         source_dir = runner_root / "source"
         source_dir.mkdir(parents=True)
-        (source_dir / "example.rac").write_text("status: encoded\n")
+        (source_dir / "example.yaml").write_text("format: rulespec/v1\nrules: []\n")
 
         _hydrate_eval_root(runner_root, workspace)
 
@@ -4094,7 +3559,7 @@ is_individual_responsibility_contract:
             / "16"
             / "section"
             / "3ZA"
-            / "3.rac"
+            / "3.yaml"
         )
         assert hydrated.exists()
         assert "is_member_of_mixed_age_couple" in hydrated.read_text()
@@ -4105,7 +3570,7 @@ is_individual_responsibility_contract:
             runner=parse_runner_spec("openai:gpt-5.4"),
             output_root=tmp_path / "out",
             source_text="A person who is a member of a mixed-age couple is not entitled.",
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -4115,7 +3580,7 @@ is_individual_responsibility_contract:
             "cold",
             workspace,
             workspace.context_files,
-            target_file_name="example.rac",
+            target_file_name="example.yaml",
             include_tests=True,
             runner_backend="openai",
         )
@@ -4130,8 +3595,6 @@ is_individual_responsibility_contract:
             "import that canonical definition instead of inventing a leaf-local helper"
             in prompt
         )
-        assert "Exact RAC import syntax for a resolved definition:" in prompt
-        assert "imports:" in prompt
         assert "Do not replace that import with a local deferred stub" in prompt
         assert (
             "Do not encode such local factual predicates as placeholder constants like `true` or `false`."
@@ -4141,80 +3604,28 @@ is_individual_responsibility_contract:
             "Do not encode such local factual predicates as `status: deferred`"
             in prompt
         )
-        assert (
-            "preserve that post-adjustment quantity directly as an input/helper"
-            in prompt
-        )
-        assert (
-            "prefer an input like `countable_gross_earned_income_after_disregards` over raw `gross_earned_income`"
-            in prompt
-        )
-        assert "after all other applicable deductions have been allowed" in prompt
-        assert (
-            "do not truncate the logic to only the deduction categories exercised by the example tests"
-            in prompt
-        )
-        assert (
-            "import those exact symbols instead of inventing renamed locals that overlap with the copied file"
-            in prompt
-        )
-        assert (
-            "import that helper and alias the requested target to it instead of rebuilding the same arithmetic locally"
-            in prompt
-        )
-        assert (
-            "alias `snap_net_income_pre_shelter` to `snap_income_after_non_shelter_deductions`"
-            in prompt
-        )
-        assert "preserve that helper's nearest input surface in tests" in prompt
-        assert (
-            "prefer test inputs like `snap_gross_income` plus the applicable deduction symbols"
-            in prompt
-        )
-        assert (
-            "creating near-duplicate locals such as `snap_excess_medical_deduction`"
-            in prompt
-        )
-        assert "make it a real rate-valued helper" in prompt
-        assert "encode `50 percent` as `0.5` and `130 percent` as `1.3`" in prompt
-        assert (
-            "do not collapse the principal output to an unconditional `true` or `false`"
-            in prompt
-        )
-        assert (
-            'encode the SNAP category gate directly as `snap_utility_allowance_type == "SUA"` or `"BUA"`'
-            in prompt
-        )
-        assert (
-            "use the previous month (for example `2025-09` for a rule that starts `from 2025-10-01`)"
-            in prompt
-        )
-        assert "should not have a test like `period: 2025-10` expecting `0`" in prompt
-        assert (
-            "do not invent a `pre_effective_*` zero-output test unless `./source.txt` itself says the earlier period value was zero or unavailable"
-            in prompt
-        )
 
     def test_build_eval_prompt_includes_resolved_canonical_concept_guidance(
         self, tmp_path
     ):
-        rac_root = tmp_path / "rac-us-co"
-        concept_file = rac_root / "statute" / "crs" / "26-2-703" / "12.rac"
+        policy_repo_root = tmp_path / "rules-us-co"
+        concept_file = policy_repo_root / "statute" / "crs" / "26-2-703" / "12.yaml"
         concept_file.parent.mkdir(parents=True, exist_ok=True)
         concept_file.write_text(
-            '''
-"""
-C.R.S. § 26-2-703(12)
-Definitions
+            """format: rulespec/v1
+module:
+  summary: |-
+    C.R.S. § 26-2-703(12)
+    Definitions
 
-"Individual responsibility contract" or "IRC" means the contract entered into by the participant and the county department pursuant to section 26-2-708.
-"""
-
-is_individual_responsibility_contract:
+    "Individual responsibility contract" or "IRC" means the contract entered into by the participant and the county department pursuant to section 26-2-708.
+rules:
+  - name: is_individual_responsibility_contract
+    kind: input
     entity: Person
-    period: Month
     dtype: Boolean
-'''
+    period: Month
+"""
         )
 
         workspace = prepare_eval_workspace(
@@ -4222,7 +3633,7 @@ is_individual_responsibility_contract:
             runner=parse_runner_spec("openai:gpt-5.4"),
             output_root=tmp_path / "out",
             source_text="The participant must comply with the individual responsibility contract.",
-            rac_path=rac_root,
+            axiom_rules_path=policy_repo_root,
             mode="cold",
             extra_context_paths=[],
         )
@@ -4232,7 +3643,7 @@ is_individual_responsibility_contract:
             "cold",
             workspace,
             workspace.context_files,
-            target_file_name="example.rac",
+            target_file_name="example.yaml",
             include_tests=True,
             runner_backend="openai",
         )
@@ -4254,7 +3665,7 @@ is_individual_responsibility_contract:
             runner=parse_runner_spec("codex:gpt-5.4"),
             output_root=tmp_path / "out",
             source_text='The term "qualifying child" means a qualifying child as defined in section 152(c).',
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -4264,7 +3675,7 @@ is_individual_responsibility_contract:
             "cold",
             workspace,
             [],
-            target_file_name="24-c.rac",
+            target_file_name="24-c.yaml",
             include_tests=True,
         )
 
@@ -4273,38 +3684,7 @@ is_individual_responsibility_contract:
             in prompt
         )
         assert "says a value is determined `in accordance with section X`" in prompt
-        assert "statute/7/2014/e#snap_net_income" in prompt
-        assert "snap_household_income_under_2014_d_and_e" in prompt
-        assert (
-            "author it as an amendment layer targeting those canonical symbols"
-            in prompt
-        )
-        assert "emit dated `amend` blocks for those canonical symbols" in prompt
-        assert (
-            "Do not import a canonical output like `snap_one_person_thrifty_food_plan_cost`"
-            in prompt
-        )
-        assert "Wrong for annual parameter tables" in prompt
-        assert (
-            "do not create documentary scalar constants like `snap_household_size_four: 4`"
-            in prompt
-        )
-        assert "Right pattern for the USDA SNAP FY2026 table" in prompt
-        assert "amend snap_one_person_thrifty_food_plan_cost:" in prompt
-        assert "amend snap_minimum_allotment:" in prompt
-        assert "amend snap_maximum_allotment:" in prompt
-        assert "after the 15th day of a month" in prompt
-        assert "do not decompose it into separate numeric `*_day`" in prompt
-        assert "Do not add a documentary scalar like `*_cutoff_day: 15`" in prompt
-        assert (
-            "include at least one `.rac.test` case that exercises the positive non-zero path"
-            in prompt
-        )
-        assert (
-            "Do not write only zero-output tests for a thresholded deduction" in prompt
-        )
-        assert "still emit the unresolved import path" in prompt
-        assert "otherwise keep the helper local to this leaf" in prompt
+        assert "do not invent `import` statements or `imports:` blocks" in prompt
 
     def test_build_eval_prompt_discourages_fabricated_same_instrument_imports(
         self, tmp_path
@@ -4314,7 +3694,7 @@ is_individual_responsibility_contract:
             runner=parse_runner_spec("openai:gpt-5.4"),
             output_root=tmp_path / "out",
             source_text="(a) except where paragraph (b) applies, £81.50 per week if paragraph 1(1)(a), (b) or (c) of Part I of Schedule I is satisfied.",
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -4324,14 +3704,14 @@ is_individual_responsibility_contract:
             "cold",
             workspace,
             [],
-            target_file_name="uksi-2002-1792-regulation-6-5-a.rac",
+            target_file_name="uksi-2002-1792-regulation-6-5-a.yaml",
             include_tests=True,
             runner_backend="openai",
         )
 
-        assert "do not fabricate sibling-file imports" in prompt
+        assert "Do not fabricate sibling-file imports" in prompt
         assert "do not guess" in prompt
-        assert "instead of inventing `import` statements or `imports:` blocks" in prompt
+        assert "do not invent `import` statements or `imports:` blocks" in prompt
 
     def test_build_eval_prompt_for_openai_inlines_source_text(self, tmp_path):
         workspace = prepare_eval_workspace(
@@ -4339,7 +3719,7 @@ is_individual_responsibility_contract:
             runner=parse_runner_spec("openai:gpt-5.4"),
             output_root=tmp_path / "out",
             source_text="Editorial note: current text valid from 2025-04-07.\n26.05",
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -4349,7 +3729,7 @@ is_individual_responsibility_contract:
             "cold",
             workspace,
             [],
-            target_file_name="uksi-2006-965-regulation-2.rac",
+            target_file_name="uksi-2006-965-regulation-2.yaml",
             include_tests=True,
             runner_backend="openai",
         )
@@ -4370,7 +3750,7 @@ is_individual_responsibility_contract:
                 "Applications received will be certified for six (6) consecutive months "
                 "beginning the first month the assistance unit is found eligible for basic cash assistance."
             ),
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -4380,12 +3760,12 @@ is_individual_responsibility_contract:
             "cold",
             workspace,
             [],
-            target_file_name="9-CCR-2503-6-3.606.1-E.rac",
+            target_file_name="9-CCR-2503-6-3.606.1-E.yaml",
             include_tests=True,
             runner_backend="codex",
         )
 
-        assert "from 0001-01-01:" in prompt
+        assert "effective_from: '0001-01-01'" in prompt
         assert "harness-only fallback" in prompt
 
 
@@ -4397,8 +3777,8 @@ class TestOpenAIEvalRequest:
         ok_response.status_code = 200
 
         with (
-            patch("autorac.harness.evals.requests.post") as mock_post,
-            patch("autorac.harness.evals.time.sleep"),
+            patch("axiom_encode.harness.evals.requests.post") as mock_post,
+            patch("axiom_encode.harness.evals.time.sleep"),
         ):
             mock_post.side_effect = [error_response, ok_response]
 
@@ -4415,8 +3795,8 @@ class TestOpenAIEvalRequest:
         ok_response.status_code = 200
 
         with (
-            patch("autorac.harness.evals.requests.post") as mock_post,
-            patch("autorac.harness.evals.time.sleep"),
+            patch("axiom_encode.harness.evals.requests.post") as mock_post,
+            patch("axiom_encode.harness.evals.time.sleep"),
         ):
             mock_post.side_effect = [
                 requests.exceptions.ReadTimeout("timed out"),
@@ -4477,7 +3857,7 @@ cases:
         manifest = load_eval_suite_manifest(manifest_file)
 
         with patch(
-            "autorac.harness.evals._fetch_legislation_gov_uk_document",
+            "axiom_encode.harness.evals._fetch_legislation_gov_uk_document",
             return_value=FetchedLegislationGovUkDocument(
                 source_id="uksi/2013/376/2025-04-07",
                 content_url="https://www.legislation.gov.uk/uksi/2013/376/2025-04-07",
@@ -4489,7 +3869,7 @@ cases:
                 run_eval_suite(
                     manifest=manifest,
                     output_root=tmp_path / "out",
-                    rac_path=tmp_path / "rac",
+                    axiom_rules_path=tmp_path / "axiom-rules",
                     atlas_path=None,
                 )
 
@@ -4542,7 +3922,7 @@ cases:
 
         with (
             patch(
-                "autorac.harness.evals._fetch_legislation_gov_uk_document",
+                "axiom_encode.harness.evals._fetch_legislation_gov_uk_document",
                 return_value=FetchedLegislationGovUkDocument(
                     source_id="uksi/2013/376/2025-04-07",
                     content_url="https://www.legislation.gov.uk/uksi/2013/376/2025-04-07",
@@ -4551,14 +3931,14 @@ cases:
                 ),
             ),
             patch(
-                "autorac.harness.evals.run_legislation_gov_uk_section_eval",
+                "axiom_encode.harness.evals.run_legislation_gov_uk_section_eval",
                 side_effect=[[first], [second]],
             ),
         ):
             results = run_eval_suite(
                 manifest=manifest,
                 output_root=tmp_path / "out",
-                rac_path=tmp_path / "rac",
+                axiom_rules_path=tmp_path / "axiom-rules",
                 atlas_path=None,
             )
 
@@ -4616,7 +3996,7 @@ cases:
 
         assert manifest.cases[0].table_row_query == "single claimant aged under 25"
 
-    def test_load_eval_suite_manifest_supports_policyengine_rac_var_hint(
+    def test_load_eval_suite_manifest_supports_policyengine_rule_hint(
         self, tmp_path
     ):
         manifest_file = tmp_path / "uk-expanded.yaml"
@@ -4632,7 +4012,7 @@ cases:
     source_file: ./source.txt
     oracle: policyengine
     policyengine_country: uk
-    policyengine_rac_var_hint: uc_standard_allowance_single_claimant_aged_under_25
+    policyengine_rule_hint: uc_standard_allowance_single_claimant_aged_under_25
             """.strip()
         )
         (tmp_path / "source.txt").write_text("authoritative row text")
@@ -4640,7 +4020,7 @@ cases:
         manifest = load_eval_suite_manifest(manifest_file)
 
         assert (
-            manifest.cases[0].policyengine_rac_var_hint
+            manifest.cases[0].policyengine_rule_hint
             == "uc_standard_allowance_single_claimant_aged_under_25"
         )
 
@@ -4692,22 +4072,22 @@ cases:
 
         with (
             patch(
-                "autorac.harness.evals._validate_uk_shared_scalar_sibling_sets",
+                "axiom_encode.harness.evals._validate_uk_shared_scalar_sibling_sets",
                 return_value=None,
             ),
             patch(
-                "autorac.harness.evals.run_legislation_gov_uk_section_eval",
+                "axiom_encode.harness.evals.run_legislation_gov_uk_section_eval",
                 return_value=[uk_result],
             ) as mock_uk,
             patch(
-                "autorac.harness.evals.run_source_eval",
+                "axiom_encode.harness.evals.run_source_eval",
                 return_value=[source_result],
             ) as mock_source,
         ):
             results = run_eval_suite(
                 manifest=manifest,
                 output_root=tmp_path / "out",
-                rac_path=tmp_path / "rac",
+                axiom_rules_path=tmp_path / "axiom-rules",
                 atlas_path=None,
             )
 
@@ -4737,18 +4117,18 @@ cases:
 
         with (
             patch(
-                "autorac.harness.evals._validate_uk_shared_scalar_sibling_sets",
+                "axiom_encode.harness.evals._validate_uk_shared_scalar_sibling_sets",
                 return_value=None,
             ),
             patch(
-                "autorac.harness.evals.run_legislation_gov_uk_section_eval",
+                "axiom_encode.harness.evals.run_legislation_gov_uk_section_eval",
                 return_value=[uk_result],
             ) as mock_uk,
         ):
             results = run_eval_suite(
                 manifest=manifest,
                 output_root=tmp_path / "out",
-                rac_path=tmp_path / "rac",
+                axiom_rules_path=tmp_path / "axiom-rules",
                 atlas_path=None,
             )
 
@@ -4779,18 +4159,18 @@ cases:
 
         with (
             patch(
-                "autorac.harness.evals._validate_uk_shared_scalar_sibling_sets",
+                "axiom_encode.harness.evals._validate_uk_shared_scalar_sibling_sets",
                 return_value=None,
             ),
             patch(
-                "autorac.harness.evals.run_legislation_gov_uk_section_eval",
+                "axiom_encode.harness.evals.run_legislation_gov_uk_section_eval",
                 return_value=[uk_result],
             ) as mock_uk,
         ):
             results = run_eval_suite(
                 manifest=manifest,
                 output_root=tmp_path / "out",
-                rac_path=tmp_path / "rac",
+                axiom_rules_path=tmp_path / "axiom-rules",
                 atlas_path=None,
             )
 
@@ -4818,24 +4198,24 @@ cases:
 
         with (
             patch(
-                "autorac.harness.evals._validate_uk_shared_scalar_sibling_sets",
+                "axiom_encode.harness.evals._validate_uk_shared_scalar_sibling_sets",
                 return_value=None,
             ),
             patch(
-                "autorac.harness.evals.run_legislation_gov_uk_section_eval",
+                "axiom_encode.harness.evals.run_legislation_gov_uk_section_eval",
                 return_value=[uk_result],
             ) as mock_uk,
         ):
             run_eval_suite(
                 manifest=manifest,
                 output_root=output_root,
-                rac_path=tmp_path / "rac",
+                axiom_rules_path=tmp_path / "axiom-rules",
                 atlas_path=None,
             )
 
         assert mock_uk.call_args.kwargs["fetch_cache_root"] == output_root
 
-    def test_run_eval_suite_passes_policyengine_rac_var_hint_to_source_runner(
+    def test_run_eval_suite_passes_policyengine_rule_hint_to_source_runner(
         self, tmp_path
     ):
         manifest_file = tmp_path / "suite.yaml"
@@ -4851,7 +4231,7 @@ cases:
     source_file: ./source.txt
     oracle: policyengine
     policyengine_country: uk
-    policyengine_rac_var_hint: uc_standard_allowance_single_claimant_aged_under_25
+    policyengine_rule_hint: uc_standard_allowance_single_claimant_aged_under_25
             """.strip()
         )
         (tmp_path / "source.txt").write_text("authoritative row text")
@@ -4859,19 +4239,19 @@ cases:
         source_result = _fake_eval_result("openai-gpt-5.4", "uc-std-allowance-single")
 
         with patch(
-            "autorac.harness.evals.run_source_eval",
+            "axiom_encode.harness.evals.run_source_eval",
             return_value=[source_result],
         ) as mock_source:
             results = run_eval_suite(
                 manifest=manifest,
                 output_root=tmp_path / "out",
-                rac_path=tmp_path / "rac",
+                axiom_rules_path=tmp_path / "axiom-rules",
                 atlas_path=None,
             )
 
         assert results == [source_result]
         assert (
-            mock_source.call_args.kwargs["policyengine_rac_var_hint"]
+            mock_source.call_args.kwargs["policyengine_rule_hint"]
             == "uc_standard_allowance_single_claimant_aged_under_25"
         )
 
@@ -4900,22 +4280,22 @@ cases:
 
         with (
             patch(
-                "autorac.harness.evals._validate_uk_shared_scalar_sibling_sets",
+                "axiom_encode.harness.evals._validate_uk_shared_scalar_sibling_sets",
                 return_value=None,
             ),
             patch(
-                "autorac.harness.evals.run_legislation_gov_uk_section_eval",
+                "axiom_encode.harness.evals.run_legislation_gov_uk_section_eval",
                 side_effect=RuntimeError("502 Server Error"),
             ),
             patch(
-                "autorac.harness.evals.run_source_eval",
+                "axiom_encode.harness.evals.run_source_eval",
                 return_value=[source_result],
             ),
         ):
             results = run_eval_suite(
                 manifest=manifest,
                 output_root=tmp_path / "out",
-                rac_path=tmp_path / "rac",
+                axiom_rules_path=tmp_path / "axiom-rules",
                 atlas_path=None,
             )
 
@@ -4953,22 +4333,22 @@ cases:
 
         with (
             patch(
-                "autorac.harness.evals._validate_uk_shared_scalar_sibling_sets",
+                "axiom_encode.harness.evals._validate_uk_shared_scalar_sibling_sets",
                 return_value=None,
             ),
             patch(
-                "autorac.harness.evals.run_legislation_gov_uk_section_eval",
+                "axiom_encode.harness.evals.run_legislation_gov_uk_section_eval",
                 side_effect=RuntimeError("502 Server Error"),
             ),
             patch(
-                "autorac.harness.evals.run_source_eval",
+                "axiom_encode.harness.evals.run_source_eval",
                 return_value=[source_result],
             ),
         ):
             run_eval_suite(
                 manifest=manifest,
                 output_root=output_root,
-                rac_path=tmp_path / "rac",
+                axiom_rules_path=tmp_path / "axiom-rules",
                 atlas_path=None,
             )
 
@@ -5014,18 +4394,18 @@ cases:
 
         with (
             patch(
-                "autorac.harness.evals.run_source_eval",
+                "axiom_encode.harness.evals.run_source_eval",
                 side_effect=fake_run_source_eval,
             ),
             patch(
-                "autorac.harness.evals._validate_uk_shared_scalar_sibling_sets",
+                "axiom_encode.harness.evals._validate_uk_shared_scalar_sibling_sets",
                 return_value=None,
             ),
         ):
             run_eval_suite(
                 manifest=manifest,
                 output_root=output_root,
-                rac_path=tmp_path / "rac",
+                axiom_rules_path=tmp_path / "axiom-rules",
                 atlas_path=None,
             )
 
@@ -5044,7 +4424,7 @@ cases:
         assert "active_case" not in final_state
 
     def test_run_eval_suite_routes_source_case_to_enclosing_policy_repo(self, tmp_path):
-        policy_repo = tmp_path / "rac-us-tn"
+        policy_repo = tmp_path / "rules-us-tn"
         source_file = (
             policy_repo
             / "sources"
@@ -5056,8 +4436,8 @@ cases:
         )
         source_file.parent.mkdir(parents=True, exist_ok=True)
         source_file.write_text("Tennessee source text")
-        runtime_rac = tmp_path / "rac"
-        runtime_rac.mkdir()
+        runtime_axiom_rules = tmp_path / "axiom-rules"
+        runtime_axiom_rules.mkdir()
         output_root = tmp_path / "out"
 
         manifest = EvalSuiteManifest(
@@ -5081,29 +4461,29 @@ cases:
 
         with (
             patch(
-                "autorac.harness.evals.run_source_eval",
+                "axiom_encode.harness.evals.run_source_eval",
                 return_value=[source_result],
             ) as mock_run_source_eval,
             patch(
-                "autorac.harness.evals._validate_uk_shared_scalar_sibling_sets",
+                "axiom_encode.harness.evals._validate_uk_shared_scalar_sibling_sets",
                 return_value=None,
             ),
         ):
             run_eval_suite(
                 manifest=manifest,
                 output_root=output_root,
-                rac_path=runtime_rac,
+                axiom_rules_path=runtime_axiom_rules,
                 atlas_path=None,
             )
 
         assert mock_run_source_eval.call_args.kwargs["policy_path"] == policy_repo
         assert mock_run_source_eval.call_args.kwargs["source_path"] == source_file
-        assert mock_run_source_eval.call_args.kwargs["runtime_rac_path"] == runtime_rac
+        assert mock_run_source_eval.call_args.kwargs["runtime_axiom_rules_path"] == runtime_axiom_rules
 
     def test_run_eval_suite_uses_akn_backed_source_text(self, tmp_path, monkeypatch):
         arch_root = tmp_path / "arch"
-        monkeypatch.setenv("AUTORAC_ARCH_ROOT", str(arch_root))
-        policy_repo = tmp_path / "rac-us-tx"
+        monkeypatch.setenv("AXIOM_ENCODE_EVAL_ARCHIVE_ROOT", str(arch_root))
+        policy_repo = tmp_path / "rules-us-tx"
         source_file = (
             policy_repo
             / "sources"
@@ -5152,8 +4532,8 @@ cases:
             "    target: cfr/7/273.9/d/6/iii#snap_standard_utility_allowance\n"
             "    jurisdiction: TX\n"
         )
-        runtime_rac = tmp_path / "rac"
-        runtime_rac.mkdir()
+        runtime_axiom_rules = tmp_path / "axiom-rules"
+        runtime_axiom_rules.mkdir()
         output_root = tmp_path / "out"
 
         manifest = EvalSuiteManifest(
@@ -5177,18 +4557,18 @@ cases:
 
         with (
             patch(
-                "autorac.harness.evals.run_source_eval",
+                "axiom_encode.harness.evals.run_source_eval",
                 return_value=[source_result],
             ) as mock_run_source_eval,
             patch(
-                "autorac.harness.evals._validate_uk_shared_scalar_sibling_sets",
+                "axiom_encode.harness.evals._validate_uk_shared_scalar_sibling_sets",
                 return_value=None,
             ),
         ):
             run_eval_suite(
                 manifest=manifest,
                 output_root=output_root,
-                rac_path=runtime_rac,
+                axiom_rules_path=runtime_axiom_rules,
                 atlas_path=None,
             )
 
@@ -5217,13 +4597,13 @@ cases:
         source_result = _fake_eval_result("openai-gpt-5.4", "co-tanf-f")
 
         with patch(
-            "autorac.harness.evals.run_source_eval",
+            "axiom_encode.harness.evals.run_source_eval",
             side_effect=[RuntimeError("stream disconnected"), [source_result]],
         ) as mock_source:
             results = run_eval_suite(
                 manifest=manifest,
                 output_root=tmp_path / "out",
-                rac_path=tmp_path / "rac",
+                axiom_rules_path=tmp_path / "axiom-rules",
                 atlas_path=None,
             )
 
@@ -5252,13 +4632,13 @@ cases:
         source_result = _fake_eval_result("openai-gpt-5.4", "co-tanf-f")
 
         with patch(
-            "autorac.harness.evals.run_source_eval",
+            "axiom_encode.harness.evals.run_source_eval",
             side_effect=[[failed], [source_result]],
         ) as mock_source:
             results = run_eval_suite(
                 manifest=manifest,
                 output_root=tmp_path / "out",
-                rac_path=tmp_path / "rac",
+                axiom_rules_path=tmp_path / "axiom-rules",
                 atlas_path=None,
             )
 
@@ -5288,13 +4668,13 @@ cases:
         )
 
         with patch(
-            "autorac.harness.evals.run_source_eval",
+            "axiom_encode.harness.evals.run_source_eval",
             return_value=[failed],
         ) as mock_source:
             results = run_eval_suite(
                 manifest=manifest,
                 output_root=tmp_path / "out",
-                rac_path=tmp_path / "rac",
+                axiom_rules_path=tmp_path / "axiom-rules",
                 atlas_path=None,
             )
 
@@ -5333,18 +4713,18 @@ cases:
 
         with (
             patch(
-                "autorac.harness.evals.run_source_eval",
+                "axiom_encode.harness.evals.run_source_eval",
                 side_effect=[[usage_limited], [second]],
             ) as mock_source,
             patch(
-                "autorac.harness.evals._validate_uk_shared_scalar_sibling_sets",
+                "axiom_encode.harness.evals._validate_uk_shared_scalar_sibling_sets",
                 return_value=None,
             ),
         ):
             results = run_eval_suite(
                 manifest=manifest,
                 output_root=output_root,
-                rac_path=tmp_path / "rac",
+                axiom_rules_path=tmp_path / "axiom-rules",
                 atlas_path=None,
             )
 
@@ -5384,18 +4764,18 @@ cases:
 
         with (
             patch(
-                "autorac.harness.evals.run_source_eval",
+                "axiom_encode.harness.evals.run_source_eval",
                 side_effect=[[timed_out], [recovered]],
             ) as mock_source,
             patch(
-                "autorac.harness.evals._validate_uk_shared_scalar_sibling_sets",
+                "axiom_encode.harness.evals._validate_uk_shared_scalar_sibling_sets",
                 return_value=None,
             ),
         ):
             results = run_eval_suite(
                 manifest=manifest,
                 output_root=tmp_path / "out",
-                rac_path=tmp_path / "rac",
+                axiom_rules_path=tmp_path / "axiom-rules",
                 atlas_path=None,
             )
 
@@ -5462,18 +4842,18 @@ cases:
 
         with (
             patch(
-                "autorac.harness.evals.run_source_eval",
+                "axiom_encode.harness.evals.run_source_eval",
                 return_value=[second],
             ) as mock_source,
             patch(
-                "autorac.harness.evals._validate_uk_shared_scalar_sibling_sets",
+                "axiom_encode.harness.evals._validate_uk_shared_scalar_sibling_sets",
                 return_value=None,
             ),
         ):
             results = run_eval_suite(
                 manifest=manifest,
                 output_root=output_root,
-                rac_path=tmp_path / "rac",
+                axiom_rules_path=tmp_path / "axiom-rules",
                 atlas_path=None,
                 resume_existing=True,
             )
@@ -5498,7 +4878,7 @@ cases:
             assert len(manifest.cases) == 11
             assert all(case.oracle == "policyengine" for case in manifest.cases)
             assert all(case.policyengine_country == "uk" for case in manifest.cases)
-            assert all(case.policyengine_rac_var_hint for case in manifest.cases)
+            assert all(case.policyengine_rule_hint for case in manifest.cases)
 
     def test_repo_uk_policyengine_readiness_is_oracle_only(self):
         repo_root = Path(__file__).resolve().parents[1]
@@ -5511,7 +4891,7 @@ cases:
         assert manifest.gates.min_policyengine_pass_rate == 0.85
         assert all(case.oracle == "policyengine" for case in manifest.cases)
         assert all(case.policyengine_country == "uk" for case in manifest.cases)
-        assert all(case.policyengine_rac_var_hint for case in manifest.cases)
+        assert all(case.policyengine_rule_hint for case in manifest.cases)
 
     def test_repo_us_co_colorado_works_seed_manifest_loads_expected_cases(self):
         repo_root = Path(__file__).resolve().parents[1]
@@ -5536,29 +4916,29 @@ cases:
         assert manifest.cases[2].allow_context == [
             (
                 repo_root.parent
-                / "rac-us-co"
+                / "rules-us-co"
                 / "regulation"
                 / "9-CCR-2503-6"
                 / "3.606.1"
-                / "F.rac"
+                / "F.yaml"
             ).resolve()
         ]
         assert manifest.cases[4].allow_context == [
             (
                 repo_root.parent
-                / "rac-us-co"
+                / "rules-us-co"
                 / "regulation"
                 / "9-CCR-2503-6"
                 / "3.606.1"
-                / "F.rac"
+                / "F.yaml"
             ).resolve(),
             (
                 repo_root.parent
-                / "rac-us-co"
+                / "rules-us-co"
                 / "regulation"
                 / "9-CCR-2503-6"
                 / "3.606.1"
-                / "I.rac"
+                / "I.yaml"
             ).resolve(),
         ]
 
@@ -5586,29 +4966,29 @@ cases:
         assert manifest.cases[2].allow_context == [
             (
                 repo_root.parent
-                / "rac-us-co"
+                / "rules-us-co"
                 / "regulation"
                 / "9-CCR-2503-6"
                 / "3.606.1"
-                / "F.rac"
+                / "F.yaml"
             ).resolve()
         ]
         assert manifest.cases[5].allow_context == [
             (
                 repo_root.parent
-                / "rac-us-co"
+                / "rules-us-co"
                 / "regulation"
                 / "9-CCR-2503-6"
                 / "3.606.1"
-                / "F.rac"
+                / "F.yaml"
             ).resolve(),
             (
                 repo_root.parent
-                / "rac-us-co"
+                / "rules-us-co"
                 / "regulation"
                 / "9-CCR-2503-6"
                 / "3.606.1"
-                / "I.rac"
+                / "I.yaml"
             ).resolve(),
         ]
 
@@ -5635,29 +5015,29 @@ cases:
         assert manifest.cases[1].allow_context == [
             (
                 repo_root.parent
-                / "rac-us-co"
+                / "rules-us-co"
                 / "regulation"
                 / "9-CCR-2503-6"
                 / "3.606.1"
-                / "F.rac"
+                / "F.yaml"
             ).resolve()
         ]
         assert manifest.cases[4].allow_context == [
             (
                 repo_root.parent
-                / "rac-us-co"
+                / "rules-us-co"
                 / "regulation"
                 / "9-CCR-2503-6"
                 / "3.606.1"
-                / "F.rac"
+                / "F.yaml"
             ).resolve(),
             (
                 repo_root.parent
-                / "rac-us-co"
+                / "rules-us-co"
                 / "regulation"
                 / "9-CCR-2503-6"
                 / "3.606.1"
-                / "I.rac"
+                / "I.yaml"
             ).resolve(),
         ]
 
@@ -5682,19 +5062,19 @@ cases:
         assert manifest.cases[0].allow_context == [
             (
                 repo_root.parent
-                / "rac-us-co"
+                / "rules-us-co"
                 / "regulation"
                 / "9-CCR-2503-6"
                 / "3.606.1"
-                / "F.rac"
+                / "F.yaml"
             ).resolve(),
             (
                 repo_root.parent
-                / "rac-us-co"
+                / "rules-us-co"
                 / "regulation"
                 / "9-CCR-2503-6"
                 / "3.606.1"
-                / "I.rac"
+                / "I.yaml"
             ).resolve(),
         ]
 
@@ -5719,11 +5099,11 @@ cases:
         assert manifest.cases[0].allow_context == [
             (
                 repo_root.parent
-                / "rac-us-co"
+                / "rules-us-co"
                 / "regulation"
                 / "9-CCR-2503-6"
                 / "3.606.1"
-                / "F.rac"
+                / "F.yaml"
             ).resolve()
         ]
 
@@ -5752,29 +5132,29 @@ cases:
         assert manifest.cases[0].allow_context == [
             (
                 repo_root.parent
-                / "rac-us-co"
+                / "rules-us-co"
                 / "regulation"
                 / "9-CCR-2503-6"
                 / "3.606.1"
-                / "F.rac"
+                / "F.yaml"
             ).resolve()
         ]
         assert manifest.cases[1].allow_context == [
             (
                 repo_root.parent
-                / "rac-us-co"
+                / "rules-us-co"
                 / "regulation"
                 / "9-CCR-2503-6"
                 / "3.606.1"
-                / "F.rac"
+                / "F.yaml"
             ).resolve(),
             (
                 repo_root.parent
-                / "rac-us-co"
+                / "rules-us-co"
                 / "regulation"
                 / "9-CCR-2503-6"
                 / "3.606.1"
-                / "I.rac"
+                / "I.yaml"
             ).resolve(),
         ]
 
@@ -5805,25 +5185,25 @@ cases:
         ]
         assert manifest.cases[0].allow_context == [
             (
-                repo_root.parent / "rac-us" / "statute" / "7" / "2014" / "e.rac"
+                repo_root.parent / "rules-us" / "statute" / "7" / "2014" / "e.yaml"
             ).resolve(),
             (
-                repo_root.parent / "rac-us" / "statute" / "7" / "2014" / "g" / "1.rac"
+                repo_root.parent / "rules-us" / "statute" / "7" / "2014" / "g" / "1.yaml"
             ).resolve(),
         ]
         assert manifest.cases[1].allow_context == [
-            (repo_root.parent / "rac-us" / "statute" / "7" / "2017" / "a.rac").resolve()
+            (repo_root.parent / "rules-us" / "statute" / "7" / "2017" / "a.yaml").resolve()
         ]
         assert manifest.cases[2].allow_context == [
             (
-                repo_root.parent / "rac-us" / "statute" / "7" / "2017" / "a.rac"
+                repo_root.parent / "rules-us" / "statute" / "7" / "2017" / "a.yaml"
             ).resolve(),
             (
-                repo_root.parent / "rac-us" / "statute" / "7" / "2017" / "c" / "1.rac"
+                repo_root.parent / "rules-us" / "statute" / "7" / "2017" / "c" / "1.yaml"
             ).resolve(),
         ]
         assert manifest.cases[3].allow_context == [
-            (repo_root.parent / "rac-us" / "statute" / "7" / "2017" / "a.rac").resolve()
+            (repo_root.parent / "rules-us" / "statute" / "7" / "2017" / "a.yaml").resolve()
         ]
 
     def test_repo_us_snap_federal_c3_repair_manifest_loads_expected_case(
@@ -5852,7 +5232,7 @@ cases:
             case.source_file
             == (
                 repo_root.parent
-                / "rac-us"
+                / "rules-us"
                 / "sources"
                 / "slices"
                 / "7-USC"
@@ -5863,10 +5243,10 @@ cases:
         )
         assert case.allow_context == [
             (
-                repo_root.parent / "rac-us" / "statute" / "7" / "2017" / "a.rac"
+                repo_root.parent / "rules-us" / "statute" / "7" / "2017" / "a.yaml"
             ).resolve(),
             (
-                repo_root.parent / "rac-us" / "statute" / "7" / "2017" / "c" / "1.rac"
+                repo_root.parent / "rules-us" / "statute" / "7" / "2017" / "c" / "1.yaml"
             ).resolve(),
         ]
 
@@ -5896,7 +5276,7 @@ cases:
             case.source_file
             == (
                 repo_root.parent
-                / "rac-us"
+                / "rules-us"
                 / "sources"
                 / "slices"
                 / "usda"
@@ -5906,7 +5286,7 @@ cases:
             ).resolve()
         )
         assert case.allow_context == [
-            (repo_root.parent / "rac-us" / "statute" / "7" / "2017" / "a.rac").resolve()
+            (repo_root.parent / "rules-us" / "statute" / "7" / "2017" / "a.yaml").resolve()
         ]
 
     def test_repo_us_snap_asset_test_refresh_manifest_loads_expected_case(self):
@@ -5933,7 +5313,7 @@ cases:
             case.source_file
             == (
                 repo_root.parent
-                / "rac-us"
+                / "rules-us"
                 / "sources"
                 / "slices"
                 / "7-USC"
@@ -5944,12 +5324,12 @@ cases:
         )
         assert case.allow_context == [
             (
-                repo_root.parent / "rac-us" / "usda" / "snap" / "fy-2026-cola" / "2.rac"
+                repo_root.parent / "rules-us" / "usda" / "snap" / "fy-2026-cola" / "2.yaml"
             ).resolve()
         ]
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
-        assert case.policyengine_rac_var_hint == "meets_snap_asset_test"
+        assert case.policyengine_rule_hint == "meets_snap_asset_test"
 
     def test_repo_us_snap_asset_test_current_effective_refresh_manifest_loads_expected_case(
         self,
@@ -5979,7 +5359,7 @@ cases:
             case.source_file
             == (
                 repo_root.parent
-                / "rac-us"
+                / "rules-us"
                 / "sources"
                 / "slices"
                 / "usda"
@@ -5990,12 +5370,12 @@ cases:
         )
         assert case.allow_context == [
             (
-                repo_root.parent / "rac-us" / "statute" / "7" / "2014" / "g" / "1.rac"
+                repo_root.parent / "rules-us" / "statute" / "7" / "2014" / "g" / "1.yaml"
             ).resolve()
         ]
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
-        assert case.policyengine_rac_var_hint == "meets_snap_asset_test"
+        assert case.policyengine_rule_hint == "meets_snap_asset_test"
 
     def test_repo_us_snap_eligibility_refresh_manifest_loads_expected_case(self):
         repo_root = Path(__file__).resolve().parents[1]
@@ -6021,7 +5401,7 @@ cases:
             case.source_file
             == (
                 repo_root.parent
-                / "rac-us"
+                / "rules-us"
                 / "sources"
                 / "slices"
                 / "7-USC"
@@ -6032,15 +5412,15 @@ cases:
         )
         assert case.allow_context == [
             (
-                repo_root.parent / "rac-us" / "statute" / "7" / "2014" / "c.rac"
+                repo_root.parent / "rules-us" / "statute" / "7" / "2014" / "c.yaml"
             ).resolve(),
             (
-                repo_root.parent / "rac-us" / "statute" / "7" / "2014" / "g" / "1.rac"
+                repo_root.parent / "rules-us" / "statute" / "7" / "2014" / "g" / "1.yaml"
             ).resolve(),
         ]
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
-        assert case.policyengine_rac_var_hint == "is_snap_eligible"
+        assert case.policyengine_rule_hint == "is_snap_eligible"
 
     def test_repo_us_snap_earned_income_deduction_refresh_manifest_loads_expected_case(
         self,
@@ -6064,7 +5444,7 @@ cases:
             case.source_file
             == (
                 repo_root.parent
-                / "rac-us"
+                / "rules-us"
                 / "sources"
                 / "slices"
                 / "7-USC"
@@ -6076,7 +5456,7 @@ cases:
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
-        assert case.policyengine_rac_var_hint == "snap_earned_income_deduction"
+        assert case.policyengine_rule_hint == "snap_earned_income_deduction"
 
     def test_repo_us_snap_net_income_pre_shelter_refresh_manifest_loads_expected_case(
         self,
@@ -6098,7 +5478,7 @@ cases:
             case.source_file
             == (
                 repo_root.parent
-                / "rac-us"
+                / "rules-us"
                 / "sources"
                 / "slices"
                 / "7-USC"
@@ -6110,7 +5490,7 @@ cases:
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
-        assert case.policyengine_rac_var_hint == "snap_net_income_pre_shelter"
+        assert case.policyengine_rule_hint == "snap_net_income_pre_shelter"
 
     def test_repo_us_snap_nc_standard_utility_allowance_refresh_manifest_loads_expected_case(
         self,
@@ -6137,7 +5517,7 @@ cases:
             case.source_file
             == (
                 repo_root.parent
-                / "rac-us-nc"
+                / "rules-us-nc"
                 / "sources"
                 / "slices"
                 / "ncdhhs"
@@ -6150,7 +5530,7 @@ cases:
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
-        assert case.policyengine_rac_var_hint == "snap_standard_utility_allowance"
+        assert case.policyengine_rule_hint == "snap_standard_utility_allowance"
 
     def test_repo_us_snap_nc_limited_utility_allowance_refresh_manifest_loads_expected_case(
         self,
@@ -6177,7 +5557,7 @@ cases:
             case.source_file
             == (
                 repo_root.parent
-                / "rac-us-nc"
+                / "rules-us-nc"
                 / "sources"
                 / "slices"
                 / "ncdhhs"
@@ -6190,7 +5570,7 @@ cases:
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
-        assert case.policyengine_rac_var_hint == "snap_limited_utility_allowance"
+        assert case.policyengine_rule_hint == "snap_limited_utility_allowance"
 
     def test_repo_us_snap_nc_individual_utility_allowance_refresh_manifest_loads_expected_case(
         self,
@@ -6219,7 +5599,7 @@ cases:
             case.source_file
             == (
                 repo_root.parent
-                / "rac-us-nc"
+                / "rules-us-nc"
                 / "sources"
                 / "slices"
                 / "ncdhhs"
@@ -6232,7 +5612,7 @@ cases:
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
-        assert case.policyengine_rac_var_hint == "snap_individual_utility_allowance"
+        assert case.policyengine_rule_hint == "snap_individual_utility_allowance"
 
     def test_repo_us_snap_tn_standard_utility_allowance_refresh_manifest_loads_expected_case(
         self,
@@ -6259,7 +5639,7 @@ cases:
             case.source_file
             == (
                 repo_root.parent
-                / "rac-us-tn"
+                / "rules-us-tn"
                 / "sources"
                 / "slices"
                 / "tenncare"
@@ -6271,7 +5651,7 @@ cases:
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
-        assert case.policyengine_rac_var_hint == "snap_standard_utility_allowance"
+        assert case.policyengine_rule_hint == "snap_standard_utility_allowance"
 
     def test_repo_us_snap_tn_limited_utility_allowance_refresh_manifest_loads_expected_case(
         self,
@@ -6298,7 +5678,7 @@ cases:
             case.source_file
             == (
                 repo_root.parent
-                / "rac-us-tn"
+                / "rules-us-tn"
                 / "sources"
                 / "slices"
                 / "tenncare"
@@ -6310,7 +5690,7 @@ cases:
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
-        assert case.policyengine_rac_var_hint == "snap_limited_utility_allowance"
+        assert case.policyengine_rule_hint == "snap_limited_utility_allowance"
 
     def test_repo_us_snap_tn_individual_utility_allowance_refresh_manifest_loads_expected_case(
         self,
@@ -6337,7 +5717,7 @@ cases:
             case.source_file
             == (
                 repo_root.parent
-                / "rac-us-tn"
+                / "rules-us-tn"
                 / "sources"
                 / "slices"
                 / "tenncare"
@@ -6349,7 +5729,7 @@ cases:
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
-        assert case.policyengine_rac_var_hint == "snap_individual_utility_allowance"
+        assert case.policyengine_rule_hint == "snap_individual_utility_allowance"
 
     def test_repo_us_snap_tn_child_support_deduction_option_refresh_manifest_loads_expected_case(
         self,
@@ -6376,7 +5756,7 @@ cases:
             case.source_file
             == (
                 repo_root.parent
-                / "rac-us-tn"
+                / "rules-us-tn"
                 / "sources"
                 / "slices"
                 / "tdhs"
@@ -6389,7 +5769,7 @@ cases:
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
         assert (
-            case.policyengine_rac_var_hint == "snap_state_uses_child_support_deduction"
+            case.policyengine_rule_hint == "snap_state_uses_child_support_deduction"
         )
 
     def test_repo_us_snap_tn_self_employment_expense_option_refresh_manifest_loads_expected_case(
@@ -6417,7 +5797,7 @@ cases:
             case.source_file
             == (
                 repo_root.parent
-                / "rac-us-tn"
+                / "rules-us-tn"
                 / "sources"
                 / "slices"
                 / "tdhs"
@@ -6430,7 +5810,7 @@ cases:
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
         assert (
-            case.policyengine_rac_var_hint
+            case.policyengine_rule_hint
             == "snap_self_employment_expense_based_deduction_applies"
         )
 
@@ -6459,7 +5839,7 @@ cases:
             case.source_file
             == (
                 repo_root.parent
-                / "rac-us-ca"
+                / "rules-us-ca"
                 / "sources"
                 / "slices"
                 / "cdss"
@@ -6472,7 +5852,7 @@ cases:
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
         assert (
-            case.policyengine_rac_var_hint
+            case.policyengine_rule_hint
             == "snap_self_employment_expense_based_deduction_applies"
         )
 
@@ -6501,7 +5881,7 @@ cases:
             case.source_file
             == (
                 repo_root.parent
-                / "rac-us-ca"
+                / "rules-us-ca"
                 / "sources"
                 / "slices"
                 / "cdss"
@@ -6514,7 +5894,7 @@ cases:
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
         assert (
-            case.policyengine_rac_var_hint == "snap_state_uses_child_support_deduction"
+            case.policyengine_rule_hint == "snap_state_uses_child_support_deduction"
         )
 
     def test_repo_us_snap_co_self_employment_expense_option_refresh_manifest_loads_expected_case(
@@ -6542,7 +5922,7 @@ cases:
             case.source_file
             == (
                 repo_root.parent
-                / "rac-us-co"
+                / "rules-us-co"
                 / "sources"
                 / "slices"
                 / "cdhs"
@@ -6555,7 +5935,7 @@ cases:
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
         assert (
-            case.policyengine_rac_var_hint
+            case.policyengine_rule_hint
             == "snap_self_employment_expense_based_deduction_applies"
         )
 
@@ -6584,7 +5964,7 @@ cases:
             case.source_file
             == (
                 repo_root.parent
-                / "rac-us-co"
+                / "rules-us-co"
                 / "sources"
                 / "slices"
                 / "cdhs"
@@ -6597,7 +5977,7 @@ cases:
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
         assert (
-            case.policyengine_rac_var_hint == "snap_state_uses_child_support_deduction"
+            case.policyengine_rule_hint == "snap_state_uses_child_support_deduction"
         )
 
     def test_repo_us_snap_ny_individual_utility_allowance_refresh_manifest_loads_expected_case(
@@ -6625,7 +6005,7 @@ cases:
             case.source_file
             == (
                 repo_root.parent
-                / "rac-us-ny"
+                / "rules-us-ny"
                 / "sources"
                 / "slices"
                 / "otda"
@@ -6637,7 +6017,7 @@ cases:
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
-        assert case.policyengine_rac_var_hint == "snap_individual_utility_allowance"
+        assert case.policyengine_rule_hint == "snap_individual_utility_allowance"
 
     def test_repo_us_snap_ny_child_support_deduction_option_refresh_manifest_loads_expected_case(
         self,
@@ -6664,7 +6044,7 @@ cases:
             case.source_file
             == (
                 repo_root.parent
-                / "rac-us-ny"
+                / "rules-us-ny"
                 / "sources"
                 / "slices"
                 / "otda"
@@ -6677,7 +6057,7 @@ cases:
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
         assert (
-            case.policyengine_rac_var_hint == "snap_state_uses_child_support_deduction"
+            case.policyengine_rule_hint == "snap_state_uses_child_support_deduction"
         )
 
     def test_repo_us_snap_nc_child_support_deduction_option_refresh_manifest_loads_expected_case(
@@ -6708,7 +6088,7 @@ cases:
             case.source_file
             == (
                 repo_root.parent
-                / "rac-us-nc"
+                / "rules-us-nc"
                 / "sources"
                 / "slices"
                 / "ncdhhs"
@@ -6722,7 +6102,7 @@ cases:
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
         assert (
-            case.policyengine_rac_var_hint == "snap_state_uses_child_support_deduction"
+            case.policyengine_rule_hint == "snap_state_uses_child_support_deduction"
         )
 
     def test_repo_us_snap_nc_self_employment_expense_option_refresh_manifest_loads_expected_case(
@@ -6753,7 +6133,7 @@ cases:
             case.source_file
             == (
                 repo_root.parent
-                / "rac-us-nc"
+                / "rules-us-nc"
                 / "sources"
                 / "slices"
                 / "ncdhhs"
@@ -6767,7 +6147,7 @@ cases:
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
         assert (
-            case.policyengine_rac_var_hint
+            case.policyengine_rule_hint
             == "snap_self_employment_expense_based_deduction_applies"
         )
 
@@ -6796,7 +6176,7 @@ cases:
             case.source_file
             == (
                 repo_root.parent
-                / "rac-us-ny"
+                / "rules-us-ny"
                 / "sources"
                 / "slices"
                 / "otda"
@@ -6809,7 +6189,7 @@ cases:
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
         assert (
-            case.policyengine_rac_var_hint
+            case.policyengine_rule_hint
             == "snap_self_employment_expense_based_deduction_applies"
         )
 
@@ -6838,7 +6218,7 @@ cases:
             case.source_file
             == (
                 repo_root.parent
-                / "rac-us-ny"
+                / "rules-us-ny"
                 / "sources"
                 / "slices"
                 / "otda"
@@ -6850,7 +6230,7 @@ cases:
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
-        assert case.policyengine_rac_var_hint == "snap_standard_utility_allowance"
+        assert case.policyengine_rule_hint == "snap_standard_utility_allowance"
 
     def test_repo_us_snap_ny_limited_utility_allowance_refresh_manifest_loads_expected_case(
         self,
@@ -6877,7 +6257,7 @@ cases:
             case.source_file
             == (
                 repo_root.parent
-                / "rac-us-ny"
+                / "rules-us-ny"
                 / "sources"
                 / "slices"
                 / "otda"
@@ -6889,7 +6269,7 @@ cases:
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
-        assert case.policyengine_rac_var_hint == "snap_limited_utility_allowance"
+        assert case.policyengine_rule_hint == "snap_limited_utility_allowance"
 
     def test_repo_us_snap_tx_standard_utility_allowance_refresh_manifest_loads_expected_case(
         self,
@@ -6907,7 +6287,7 @@ cases:
         assert manifest.gates.min_policyengine_pass_rate == 1.0
         tx_target_root = (
             repo_root.parent
-            / "rac-us-tx"
+            / "rules-us-tx"
             / "sources"
             / "targets"
             / "txhhs"
@@ -6931,7 +6311,7 @@ cases:
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
-        assert case.policyengine_rac_var_hint == "snap_standard_utility_allowance"
+        assert case.policyengine_rule_hint == "snap_standard_utility_allowance"
 
     def test_repo_us_snap_tx_limited_utility_allowance_refresh_manifest_loads_expected_case(
         self,
@@ -6949,7 +6329,7 @@ cases:
         assert manifest.gates.min_policyengine_pass_rate == 1.0
         tx_target_root = (
             repo_root.parent
-            / "rac-us-tx"
+            / "rules-us-tx"
             / "sources"
             / "targets"
             / "txhhs"
@@ -6973,7 +6353,7 @@ cases:
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
-        assert case.policyengine_rac_var_hint == "snap_limited_utility_allowance"
+        assert case.policyengine_rule_hint == "snap_limited_utility_allowance"
 
     def test_repo_us_snap_tx_individual_utility_allowance_refresh_manifest_loads_expected_case(
         self,
@@ -6991,7 +6371,7 @@ cases:
         assert manifest.gates.min_policyengine_pass_rate == 1.0
         tx_target_root = (
             repo_root.parent
-            / "rac-us-tx"
+            / "rules-us-tx"
             / "sources"
             / "targets"
             / "txhhs"
@@ -7015,7 +6395,7 @@ cases:
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
-        assert case.policyengine_rac_var_hint == "snap_individual_utility_allowance"
+        assert case.policyengine_rule_hint == "snap_individual_utility_allowance"
 
     def test_repo_us_snap_tx_child_support_deduction_option_refresh_manifest_loads_expected_case(
         self,
@@ -7033,7 +6413,7 @@ cases:
         assert manifest.gates.min_policyengine_pass_rate == 1.0
         tx_target_root = (
             repo_root.parent
-            / "rac-us-tx"
+            / "rules-us-tx"
             / "sources"
             / "targets"
             / "txhhs"
@@ -7058,7 +6438,7 @@ cases:
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
         assert (
-            case.policyengine_rac_var_hint == "snap_state_uses_child_support_deduction"
+            case.policyengine_rule_hint == "snap_state_uses_child_support_deduction"
         )
 
     def test_repo_us_snap_tx_self_employment_expense_option_refresh_manifest_loads_expected_case(
@@ -7077,7 +6457,7 @@ cases:
         assert manifest.gates.min_policyengine_pass_rate == 1.0
         tx_target_root = (
             repo_root.parent
-            / "rac-us-tx"
+            / "rules-us-tx"
             / "sources"
             / "targets"
             / "txhhs"
@@ -7103,7 +6483,7 @@ cases:
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
         assert (
-            case.policyengine_rac_var_hint
+            case.policyengine_rule_hint
             == "snap_self_employment_expense_based_deduction_applies"
         )
 
@@ -7132,7 +6512,7 @@ cases:
             case.source_file
             == (
                 repo_root.parent
-                / "rac-us-fl"
+                / "rules-us-fl"
                 / "sources"
                 / "slices"
                 / "myflfamilies"
@@ -7145,7 +6525,7 @@ cases:
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
         assert (
-            case.policyengine_rac_var_hint == "snap_state_uses_child_support_deduction"
+            case.policyengine_rule_hint == "snap_state_uses_child_support_deduction"
         )
 
     def test_repo_us_snap_fl_self_employment_expense_option_refresh_manifest_loads_expected_case(
@@ -7173,7 +6553,7 @@ cases:
             case.source_file
             == (
                 repo_root.parent
-                / "rac-us-fl"
+                / "rules-us-fl"
                 / "sources"
                 / "slices"
                 / "myflfamilies"
@@ -7186,7 +6566,7 @@ cases:
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
         assert (
-            case.policyengine_rac_var_hint
+            case.policyengine_rule_hint
             == "snap_self_employment_expense_based_deduction_applies"
         )
 
@@ -7215,7 +6595,7 @@ cases:
             case.source_file
             == (
                 repo_root.parent
-                / "rac-us-md"
+                / "rules-us-md"
                 / "sources"
                 / "slices"
                 / "dhs"
@@ -7228,7 +6608,7 @@ cases:
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
         assert (
-            case.policyengine_rac_var_hint == "snap_state_uses_child_support_deduction"
+            case.policyengine_rule_hint == "snap_state_uses_child_support_deduction"
         )
 
     def test_repo_us_snap_md_self_employment_simplified_deduction_rate_refresh_manifest_loads_expected_case(
@@ -7259,7 +6639,7 @@ cases:
             case.source_file
             == (
                 repo_root.parent
-                / "rac-us-md"
+                / "rules-us-md"
                 / "sources"
                 / "slices"
                 / "dhs"
@@ -7272,7 +6652,7 @@ cases:
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
         assert (
-            case.policyengine_rac_var_hint
+            case.policyengine_rule_hint
             == "snap_self_employment_simplified_deduction_rate"
         )
 
@@ -7301,7 +6681,7 @@ cases:
             case.source_file
             == (
                 repo_root.parent
-                / "rac-us-ga"
+                / "rules-us-ga"
                 / "sources"
                 / "slices"
                 / "dfcs"
@@ -7314,7 +6694,7 @@ cases:
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
         assert (
-            case.policyengine_rac_var_hint == "snap_state_uses_child_support_deduction"
+            case.policyengine_rule_hint == "snap_state_uses_child_support_deduction"
         )
 
     def test_repo_us_snap_ga_self_employment_expense_option_refresh_manifest_loads_expected_case(
@@ -7342,7 +6722,7 @@ cases:
             case.source_file
             == (
                 repo_root.parent
-                / "rac-us-ga"
+                / "rules-us-ga"
                 / "sources"
                 / "slices"
                 / "dfcs"
@@ -7355,7 +6735,7 @@ cases:
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
         assert (
-            case.policyengine_rac_var_hint
+            case.policyengine_rule_hint
             == "snap_self_employment_expense_based_deduction_applies"
         )
 
@@ -7375,7 +6755,7 @@ cases:
         assert manifest.gates.min_policyengine_pass_rate == 1.0
         tx_target_root = (
             repo_root.parent
-            / "rac-us-tx"
+            / "rules-us-tx"
             / "sources"
             / "targets"
             / "txhhs"
@@ -7403,7 +6783,7 @@ cases:
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
         assert (
-            case.policyengine_rac_var_hint == "snap_standard_medical_expense_deduction"
+            case.policyengine_rule_hint == "snap_standard_medical_expense_deduction"
         )
 
     def test_repo_us_snap_tx_homeless_shelter_deduction_available_refresh_manifest_loads_expected_case(
@@ -7425,7 +6805,7 @@ cases:
         assert manifest.gates.min_policyengine_pass_rate == 1.0
         tx_target_root = (
             repo_root.parent
-            / "rac-us-tx"
+            / "rules-us-tx"
             / "sources"
             / "targets"
             / "txhhs"
@@ -7453,7 +6833,7 @@ cases:
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
         assert (
-            case.policyengine_rac_var_hint
+            case.policyengine_rule_hint
             == "snap_homeless_shelter_deduction_available"
         )
 
@@ -7473,7 +6853,7 @@ cases:
         assert manifest.gates.min_policyengine_pass_rate == 1.0
         tx_target_root = (
             repo_root.parent
-            / "rac-us-tx"
+            / "rules-us-tx"
             / "sources"
             / "targets"
             / "txhhs"
@@ -7499,7 +6879,7 @@ cases:
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
         assert (
-            case.policyengine_rac_var_hint
+            case.policyengine_rule_hint
             == "snap_tanf_non_cash_gross_income_limit_fpg_ratio"
         )
 
@@ -7519,7 +6899,7 @@ cases:
         assert manifest.gates.min_policyengine_pass_rate == 1.0
         tx_target_root = (
             repo_root.parent
-            / "rac-us-tx"
+            / "rules-us-tx"
             / "sources"
             / "targets"
             / "txhhs"
@@ -7543,7 +6923,7 @@ cases:
         assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
-        assert case.policyengine_rac_var_hint == "snap_tanf_non_cash_asset_limit"
+        assert case.policyengine_rule_hint == "snap_tanf_non_cash_asset_limit"
 
     def test_repo_us_snap_ga_self_employment_simplified_deduction_rate_refresh_manifest_loads_expected_case(
         self,
@@ -7573,7 +6953,7 @@ cases:
             case.source_file
             == (
                 repo_root.parent
-                / "rac-us-ga"
+                / "rules-us-ga"
                 / "sources"
                 / "slices"
                 / "dfcs"
@@ -7586,7 +6966,7 @@ cases:
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
         assert (
-            case.policyengine_rac_var_hint
+            case.policyengine_rule_hint
             == "snap_self_employment_simplified_deduction_rate"
         )
 
@@ -7618,7 +6998,7 @@ cases:
             case.source_file
             == (
                 repo_root.parent
-                / "rac-us-sc"
+                / "rules-us-sc"
                 / "sources"
                 / "slices"
                 / "scdss"
@@ -7631,7 +7011,7 @@ cases:
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
         assert (
-            case.policyengine_rac_var_hint == "snap_state_uses_child_support_deduction"
+            case.policyengine_rule_hint == "snap_state_uses_child_support_deduction"
         )
 
     def test_repo_us_snap_sc_self_employment_expense_option_refresh_manifest_loads_expected_case(
@@ -7662,7 +7042,7 @@ cases:
             case.source_file
             == (
                 repo_root.parent
-                / "rac-us-sc"
+                / "rules-us-sc"
                 / "sources"
                 / "slices"
                 / "scdss"
@@ -7675,7 +7055,7 @@ cases:
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
         assert (
-            case.policyengine_rac_var_hint
+            case.policyengine_rule_hint
             == "snap_self_employment_expense_based_deduction_applies"
         )
 
@@ -7707,7 +7087,7 @@ cases:
             case.source_file
             == (
                 repo_root.parent
-                / "rac-us-sc"
+                / "rules-us-sc"
                 / "sources"
                 / "slices"
                 / "scdss"
@@ -7720,7 +7100,7 @@ cases:
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
         assert (
-            case.policyengine_rac_var_hint
+            case.policyengine_rule_hint
             == "snap_self_employment_simplified_deduction_rate"
         )
 
@@ -7749,7 +7129,7 @@ cases:
             case.source_file
             == (
                 repo_root.parent
-                / "rac-us-al"
+                / "rules-us-al"
                 / "sources"
                 / "slices"
                 / "aldhr"
@@ -7762,7 +7142,7 @@ cases:
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
         assert (
-            case.policyengine_rac_var_hint == "snap_state_uses_child_support_deduction"
+            case.policyengine_rule_hint == "snap_state_uses_child_support_deduction"
         )
 
     def test_repo_us_snap_al_self_employment_expense_option_refresh_manifest_loads_expected_case(
@@ -7790,7 +7170,7 @@ cases:
             case.source_file
             == (
                 repo_root.parent
-                / "rac-us-al"
+                / "rules-us-al"
                 / "sources"
                 / "slices"
                 / "aldhr"
@@ -7803,7 +7183,7 @@ cases:
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
         assert (
-            case.policyengine_rac_var_hint
+            case.policyengine_rule_hint
             == "snap_self_employment_expense_based_deduction_applies"
         )
 
@@ -7835,7 +7215,7 @@ cases:
             case.source_file
             == (
                 repo_root.parent
-                / "rac-us-al"
+                / "rules-us-al"
                 / "sources"
                 / "slices"
                 / "aldhr"
@@ -7848,7 +7228,7 @@ cases:
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
         assert (
-            case.policyengine_rac_var_hint
+            case.policyengine_rule_hint
             == "snap_self_employment_simplified_deduction_rate"
         )
 
@@ -7877,7 +7257,7 @@ cases:
             case.source_file
             == (
                 repo_root.parent
-                / "rac-us-ar"
+                / "rules-us-ar"
                 / "sources"
                 / "slices"
                 / "ardhs"
@@ -7890,7 +7270,7 @@ cases:
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
         assert (
-            case.policyengine_rac_var_hint == "snap_state_uses_child_support_deduction"
+            case.policyengine_rule_hint == "snap_state_uses_child_support_deduction"
         )
 
     def test_repo_us_snap_ar_self_employment_expense_option_refresh_manifest_loads_expected_case(
@@ -7918,7 +7298,7 @@ cases:
             case.source_file
             == (
                 repo_root.parent
-                / "rac-us-ar"
+                / "rules-us-ar"
                 / "sources"
                 / "slices"
                 / "ardhs"
@@ -7931,7 +7311,7 @@ cases:
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
         assert (
-            case.policyengine_rac_var_hint
+            case.policyengine_rule_hint
             == "snap_self_employment_expense_based_deduction_applies"
         )
 
@@ -8008,13 +7388,13 @@ class TestRepoAugmentedContext:
         self, tmp_path
     ):
         repo_root = tmp_path / "repos"
-        rac_root = repo_root / "rac"
-        rac_root.mkdir(parents=True)
+        policy_repo_root = repo_root / "axiom-rules"
+        policy_repo_root.mkdir(parents=True)
         context_file = (
-            repo_root / "rac-us" / "statute" / "26" / "32" / "b" / "2" / "A.rac"
+            repo_root / "rules-us" / "statute" / "26" / "32" / "b" / "2" / "A.yaml"
         )
         context_file.parent.mkdir(parents=True)
-        context_file.write_text("status: encoded\n")
+        context_file.write_text("format: rulespec/v1\nrules: []\n")
 
         runner = parse_runner_spec("codex:gpt-5.4")
         workspace = prepare_eval_workspace(
@@ -8022,7 +7402,7 @@ class TestRepoAugmentedContext:
             runner=runner,
             output_root=tmp_path / "out",
             source_text="F. Determining Eligibility ... 165 345 518",
-            rac_path=rac_root,
+            axiom_rules_path=policy_repo_root,
             mode="repo-augmented",
             extra_context_paths=[context_file],
         )
@@ -8035,31 +7415,31 @@ class TestRepoAugmentedContext:
         assert copied.exists()
 
     def test_select_context_files_excludes_target(self, tmp_path):
-        rac_us_root = tmp_path / "rac-us" / "statute"
-        section_dir = rac_us_root / "26" / "24"
+        statute_root = tmp_path / "rules-us" / "statute"
+        section_dir = statute_root / "26" / "24"
         section_dir.mkdir(parents=True)
-        (section_dir / "a.rac").write_text("target")
-        (section_dir / "b.rac").write_text("sibling b")
-        (section_dir / "c.rac").write_text("sibling c")
+        (section_dir / "a.yaml").write_text("target")
+        (section_dir / "b.yaml").write_text("sibling b")
+        (section_dir / "c.yaml").write_text("sibling c")
 
-        selected = select_context_files("26 USC 24(a)", rac_us_root)
+        selected = select_context_files("26 USC 24(a)", statute_root)
 
-        assert section_dir / "a.rac" not in selected
-        assert section_dir / "b.rac" in selected
-        assert section_dir / "c.rac" in selected
+        assert section_dir / "a.yaml" not in selected
+        assert section_dir / "b.yaml" in selected
+        assert section_dir / "c.yaml" in selected
 
     def test_prepare_eval_workspace_writes_manifest_and_context(self, tmp_path):
         repo_root = tmp_path / "repos"
-        rac_root = repo_root / "rac"
-        rac_root.mkdir(parents=True)
-        rac_us_root = repo_root / "rac-us" / "statute" / "26" / "24"
-        rac_us_root.mkdir(parents=True)
-        context_file = rac_us_root / "b.rac"
-        context_file.write_text("status: encoded\n")
+        policy_repo_root = repo_root / "axiom-rules"
+        policy_repo_root.mkdir(parents=True)
+        statute_root = repo_root / "rules-us" / "statute" / "26" / "24"
+        statute_root.mkdir(parents=True)
+        context_file = statute_root / "b.yaml"
+        context_file.write_text("format: rulespec/v1\nrules: []\n")
 
         runner = parse_runner_spec("codex:gpt-5.4")
         with patch(
-            "autorac.harness.evals.select_context_files",
+            "axiom_encode.harness.evals.select_context_files",
             return_value=[context_file],
         ):
             workspace = prepare_eval_workspace(
@@ -8067,7 +7447,7 @@ class TestRepoAugmentedContext:
                 runner=runner,
                 output_root=tmp_path / "out",
                 source_text="(a) Allowance of credit ... $1,000.",
-                rac_path=rac_root,
+                axiom_rules_path=policy_repo_root,
                 mode="repo-augmented",
                 extra_context_paths=[],
             )
@@ -8084,7 +7464,7 @@ class TestRepoAugmentedContext:
         self, tmp_path
     ):
         repo_root = tmp_path / "repos"
-        policy_repo = repo_root / "rac-us-tn"
+        policy_repo = repo_root / "rules-us-tn"
         policy_repo.mkdir(parents=True)
         source_path = policy_repo / "sources" / "slices" / "tn" / "snap_sua.txt"
         source_path.parent.mkdir(parents=True, exist_ok=True)
@@ -8104,7 +7484,7 @@ class TestRepoAugmentedContext:
             runner=runner,
             output_root=tmp_path / "out",
             source_text="Tennessee source text",
-            rac_path=repo_root / "rac",
+            axiom_rules_path=repo_root / "axiom-rules",
             mode="cold",
             source_path=source_path,
             extra_context_paths=[],
@@ -8121,7 +7501,7 @@ class TestRepoAugmentedContext:
 
     def test_load_source_text_for_eval_prefers_akn_backing(self, tmp_path, monkeypatch):
         arch_root = tmp_path / "arch"
-        monkeypatch.setenv("AUTORAC_ARCH_ROOT", str(arch_root))
+        monkeypatch.setenv("AXIOM_ENCODE_EVAL_ARCHIVE_ROOT", str(arch_root))
         source_path = tmp_path / "sources" / "slices" / "tx" / "snap_sua.txt"
         source_path.parent.mkdir(parents=True, exist_ok=True)
         source_path.write_text("stale loose slice text")
@@ -8162,7 +7542,7 @@ class TestRepoAugmentedContext:
         self, tmp_path, monkeypatch
     ):
         arch_root = tmp_path / "arch"
-        monkeypatch.setenv("AUTORAC_ARCH_ROOT", str(arch_root))
+        monkeypatch.setenv("AXIOM_ENCODE_EVAL_ARCHIVE_ROOT", str(arch_root))
         source_path = tmp_path / "sources" / "slices" / "tx" / "child_support.txt"
         source_path.parent.mkdir(parents=True, exist_ok=True)
         source_path.write_text("old combined slice")
@@ -8203,7 +7583,7 @@ class TestRepoAugmentedContext:
         self, tmp_path, monkeypatch
     ):
         arch_root = tmp_path / "arch"
-        monkeypatch.setenv("AUTORAC_ARCH_ROOT", str(arch_root))
+        monkeypatch.setenv("AXIOM_ENCODE_EVAL_ARCHIVE_ROOT", str(arch_root))
         source_path = tmp_path / "sources" / "slices" / "tx" / "telephone_standard.txt"
         source_path.parent.mkdir(parents=True, exist_ok=True)
         source_path.write_text("stale text")
@@ -8243,22 +7623,25 @@ class TestRepoAugmentedContext:
 
     def test_build_eval_prompt_lists_canonical_context_import_target(self, tmp_path):
         repo_root = tmp_path / "repos"
-        rac_root = repo_root / "rac"
-        rac_root.mkdir(parents=True)
+        policy_repo_root = repo_root / "axiom-rules"
+        policy_repo_root.mkdir(parents=True)
         external_file = (
             repo_root
-            / "rac-us-co"
+            / "rules-us-co"
             / "regulation"
             / "9-CCR-2503-6"
             / "3.606.1"
-            / "F.rac"
+            / "F.yaml"
         )
         external_file.parent.mkdir(parents=True, exist_ok=True)
         external_file.write_text(
-            "grant_standard_for_assistance_unit:\n"
+            "format: rulespec/v1\n"
+            "rules:\n"
+            "  - name: grant_standard_for_assistance_unit\n"
+            "    kind: input\n"
             "    entity: TanfUnit\n"
-            "    period: Month\n"
             "    dtype: Money\n"
+            "    period: Month\n"
         )
 
         workspace = prepare_eval_workspace(
@@ -8266,7 +7649,7 @@ class TestRepoAugmentedContext:
             runner=parse_runner_spec("codex:gpt-5.4"),
             output_root=tmp_path / "out",
             source_text="Deduct the total from step 2, above, from the grant amount.",
-            rac_path=rac_root,
+            axiom_rules_path=policy_repo_root,
             mode="repo-augmented",
             extra_context_paths=[external_file],
         )
@@ -8276,24 +7659,24 @@ class TestRepoAugmentedContext:
             "repo-augmented",
             workspace,
             workspace.context_files,
-            target_file_name="9-CCR-2503-6-3.606.1-I.rac",
+            target_file_name="9-CCR-2503-6-3.606.1-I.yaml",
         )
 
         assert (
-            "inspect `context/regulation/9-CCR-2503-6/3.606.1/F.rac`; "
+            "inspect `context/regulation/9-CCR-2503-6/3.606.1/F.yaml`; "
             "import target `regulation/9-CCR-2503-6/3.606.1/F`"
         ) in prompt
         assert "do not wrap import targets in quotes" in prompt
         assert (
-            "use the listed import target rather than the `./context/...` inspection path"
+            "Use the listed import target rather than the `./context/...` inspection path"
             in prompt
         )
         assert (
-            "do not guess contradictory `.rac.test` expectations for those imported values"
+            "do not guess contradictory expectations for those imported values"
             in prompt
         )
         assert (
-            "keep `.rac.test` inputs and expected outputs consistent with the rows visible in that imported file"
+            "keep `.test.yaml` inputs and expected outputs consistent with the rows visible in that imported file"
             in prompt
         )
         assert (
@@ -8304,28 +7687,24 @@ class TestRepoAugmentedContext:
             "Do not assert an exact zero imported standard, grant, or threshold unless that exact imported row is visible in the copied chart file"
             in prompt
         )
-        assert (
-            "Do not use a `0 children / 0 caretakers` household as the primary threshold test"
-            in prompt
-        )
-        assert "Wrong (`.rac.test` guesses a degenerate chart row):" in prompt
-        assert (
-            "Right (`.rac.test` uses a visible chart row like one child / no caretaker):"
-            in prompt
-        )
 
     def test_hydrate_eval_root_copies_context_into_import_tree(self, tmp_path):
         repo_root = tmp_path / "repos"
-        rac_root = repo_root / "rac"
-        rac_root.mkdir(parents=True)
-        rac_us_root = repo_root / "rac-us" / "statute" / "26" / "24"
-        rac_us_root.mkdir(parents=True)
-        context_file = rac_us_root / "c.rac"
-        context_file.write_text("status: stub\n")
+        policy_repo_root = repo_root / "axiom-rules"
+        policy_repo_root.mkdir(parents=True)
+        statute_root = repo_root / "rules-us" / "statute" / "26" / "24"
+        statute_root.mkdir(parents=True)
+        context_file = statute_root / "c.yaml"
+        context_file.write_text(
+            "format: rulespec/v1\n"
+            "module:\n"
+            "  status: stub\n"
+            "rules: []\n"
+        )
 
         runner = parse_runner_spec("codex:gpt-5.4")
         with patch(
-            "autorac.harness.evals.select_context_files",
+            "axiom_encode.harness.evals.select_context_files",
             return_value=[context_file],
         ):
             workspace = prepare_eval_workspace(
@@ -8333,7 +7712,7 @@ class TestRepoAugmentedContext:
                 runner=runner,
                 output_root=tmp_path / "out",
                 source_text="(a) Allowance of credit ... $1,000.",
-                rac_path=rac_root,
+                axiom_rules_path=policy_repo_root,
                 mode="repo-augmented",
                 extra_context_paths=[],
             )
@@ -8342,48 +7721,59 @@ class TestRepoAugmentedContext:
         _hydrate_eval_root(eval_root, workspace)
 
         assert (
-            eval_root / "statute" / "26" / "24" / "c.rac"
-        ).read_text() == "status: stub\n"
+            eval_root / "26" / "24" / "c.yaml"
+        ).read_text() == (
+            "format: rulespec/v1\n"
+            "module:\n"
+            "  status: stub\n"
+            "rules: []\n"
+        )
 
     def test_prepare_eval_workspace_expands_transitive_context_imports(self, tmp_path):
         repo_root = tmp_path / "repos"
-        rac_root = repo_root / "rac"
-        rac_root.mkdir(parents=True)
+        policy_repo_root = repo_root / "axiom-rules"
+        policy_repo_root.mkdir(parents=True)
 
-        section_root = repo_root / "rac-us" / "statute" / "26" / "24"
+        section_root = repo_root / "rules-us" / "statute" / "26" / "24"
         section_root.mkdir(parents=True)
-        aggregator = section_root / "24.rac"
+        aggregator = section_root / "24.yaml"
         aggregator.write_text(
-            "section_24_credit:\n"
-            "    imports:\n"
-            "        - 26/24/a#ctc_allowance\n"
-            "        - 26/24/c#qualifying_child_count\n"
+            "format: rulespec/v1\n"
+            "imports:\n"
+            "  - 26/24/a#ctc_allowance\n"
+            "  - 26/24/c#qualifying_child_count\n"
+            "rules:\n"
+            "  - name: section_24_credit\n"
+            "    kind: derived\n"
             "    entity: TaxUnit\n"
-            "    period: Year\n"
             "    dtype: Money\n"
-        )
-        selected = section_root / "c.rac"
-        selected.write_text(
-            "qualifying_child_count:\n"
-            "    imports:\n"
-            "        - 26/24/c/2#ctc_meets_citizenship_requirement\n"
-            "        - 26/152/c#qualifying_child_of_taxpayer\n"
-            "    entity: TaxUnit\n"
             "    period: Year\n"
+        )
+        selected = section_root / "c.yaml"
+        selected.write_text(
+            "format: rulespec/v1\n"
+            "imports:\n"
+            "  - 26/24/c/2#ctc_meets_citizenship_requirement\n"
+            "  - 26/152/c#qualifying_child_of_taxpayer\n"
+            "rules:\n"
+            "  - name: qualifying_child_count\n"
+            "    kind: derived\n"
+            "    entity: TaxUnit\n"
             "    dtype: Integer\n"
+            "    period: Year\n"
         )
 
-        dep_local = section_root / "c" / "2.rac"
+        dep_local = section_root / "c" / "2.yaml"
         dep_local.parent.mkdir(parents=True)
-        dep_local.write_text("status: encoded\n")
+        dep_local.write_text("format: rulespec/v1\nrules: []\n")
 
-        dep_cross_section = repo_root / "rac-us" / "statute" / "26" / "152" / "c.rac"
+        dep_cross_section = repo_root / "rules-us" / "statute" / "26" / "152" / "c.yaml"
         dep_cross_section.parent.mkdir(parents=True)
-        dep_cross_section.write_text("status: encoded\n")
+        dep_cross_section.write_text("format: rulespec/v1\nrules: []\n")
 
         runner = parse_runner_spec("codex:gpt-5.4")
         with patch(
-            "autorac.harness.evals.select_context_files",
+            "axiom_encode.harness.evals.select_context_files",
             return_value=[aggregator, selected],
         ):
             workspace = prepare_eval_workspace(
@@ -8391,7 +7781,7 @@ class TestRepoAugmentedContext:
                 runner=runner,
                 output_root=tmp_path / "out",
                 source_text="(a) Allowance of credit ... $1,000.",
-                rac_path=rac_root,
+                axiom_rules_path=policy_repo_root,
                 mode="repo-augmented",
                 extra_context_paths=[],
             )
@@ -8404,39 +7794,44 @@ class TestRepoAugmentedContext:
         assert copied_sources[str(selected)] == "implementation_precedent"
         assert copied_sources[str(dep_local)] == "implementation_dependency"
         assert copied_sources[str(dep_cross_section)] == "implementation_dependency"
-        assert str(section_root / "a.rac") not in copied_sources
+        assert str(section_root / "a.yaml") not in copied_sources
 
         eval_root = tmp_path / "eval-root"
         _hydrate_eval_root(eval_root, workspace)
         assert (
-            eval_root / "26" / "24" / "c" / "2.rac"
-        ).read_text() == "status: encoded\n"
-        assert (eval_root / "26" / "152" / "c.rac").read_text() == "status: encoded\n"
+            eval_root / "26" / "24" / "c" / "2.yaml"
+        ).read_text() == "format: rulespec/v1\nrules: []\n"
+        assert (
+            eval_root / "26" / "152" / "c.yaml"
+        ).read_text() == "format: rulespec/v1\nrules: []\n"
 
     def test_repo_augmented_context_resolves_statute_prefixed_dependencies(
         self, tmp_path
     ):
         repo_root = tmp_path / "repos"
-        rac_root = repo_root / "rac"
-        rac_root.mkdir(parents=True)
-        rac_us_root = repo_root / "rac-us" / "statute" / "7" / "2014"
-        rac_us_root.mkdir(parents=True)
+        policy_repo_root = repo_root / "axiom-rules"
+        policy_repo_root.mkdir(parents=True)
+        statute_root = repo_root / "rules-us" / "statute" / "7" / "2014"
+        statute_root.mkdir(parents=True)
 
-        selected = rac_us_root / "e.rac"
+        selected = statute_root / "e.yaml"
         selected.write_text(
+            "format: rulespec/v1\n"
             "imports:\n"
-            "    - statute/7/2014/2014#snap_household_has_elderly_or_disabled_member\n"
-            "    - statute/7/2014/d#snap_gross_income\n"
-            "snap_net_income:\n"
+            "  - statute/7/2014/2014#snap_household_has_elderly_or_disabled_member\n"
+            "  - statute/7/2014/d#snap_gross_income\n"
+            "rules:\n"
+            "  - name: snap_net_income\n"
+            "    kind: derived\n"
             "    entity: Household\n"
-            "    period: Month\n"
             "    dtype: Money\n"
+            "    period: Month\n"
         )
 
-        section_file = rac_us_root / "2014.rac"
-        section_file.write_text("status: encoded\n")
-        cross_file = rac_us_root / "d.rac"
-        cross_file.write_text("status: encoded\n")
+        section_file = statute_root / "2014.yaml"
+        section_file.write_text("format: rulespec/v1\nrules: []\n")
+        cross_file = statute_root / "d.yaml"
+        cross_file.write_text("format: rulespec/v1\nrules: []\n")
 
         runner = parse_runner_spec("openai:gpt-5.4")
         workspace = prepare_eval_workspace(
@@ -8444,7 +7839,7 @@ class TestRepoAugmentedContext:
             runner=runner,
             output_root=tmp_path / "out",
             source_text="2017(a) ...",
-            rac_path=rac_root,
+            axiom_rules_path=policy_repo_root,
             mode="repo-augmented",
             extra_context_paths=[selected],
         )
@@ -8466,21 +7861,30 @@ class TestRepoAugmentedContext:
 
     def test_prompt_includes_scaffold_dates_from_context(self, tmp_path):
         repo_root = tmp_path / "repos"
-        rac_root = repo_root / "rac"
-        rac_root.mkdir(parents=True)
-        rac_us_root = repo_root / "rac-us" / "statute" / "26" / "24"
-        rac_us_root.mkdir(parents=True)
-        context_file = rac_us_root / "b.rac"
+        policy_repo_root = repo_root / "axiom-rules"
+        policy_repo_root.mkdir(parents=True)
+        statute_root = repo_root / "rules-us" / "statute" / "26" / "24"
+        statute_root.mkdir(parents=True)
+        context_file = statute_root / "b.yaml"
         context_file.write_text(
-            "status: encoded\n\n"
-            "threshold:\n"
-            "    from 1998-01-01: 1000\n"
-            "    from 2018-01-01: 2000\n"
+            "format: rulespec/v1\n"
+            "module:\n"
+            "  summary: The threshold is $1,000 and later $2,000.\n"
+            "rules:\n"
+            "  - name: threshold\n"
+            "    kind: parameter\n"
+            "    dtype: Money\n"
+            "    unit: USD\n"
+            "    versions:\n"
+            "      - effective_from: '1998-01-01'\n"
+            "        formula: 1000\n"
+            "      - effective_from: '2018-01-01'\n"
+            "        formula: 2000\n"
         )
 
         runner = parse_runner_spec("codex:gpt-5.4")
         with patch(
-            "autorac.harness.evals.select_context_files",
+            "axiom_encode.harness.evals.select_context_files",
             return_value=[context_file],
         ):
             workspace = prepare_eval_workspace(
@@ -8488,7 +7892,7 @@ class TestRepoAugmentedContext:
                 runner=runner,
                 output_root=tmp_path / "out",
                 source_text="(a) Allowance of credit ... $1,000.",
-                rac_path=rac_root,
+                axiom_rules_path=policy_repo_root,
                 mode="repo-augmented",
                 extra_context_paths=[],
             )
@@ -8498,7 +7902,7 @@ class TestRepoAugmentedContext:
             "repo-augmented",
             workspace,
             workspace.context_files,
-            "a.rac",
+            "a.yaml",
         )
 
         assert "`1998-01-01`" in prompt
@@ -8508,47 +7912,52 @@ class TestRepoAugmentedContext:
 
 class TestUnexpectedAccessDetection:
     def test_flags_parent_directory_traversal(self, tmp_path):
-        assert _command_looks_out_of_bounds("bash -lc 'find .. -name *.rac'", tmp_path)
+        assert _command_looks_out_of_bounds("bash -lc 'find .. -name *.yaml'", tmp_path)
 
     def test_allows_workspace_paths(self, tmp_path):
-        local = tmp_path / "context" / "b.rac"
+        local = tmp_path / "context" / "b.yaml"
         local.parent.mkdir(parents=True)
-        local.write_text("status: encoded\n")
+        local.write_text("format: rulespec/v1\nrules: []\n")
 
 
 class TestSourceEval:
     def test_run_source_eval_uses_explicit_context_without_statute_lookup(
         self, tmp_path
     ):
-        rac_root = tmp_path / "rac"
-        rac_root.mkdir()
-        context_file = tmp_path / "examples" / "piecewise.rac"
+        policy_repo_root = tmp_path / "axiom-rules"
+        policy_repo_root.mkdir()
+        context_file = tmp_path / "examples" / "piecewise.yaml"
         context_file.parent.mkdir(parents=True)
-        context_file.write_text("status: encoded\n")
+        context_file.write_text("format: rulespec/v1\nrules: []\n")
 
         with (
             patch(
-                "autorac.harness.evals._run_prompt_eval",
+                "axiom_encode.harness.evals._run_prompt_eval",
             ) as mock_prompt_eval,
             patch(
-                "autorac.harness.evals.evaluate_artifact",
+                "axiom_encode.harness.evals.evaluate_artifact",
             ) as mock_evaluate_artifact,
         ):
             mock_prompt_eval.return_value.text = (
-                "=== FILE: 9-CCR-2503-6-3.606.1-F.rac ===\n"
-                '"""\nF. Determining Eligibility ...\n"""\n'
-                "status: encoded\n"
-                "grant_standard:\n"
+                "=== FILE: 9-CCR-2503-6-3.606.1-F.yaml ===\n"
+                "format: rulespec/v1\n"
+                "module:\n"
+                "  summary: F. Determining Eligibility ...\n"
+                "rules:\n"
+                "  - name: grant_standard\n"
+                "    kind: parameter\n"
                 "    entity: TaxUnit\n"
-                "    period: Month\n"
                 "    dtype: Money\n"
-                "    from 2024-07-01: 165\n"
-                "=== FILE: 9-CCR-2503-6-3.606.1-F.rac.test ===\n"
-                "grant_standard:\n"
-                '  - name: "base case"\n'
-                "    period: 2024-07\n"
-                "    inputs: {}\n"
-                "    expect: 165\n"
+                "    period: Month\n"
+                "    versions:\n"
+                "      - effective_from: '2024-07-01'\n"
+                "        formula: 165\n"
+                "=== FILE: 9-CCR-2503-6-3.606.1-F.test.yaml ===\n"
+                "- name: base case\n"
+                "  period: 2024-07\n"
+                "  input: {}\n"
+                "  output:\n"
+                "    grant_standard: 165\n"
             )
             mock_prompt_eval.return_value.duration_ms = 123
             mock_prompt_eval.return_value.tokens = None
@@ -8565,7 +7974,7 @@ class TestSourceEval:
                 source_text="F. Determining Eligibility ... 165",
                 runner_specs=["codex:gpt-5.4"],
                 output_root=tmp_path / "out",
-                policy_path=rac_root,
+                policy_path=policy_repo_root,
                 mode="repo-augmented",
                 extra_context_paths=[context_file],
             )
@@ -8574,32 +7983,41 @@ class TestSourceEval:
         result = results[0]
         assert result.success is True
         assert Path(result.output_file).exists()
-        assert Path(result.output_file).with_suffix(".rac.test").exists()
+        assert Path(result.output_file).with_suffix(".test.yaml").exists()
         assert result.retrieved_files == [str(context_file)]
 
         prompt = mock_prompt_eval.call_args.args[2]
-        assert ".rac.test" in prompt
+        assert ".test.yaml" in prompt
         assert "=== FILE:" in prompt
 
     def test_run_source_eval_passes_oracle_settings_to_evaluate_artifact(
         self, tmp_path
     ):
-        rac_root = tmp_path / "rac"
-        rac_root.mkdir()
+        policy_repo_root = tmp_path / "axiom-rules"
+        policy_repo_root.mkdir()
 
         with (
             patch(
-                "autorac.harness.evals._run_prompt_eval",
+                "axiom_encode.harness.evals._run_prompt_eval",
             ) as mock_prompt_eval,
             patch(
-                "autorac.harness.evals.evaluate_artifact",
+                "axiom_encode.harness.evals.evaluate_artifact",
             ) as mock_evaluate_artifact,
         ):
             mock_prompt_eval.return_value.text = (
-                "=== FILE: uksi-2006-965-regulation-2.rac ===\n"
-                '"""\nhttps://www.legislation.gov.uk/uksi/2006/965/regulation/2\n"""\n'
-                "status: encoded\n"
-                "=== FILE: uksi-2006-965-regulation-2.rac.test ===\n"
+                "=== FILE: uksi-2006-965-regulation-2.yaml ===\n"
+                "format: rulespec/v1\n"
+                "module:\n"
+                "  summary: https://www.legislation.gov.uk/uksi/2006/965/regulation/2 states 26.05.\n"
+                "rules:\n"
+                "  - name: child_benefit_enhanced_rate\n"
+                "    kind: parameter\n"
+                "    dtype: Money\n"
+                "    unit: GBP\n"
+                "    versions:\n"
+                "      - effective_from: '2025-04-07'\n"
+                "        formula: 26.05\n"
+                "=== FILE: uksi-2006-965-regulation-2.test.yaml ===\n"
                 "- name: base\n"
                 "  input: {}\n"
                 "  output:\n"
@@ -8619,7 +8037,7 @@ class TestSourceEval:
                 source_text="26.05",
                 runner_specs=["codex:gpt-5.4"],
                 output_root=tmp_path / "out",
-                policy_path=rac_root,
+                policy_path=policy_repo_root,
                 mode="cold",
                 oracle="policyengine",
                 policyengine_country="uk",
@@ -8628,25 +8046,34 @@ class TestSourceEval:
         assert mock_evaluate_artifact.call_args.kwargs["oracle"] == "policyengine"
         assert mock_evaluate_artifact.call_args.kwargs["policyengine_country"] == "uk"
 
-    def test_run_source_eval_passes_policyengine_rac_var_hint_to_evaluate_artifact(
+    def test_run_source_eval_passes_policyengine_rule_hint_to_evaluate_artifact(
         self, tmp_path
     ):
-        rac_root = tmp_path / "rac"
-        rac_root.mkdir()
+        policy_repo_root = tmp_path / "axiom-rules"
+        policy_repo_root.mkdir()
 
         with (
             patch(
-                "autorac.harness.evals._run_prompt_eval",
+                "axiom_encode.harness.evals._run_prompt_eval",
             ) as mock_prompt_eval,
             patch(
-                "autorac.harness.evals.evaluate_artifact",
+                "axiom_encode.harness.evals.evaluate_artifact",
             ) as mock_evaluate_artifact,
         ):
             mock_prompt_eval.return_value.text = (
-                "=== FILE: uksi-2013-376-regulation-36-3-single-under-25.rac ===\n"
-                '"""\n317.82\n"""\n'
-                "status: encoded\n"
-                "=== FILE: uksi-2013-376-regulation-36-3-single-under-25.rac.test ===\n"
+                "=== FILE: uksi-2013-376-regulation-36-3-single-under-25.yaml ===\n"
+                "format: rulespec/v1\n"
+                "module:\n"
+                "  summary: The amount is 317.82.\n"
+                "rules:\n"
+                "  - name: source_row_amount\n"
+                "    kind: parameter\n"
+                "    dtype: Money\n"
+                "    unit: GBP\n"
+                "    versions:\n"
+                "      - effective_from: '2025-04-07'\n"
+                "        formula: 317.82\n"
+                "=== FILE: uksi-2013-376-regulation-36-3-single-under-25.test.yaml ===\n"
                 "- name: base\n"
                 "  input: {}\n"
                 "  output:\n"
@@ -8666,26 +8093,26 @@ class TestSourceEval:
                 source_text="317.82",
                 runner_specs=["openai:gpt-5.4"],
                 output_root=tmp_path / "out",
-                policy_path=rac_root,
+                policy_path=policy_repo_root,
                 mode="cold",
                 oracle="policyengine",
                 policyengine_country="uk",
-                policyengine_rac_var_hint="uc_standard_allowance_single_claimant_aged_under_25",
+                policyengine_rule_hint="uc_standard_allowance_single_claimant_aged_under_25",
             )
 
         assert (
-            mock_evaluate_artifact.call_args.kwargs["policyengine_rac_var_hint"]
+            mock_evaluate_artifact.call_args.kwargs["policyengine_rule_hint"]
             == "uc_standard_allowance_single_claimant_aged_under_25"
         )
 
-    def test_build_eval_prompt_includes_policyengine_rac_var_hint(self, tmp_path):
+    def test_build_eval_prompt_includes_policyengine_rule_hint(self, tmp_path):
         runner = parse_runner_spec("openai:gpt-5.4")
         workspace = prepare_eval_workspace(
             citation="uksi/2013/376/regulation/36/3",
             runner=runner,
             output_root=tmp_path / "out",
             source_text="317.82",
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -8695,81 +8122,31 @@ class TestSourceEval:
             "cold",
             workspace,
             [],
-            target_file_name="example.rac",
+            target_file_name="example.yaml",
             include_tests=True,
             runner_backend="openai",
-            policyengine_rac_var_hint="uc_standard_allowance_single_claimant_aged_under_25",
+            policyengine_rule_hint="uc_standard_allowance_single_claimant_aged_under_25",
         )
 
         assert "uc_standard_allowance_single_claimant_aged_under_25" in prompt
-        assert "keep `.rac.test` inputs oracle-comparable" in prompt
+        assert "Keep `.test.yaml` inputs oracle-comparable" in prompt
         assert (
-            "prefer a contemporary monthly `.rac.test` period like `2022-01` or `2024-01`"
+            "Prefer a contemporary monthly `.test.yaml` period like `2022-01` or `2024-01`"
             in prompt
         )
         assert (
-            "prefer importing those component tests over collapsing them into a single aggregate helper"
-            in prompt
-        )
-        assert (
-            "each case must assert `uc_standard_allowance_single_claimant_aged_under_25` directly in `output:`"
+            "assert `uc_standard_allowance_single_claimant_aged_under_25` directly in every non-empty `output:` mapping"
             in prompt
         )
         assert (
             "prefer the oracle's direct component facts over inverted household proxy inputs"
             in prompt
         )
-        assert (
-            "preserve that as a person-level fact instead of turning it into a whole-household bar"
-            in prompt
-        )
-        assert (
-            "prefer the direct component surface `meets_snap_gross_income_test`, `meets_snap_net_income_test`, `meets_snap_asset_test`"
-            in prompt
-        )
-        assert (
-            "do not introduce household proxy inputs like `snap_household_has_eligible_participating_member`, renamed variants like `snap_household_has_member_individually_eligible_to_participate`, or count proxies like `snap_number_of_members_eligible_to_participate`"
-            in prompt
-        )
-        assert (
-            "import that copied current-effective symbol rather than jumping past it to an older base-statute symbol"
-            in prompt
-        )
-        assert (
-            "every import path must point to a file that is actually copied into the workspace"
-            in prompt
-        )
-        assert "assert a copied downstream output named by the oracle hint" in prompt
+        assert "assert that copied downstream output named by the oracle hint" in prompt
         assert (
             "avoid pre-2015 historical periods that PolicyEngine US cannot evaluate"
             in prompt
         )
-        assert "keep oracle-comparable tests threshold-invariant" in prompt
-        assert (
-            "Do not put local threshold helpers such as `snap_asset_limit`, `snap_asset_limit_with_elderly_or_disabled_member`, `snap_applicable_asset_limit`, or `snap_statutory_asset_limit`"
-            in prompt
-        )
-        assert (
-            "such as the two separate `12-month` phrases in 7 USC 2014(g)(1)(B)"
-            in prompt
-        )
-        assert (
-            "do not assume a different jurisdiction implies zero unless the source text expressly says so"
-            in prompt
-        )
-        assert (
-            "preserve that threshold as a named scalar such as `*_five_or_more_threshold: 5`"
-            in prompt
-        )
-        assert (
-            "prefer an inapplicable North Carolina case such as a non-SUA allowance type"
-            in prompt
-        )
-        assert (
-            "do not invent placeholder literals like `OTHER`, `NONE`, or `UNKNOWN`"
-            in prompt
-        )
-        assert "should use a valid non-telephone category like `SUA` or `BUA`" in prompt
 
     def test_build_eval_prompt_includes_sets_source_metadata_guidance(self, tmp_path):
         runner = parse_runner_spec("openai:gpt-5.4")
@@ -8793,7 +8170,7 @@ class TestSourceEval:
             runner=runner,
             output_root=tmp_path / "out",
             source_text="The SUA is $451, effective October 1, 2025.",
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             source_path=source_path,
             extra_context_paths=[],
@@ -8804,10 +8181,10 @@ class TestSourceEval:
             "cold",
             workspace,
             [],
-            target_file_name="example.rac",
+            target_file_name="example.yaml",
             include_tests=True,
             runner_backend="openai",
-            policyengine_rac_var_hint="snap_standard_utility_allowance",
+            policyengine_rule_hint="snap_standard_utility_allowance",
         )
 
         assert "./source-metadata.json" in prompt
@@ -8856,7 +8233,7 @@ class TestSourceEval:
                 "Relevant element | Maximum annual rate\n"
                 "Severe disability element | £1734\n"
             ),
-            rac_path=tmp_path / "rac",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
             extra_context_paths=[],
         )
@@ -8866,7 +8243,7 @@ class TestSourceEval:
             "cold",
             workspace,
             [],
-            target_file_name="example.rac",
+            target_file_name="example.yaml",
             include_tests=True,
             runner_backend="openai",
         )
@@ -8955,7 +8332,7 @@ class TestSourceEval:
 
     def test_allows_relative_workspace_reads(self, tmp_path):
         (tmp_path / "source.txt").write_text("text\n")
-        command = "bash -lc 'cat ./source.txt && sed -n \"1,40p\" context/26/24/b.rac'"
+        command = "bash -lc 'cat ./source.txt && sed -n \"1,40p\" context/26/24/b.yaml'"
         assert not _command_looks_out_of_bounds(command, tmp_path)
 
 
@@ -8978,7 +8355,7 @@ def _fake_eval_result(
         backend="codex",
         model="gpt-5.4",
         mode="cold",
-        output_file=f"/tmp/{citation}.rac",
+        output_file=f"/tmp/{citation}.yaml",
         trace_file=f"/tmp/{citation}.json",
         context_manifest_file=f"/tmp/{citation}.manifest.json",
         duration_ms=1000,

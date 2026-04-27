@@ -17,7 +17,7 @@ cases:
     section_eid: regulation-2-1-a
     oracle: policyengine
     policyengine_country: uk
-    policyengine_rac_var_hint: child_benefit_enhanced_rate_amount
+    policyengine_rule_hint: child_benefit_enhanced_rate_amount
 
   - kind: uk_legislation
     name: child-benefit-other-rate
@@ -25,7 +25,7 @@ cases:
     section_eid: regulation-2-1-b
     oracle: policyengine
     policyengine_country: uk
-    policyengine_rac_var_hint: child_benefit_other_child_weekly_rate
+    policyengine_rule_hint: child_benefit_other_child_weekly_rate
 
   - kind: uk_legislation
     name: pension-credit-couple-rate
@@ -33,7 +33,7 @@ cases:
     section_eid: regulation-6-1-a
     oracle: policyengine
     policyengine_country: uk
-    policyengine_rac_var_hint: standard_minimum_guarantee_couple_weekly_rate
+    policyengine_rule_hint: standard_minimum_guarantee_couple_weekly_rate
 
   - kind: uk_legislation
     name: pension-credit-single-rate
@@ -41,7 +41,7 @@ cases:
     section_eid: regulation-6-1-b
     oracle: policyengine
     policyengine_country: uk
-    policyengine_rac_var_hint: standard_minimum_guarantee_single_weekly_rate
+    policyengine_rule_hint: standard_minimum_guarantee_single_weekly_rate
 
   - kind: uk_legislation
     name: scottish-child-payment-rate
@@ -49,7 +49,7 @@ cases:
     section_eid: regulation-20-1
     oracle: policyengine
     policyengine_country: uk
-    policyengine_rac_var_hint: scottish_child_payment_weekly_amount
+    policyengine_rule_hint: scottish_child_payment_weekly_amount
 
   - kind: uk_legislation
     name: benefit-cap-single-london
@@ -57,7 +57,7 @@ cases:
     section_eid: regulation-80A-2-a
     oracle: policyengine
     policyengine_country: uk
-    policyengine_rac_var_hint: regulation_80A_2_a_applicable_annual_limit
+    policyengine_rule_hint: regulation_80A_2_a_applicable_annual_limit
 
   - kind: uk_legislation
     name: benefit-cap-joint-london
@@ -65,7 +65,7 @@ cases:
     section_eid: regulation-80A-2-b-i
     oracle: policyengine
     policyengine_country: uk
-    policyengine_rac_var_hint: regulation_80A_2_b_i_applicable_annual_limit
+    policyengine_rule_hint: regulation_80A_2_b_i_applicable_annual_limit
 
   - kind: uk_legislation
     name: benefit-cap-single-london-with-child
@@ -73,7 +73,7 @@ cases:
     section_eid: regulation-80A-2-b-ii
     oracle: policyengine
     policyengine_country: uk
-    policyengine_rac_var_hint: regulation_80A_2_b_ii_applicable_annual_limit
+    policyengine_rule_hint: regulation_80A_2_b_ii_applicable_annual_limit
 
   - kind: uk_legislation
     name: benefit-cap-family-london
@@ -81,7 +81,7 @@ cases:
     section_eid: regulation-80A-2-c
     oracle: policyengine
     policyengine_country: uk
-    policyengine_rac_var_hint: regulation_80A_2_c_applicable_annual_limit
+    policyengine_rule_hint: regulation_80A_2_c_applicable_annual_limit
 
   - kind: uk_legislation
     name: benefit-cap-joint-outside-london
@@ -89,7 +89,7 @@ cases:
     section_eid: regulation-80A-2-d-i
     oracle: policyengine
     policyengine_country: uk
-    policyengine_rac_var_hint: regulation_80A_2_d_i_applicable_annual_limit
+    policyengine_rule_hint: regulation_80A_2_d_i_applicable_annual_limit
 
   - kind: uk_legislation
     name: benefit-cap-single-outside-london-with-child
@@ -97,4 +97,4 @@ cases:
     section_eid: regulation-80A-2-d-ii
     oracle: policyengine
     policyengine_country: uk
-    policyengine_rac_var_hint: regulation_80A_2_d_ii_applicable_annual_limit
+    policyengine_rule_hint: regulation_80A_2_d_ii_applicable_annual_limit

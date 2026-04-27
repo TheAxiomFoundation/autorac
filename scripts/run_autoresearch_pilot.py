@@ -17,15 +17,15 @@ SRC_ROOT = REPO_ROOT / "src"
 
 def _default_output_root() -> Path:
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    return Path("/tmp") / f"autorac-autoresearch-pilot-{timestamp}"
+    return Path("/tmp") / f"axiom-encode-autoresearch-pilot-{timestamp}"
 
 
 def main() -> int:
     if str(SRC_ROOT) not in sys.path:
         sys.path.insert(0, str(SRC_ROOT))
 
-    from autorac.harness.autoresearch_pilot import (
-        autorac_repo_root,
+    from axiom_encode.harness.autoresearch_pilot import (
+        axiom_encode_repo_root,
         extract_primary_runner_summary,
         load_suite_summary,
         pilot_editable_paths,
@@ -67,13 +67,13 @@ def main() -> int:
         default=None,
         help=(
             "Persistent directory for reusing legislation.gov.uk payloads across "
-            "pilot runs. Defaults to AUTORAC_SHARED_LEGISLATION_CACHE or "
-            "~/tmp/autorac-shared-legislation-cache."
+            "pilot runs. Defaults to AXIOM_ENCODE_SHARED_LEGISLATION_CACHE or "
+            "~/tmp/axiom-encode-shared-legislation-cache."
         ),
     )
     args = parser.parse_args()
 
-    repo_root = autorac_repo_root()
+    repo_root = axiom_encode_repo_root()
     output_root = args.output_root.resolve()
     output_root.mkdir(parents=True, exist_ok=True)
     legislation_cache_root = (
@@ -93,7 +93,7 @@ def main() -> int:
     if env.get("PYTHONPATH"):
         pythonpath_entries.append(env["PYTHONPATH"])
     env["PYTHONPATH"] = os.pathsep.join(pythonpath_entries)
-    env["AUTORAC_GPT_BACKEND"] = args.gpt_backend
+    env["AXIOM_ENCODE_GPT_BACKEND"] = args.gpt_backend
 
     report: dict[str, object] = {
         "repo_root": str(repo_root),
@@ -119,7 +119,7 @@ def main() -> int:
         cmd = [
             sys.executable,
             "-m",
-            "autorac.cli",
+            "axiom_encode.cli",
             "eval-suite",
             str(manifest),
             "--output",

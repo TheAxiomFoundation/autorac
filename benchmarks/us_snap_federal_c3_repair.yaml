@@ -14,7 +14,7 @@ cases:
   - kind: source
     name: snap-2017-c-3
     source_id: 7 USC 2017(c)(3)
-    source_file: ../../rac-us/sources/slices/7-USC/2017/c/3.txt
+    source_file: ../../rules-us/sources/slices/7-USC/2017/c/3.txt
     allow_context:
-      - ../../rac-us/statute/7/2017/a.rac
-      - ../../rac-us/statute/7/2017/c/1.rac
+      - ../../rules-us/statute/7/2017/a.yaml
+      - ../../rules-us/statute/7/2017/c/1.yaml

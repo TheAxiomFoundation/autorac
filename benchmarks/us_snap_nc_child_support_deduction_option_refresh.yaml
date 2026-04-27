@@ -14,7 +14,7 @@ cases:
   - kind: source
     name: snap_state_uses_child_support_deduction_nc
     source_id: North Carolina SNAP child support deduction election under FNS 340 section 340.19
-    source_file: ../../rac-us-nc/sources/slices/ncdhhs/fns/340/current-effective/snap_state_uses_child_support_deduction_nc.txt
+    source_file: ../../rules-us-nc/sources/slices/ncdhhs/fns/340/current-effective/snap_state_uses_child_support_deduction_nc.txt
     oracle: policyengine
     policyengine_country: auto
-    policyengine_rac_var_hint: snap_state_uses_child_support_deduction
+    policyengine_rule_hint: snap_state_uses_child_support_deduction

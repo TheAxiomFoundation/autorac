@@ -52,7 +52,7 @@ wheels = [
 ]
 
 [[package]]
-name = "autorac"
+name = "axiom-encode"
 version = "0.2.64"
 source = { editable = "." }
 dependencies = [
@@ -96,7 +96,7 @@ observability = [
 [package.metadata]
 requires-dist = [
     { name = "anthropic", marker = "extra == 'api'", specifier = ">=0.40.0" },
-    { name = "autorac", extras = ["api", "dev", "observability"], marker = "extra == 'all'" },
+    { name = "axiom-encode", extras = ["api", "dev", "observability"], marker = "extra == 'all'" },
     { name = "claude-agent-sdk", marker = "extra == 'api'", specifier = ">=0.1.0" },
     { name = "opentelemetry-api", marker = "extra == 'observability'", specifier = ">=1.28.0" },
     { name = "opentelemetry-exporter-otlp-proto-http", marker = "extra == 'observability'", specifier = ">=1.28.0" },

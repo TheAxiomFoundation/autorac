@@ -14,7 +14,7 @@ cases:
   - kind: source
     name: snap_self_employment_simplified_deduction_rate_ga
     source_id: Georgia SNAP self-employment simplified deduction rate under DFCS SNAP Manual 3425 Self-Employment Income
-    source_file: ../../rac-us-ga/sources/slices/dfcs/snap/current-effective/snap_self_employment_simplified_deduction_rate_ga.txt
+    source_file: ../../rules-us-ga/sources/slices/dfcs/snap/current-effective/snap_self_employment_simplified_deduction_rate_ga.txt
     oracle: policyengine
     policyengine_country: auto
-    policyengine_rac_var_hint: snap_self_employment_simplified_deduction_rate
+    policyengine_rule_hint: snap_self_employment_simplified_deduction_rate

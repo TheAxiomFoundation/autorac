@@ -33,4 +33,4 @@ cases:
     source_ref: /uksi/2002/1792/2025-03-31
     section_eid: schedule-II-paragraph-14-2-a
     oracle: none
-    policyengine_rac_var_hint: pc_housing_non_dependant_deduction_income_band_below_176_weekly_amount
+    policyengine_rule_hint: pc_housing_non_dependant_deduction_income_band_below_176_weekly_amount

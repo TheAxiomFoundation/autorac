@@ -14,7 +14,7 @@ cases:
   - kind: source
     name: snap_state_uses_child_support_deduction_ca
     source_id: California CalFresh child support exclusion under MPP 63-502.2(p)
-    source_file: ../../rac-us-ca/sources/slices/cdss/calfresh/current-effective/snap_state_uses_child_support_deduction_ca.txt
+    source_file: ../../rules-us-ca/sources/slices/cdss/calfresh/current-effective/snap_state_uses_child_support_deduction_ca.txt
     oracle: policyengine
     policyengine_country: auto
-    policyengine_rac_var_hint: snap_state_uses_child_support_deduction
+    policyengine_rule_hint: snap_state_uses_child_support_deduction

@@ -15,39 +15,39 @@ cases:
     name: child-benefit-enhanced-rate
     source_ref: /uksi/2006/965/regulation/2/2025-04-07
     section_eid: regulation-2-1-a
-    policyengine_rac_var_hint: child_benefit_enhanced_rate_amount
+    policyengine_rule_hint: child_benefit_enhanced_rate_amount
 
   - kind: uk_legislation
     name: child-benefit-other-rate
     source_ref: /uksi/2006/965/regulation/2/2025-04-07
     section_eid: regulation-2-1-b
-    policyengine_rac_var_hint: child_benefit_other_child_weekly_rate
+    policyengine_rule_hint: child_benefit_other_child_weekly_rate
 
   - kind: uk_legislation
     name: pension-credit-couple-rate
     source_ref: /uksi/2002/1792/regulation/6/2025-03-31
     section_eid: regulation-6-1-a
-    policyengine_rac_var_hint: standard_minimum_guarantee_couple_weekly_rate
+    policyengine_rule_hint: standard_minimum_guarantee_couple_weekly_rate
 
   - kind: uk_legislation
     name: pension-credit-single-rate
     source_ref: /uksi/2002/1792/regulation/6/2025-03-31
     section_eid: regulation-6-1-b
-    policyengine_rac_var_hint: standard_minimum_guarantee_single_weekly_rate
+    policyengine_rule_hint: standard_minimum_guarantee_single_weekly_rate
 
   - kind: source
     name: pension-credit-severe-disability-addition-one-eligible-adult
     source_id: uksi-2002-1792-regulation-6-5-a
     source_file: ./sources/uk/pc_severe_disability_addition_one_eligible_adult_2025.txt
     oracle: none
-    policyengine_rac_var_hint: pc_severe_disability_addition_one_eligible_adult_weekly_rate
+    policyengine_rule_hint: pc_severe_disability_addition_one_eligible_adult_weekly_rate
 
   - kind: source
     name: pension-credit-severe-disability-addition-two-eligible-adults
     source_id: uksi-2002-1792-regulation-6-5-b
     source_file: ./sources/uk/pc_severe_disability_addition_two_eligible_adults_2025.txt
     oracle: none
-    policyengine_rac_var_hint: pc_severe_disability_addition_two_eligible_adults_weekly_rate
+    policyengine_rule_hint: pc_severe_disability_addition_two_eligible_adults_weekly_rate
 
   - kind: source
     name: pension-credit-carer-addition
@@ -55,140 +55,140 @@ cases:
     source_file: ./sources/uk/pc_carer_addition_2025.txt
     oracle: policyengine
     policyengine_country: uk
-    policyengine_rac_var_hint: pc_carer_addition_weekly_rate
+    policyengine_rule_hint: pc_carer_addition_weekly_rate
 
   - kind: source
     name: pension-credit-child-addition
     source_id: uksi-2002-1792-schedule-iia-paragraph-9-1-a
     source_file: ./sources/uk/pc_child_addition_2025.txt
     oracle: none
-    policyengine_rac_var_hint: pc_child_addition_weekly_rate
+    policyengine_rule_hint: pc_child_addition_weekly_rate
 
   - kind: source
     name: pension-credit-disabled-child-addition
     source_id: uksi-2002-1792-schedule-iia-paragraph-9-1-b-i
     source_file: ./sources/uk/pc_disabled_child_addition_2025.txt
     oracle: none
-    policyengine_rac_var_hint: pc_disabled_child_addition_weekly_rate
+    policyengine_rule_hint: pc_disabled_child_addition_weekly_rate
 
   - kind: source
     name: pension-credit-severely-disabled-child-addition
     source_id: uksi-2002-1792-schedule-iia-paragraph-9-1-b-ii
     source_file: ./sources/uk/pc_severely_disabled_child_addition_2025.txt
     oracle: none
-    policyengine_rac_var_hint: pc_severely_disabled_child_addition_weekly_rate
+    policyengine_rule_hint: pc_severely_disabled_child_addition_weekly_rate
 
   - kind: source
     name: pension-credit-savings-credit-maximum-rate
     source_id: uksi-2002-1792-regulation-7-1-a
     source_file: ./sources/uk/pc_savings_credit_maximum_rate_2025.txt
     oracle: none
-    policyengine_rac_var_hint: pc_savings_credit_maximum_rate
+    policyengine_rule_hint: pc_savings_credit_maximum_rate
 
   - kind: source
     name: pension-credit-savings-credit-amount-a-rate
     source_id: uksi-2002-1792-regulation-7-1-b
     source_file: ./sources/uk/pc_savings_credit_amount_a_rate_2025.txt
     oracle: none
-    policyengine_rac_var_hint: pc_savings_credit_amount_a_rate
+    policyengine_rule_hint: pc_savings_credit_amount_a_rate
 
   - kind: source
     name: pension-credit-savings-credit-amount-b-rate
     source_id: uksi-2002-1792-regulation-7-1-c
     source_file: ./sources/uk/pc_savings_credit_amount_b_rate_2025.txt
     oracle: none
-    policyengine_rac_var_hint: pc_savings_credit_amount_b_rate
+    policyengine_rule_hint: pc_savings_credit_amount_b_rate
 
   - kind: source
     name: pension-credit-savings-credit-threshold-single
     source_id: uksi-2002-1792-regulation-7-2-single
     source_file: ./sources/uk/pc_savings_credit_threshold_single_2025.txt
     oracle: none
-    policyengine_rac_var_hint: pc_savings_credit_threshold_single_weekly_amount
+    policyengine_rule_hint: pc_savings_credit_threshold_single_weekly_amount
 
   - kind: source
     name: pension-credit-savings-credit-threshold-couple
     source_id: uksi-2002-1792-regulation-7-2-couple
     source_file: ./sources/uk/pc_savings_credit_threshold_couple_2025.txt
     oracle: none
-    policyengine_rac_var_hint: pc_savings_credit_threshold_couple_weekly_amount
+    policyengine_rule_hint: pc_savings_credit_threshold_couple_weekly_amount
 
   - kind: source
     name: pension-credit-prisoner-standard-minimum-guarantee-nil
     source_id: uksi-2002-1792-regulation-6-3-a
     source_file: ./sources/uk/pc_prisoner_standard_minimum_guarantee_nil_2025.txt
     oracle: none
-    policyengine_rac_var_hint: pc_prisoner_standard_minimum_guarantee_weekly_amount
+    policyengine_rule_hint: pc_prisoner_standard_minimum_guarantee_weekly_amount
 
   - kind: source
     name: pension-credit-prisoner-additional-amount-nil
     source_id: uksi-2002-1792-regulation-6-3-b
     source_file: ./sources/uk/pc_prisoner_additional_amount_nil_2025.txt
     oracle: none
-    policyengine_rac_var_hint: pc_prisoner_additional_amount_weekly_amount
+    policyengine_rule_hint: pc_prisoner_additional_amount_weekly_amount
 
   - kind: source
     name: pension-credit-earnings-disregard-maximum
     source_id: uksi-2002-1792-schedule-VI-paragraph-4A-1
     source_file: ./sources/uk/pc_earnings_disregard_maximum_2025.txt
     oracle: none
-    policyengine_rac_var_hint: pc_maximum_earnings_disregard_weekly_amount
+    policyengine_rule_hint: pc_maximum_earnings_disregard_weekly_amount
 
   - kind: source
     name: pension-credit-earnings-disregard-single
     source_id: uksi-2002-1792-schedule-VI-paragraph-5-a
     source_file: ./sources/uk/pc_earnings_disregard_single_2025.txt
     oracle: none
-    policyengine_rac_var_hint: pc_single_claimant_earnings_disregard_weekly_amount
+    policyengine_rule_hint: pc_single_claimant_earnings_disregard_weekly_amount
 
   - kind: source
     name: pension-credit-earnings-disregard-couple
     source_id: uksi-2002-1792-schedule-VI-paragraph-5-b
     source_file: ./sources/uk/pc_earnings_disregard_couple_2025.txt
     oracle: none
-    policyengine_rac_var_hint: pc_couple_claimant_earnings_disregard_weekly_amount
+    policyengine_rule_hint: pc_couple_claimant_earnings_disregard_weekly_amount
 
   - kind: uk_legislation
     name: scottish-child-payment-rate
     source_ref: /ssi/2020/351/regulation/20/2025-04-01
     section_eid: regulation-20-1
-    policyengine_rac_var_hint: scottish_child_payment_weekly_amount
+    policyengine_rule_hint: scottish_child_payment_weekly_amount
 
   - kind: uk_legislation
     name: benefit-cap-single-london
     source_ref: /uksi/2013/376/regulation/80A/2025-04-01
     section_eid: regulation-80A-2-a
-    policyengine_rac_var_hint: regulation_80A_2_a_applicable_annual_limit
+    policyengine_rule_hint: regulation_80A_2_a_applicable_annual_limit
 
   - kind: uk_legislation
     name: benefit-cap-joint-london
     source_ref: /uksi/2013/376/regulation/80A/2025-04-01
     section_eid: regulation-80A-2-b-i
-    policyengine_rac_var_hint: regulation_80A_2_b_i_applicable_annual_limit
+    policyengine_rule_hint: regulation_80A_2_b_i_applicable_annual_limit
 
   - kind: uk_legislation
     name: benefit-cap-single-london-with-child
     source_ref: /uksi/2013/376/regulation/80A/2025-04-01
     section_eid: regulation-80A-2-b-ii
-    policyengine_rac_var_hint: regulation_80A_2_b_ii_applicable_annual_limit
+    policyengine_rule_hint: regulation_80A_2_b_ii_applicable_annual_limit
 
   - kind: uk_legislation
     name: benefit-cap-family-london
     source_ref: /uksi/2013/376/regulation/80A/2025-04-01
     section_eid: regulation-80A-2-c
-    policyengine_rac_var_hint: regulation_80A_2_c_applicable_annual_limit
+    policyengine_rule_hint: regulation_80A_2_c_applicable_annual_limit
 
   - kind: uk_legislation
     name: benefit-cap-joint-outside-london
     source_ref: /uksi/2013/376/regulation/80A/2025-04-01
     section_eid: regulation-80A-2-d-i
-    policyengine_rac_var_hint: regulation_80A_2_d_i_applicable_annual_limit
+    policyengine_rule_hint: regulation_80A_2_d_i_applicable_annual_limit
 
   - kind: uk_legislation
     name: benefit-cap-single-outside-london-with-child
     source_ref: /uksi/2013/376/regulation/80A/2025-04-01
     section_eid: regulation-80A-2-d-ii
-    policyengine_rac_var_hint: regulation_80A_2_d_ii_applicable_annual_limit
+    policyengine_rule_hint: regulation_80A_2_d_ii_applicable_annual_limit
 
   - kind: source
     name: uc-standard-allowance-single-under-25
@@ -196,7 +196,7 @@ cases:
     source_file: ./sources/uk/uc_standard_allowance_single_under_25_2025.txt
     oracle: policyengine
     policyengine_country: uk
-    policyengine_rac_var_hint: uc_standard_allowance_single_claimant_aged_under_25
+    policyengine_rule_hint: uc_standard_allowance_single_claimant_aged_under_25
 
   - kind: source
     name: uc-standard-allowance-single-25-or-over
@@ -204,7 +204,7 @@ cases:
     source_file: ./sources/uk/uc_standard_allowance_single_25_or_over_2025.txt
     oracle: policyengine
     policyengine_country: uk
-    policyengine_rac_var_hint: uc_standard_allowance_single_claimant_aged_25_or_over
+    policyengine_rule_hint: uc_standard_allowance_single_claimant_aged_25_or_over
 
   - kind: source
     name: uc-standard-allowance-joint-under-25
@@ -212,7 +212,7 @@ cases:
     source_file: ./sources/uk/uc_standard_allowance_joint_under_25_2025.txt
     oracle: policyengine
     policyengine_country: uk
-    policyengine_rac_var_hint: uc_standard_allowance_joint_claimants_both_aged_under_25
+    policyengine_rule_hint: uc_standard_allowance_joint_claimants_both_aged_under_25
 
   - kind: source
     name: uc-standard-allowance-joint-25-or-over
@@ -220,7 +220,7 @@ cases:
     source_file: ./sources/uk/uc_standard_allowance_joint_25_or_over_2025.txt
     oracle: policyengine
     policyengine_country: uk
-    policyengine_rac_var_hint: uc_standard_allowance_joint_claimants_one_or_both_aged_25_or_over
+    policyengine_rule_hint: uc_standard_allowance_joint_claimants_one_or_both_aged_25_or_over
 
   - kind: source
     name: uc-carer-element
@@ -228,7 +228,7 @@ cases:
     source_file: ./sources/uk/uc_carer_element_2025.txt
     oracle: policyengine
     policyengine_country: uk
-    policyengine_rac_var_hint: uc_carer_element_amount
+    policyengine_rule_hint: uc_carer_element_amount
 
   - kind: source
     name: uc-lcwra-element
@@ -236,7 +236,7 @@ cases:
     source_file: ./sources/uk/uc_lcwra_element_2025.txt
     oracle: policyengine
     policyengine_country: uk
-    policyengine_rac_var_hint: uc_lcwra_element_amount
+    policyengine_rule_hint: uc_lcwra_element_amount
 
   - kind: source
     name: uc-child-element-first-child
@@ -244,7 +244,7 @@ cases:
     source_file: ./sources/uk/uc_child_element_first_child_2025.txt
     oracle: policyengine
     policyengine_country: uk
-    policyengine_rac_var_hint: uc_child_element_first_child_higher_amount
+    policyengine_rule_hint: uc_child_element_first_child_higher_amount
 
   - kind: source
     name: uc-child-element-subsequent-child
@@ -252,7 +252,7 @@ cases:
     source_file: ./sources/uk/uc_child_element_subsequent_child_2025.txt
     oracle: policyengine
     policyengine_country: uk
-    policyengine_rac_var_hint: uc_child_element_second_and_subsequent_child_amount
+    policyengine_rule_hint: uc_child_element_second_and_subsequent_child_amount
 
   - kind: source
     name: uc-disabled-child-element
@@ -260,7 +260,7 @@ cases:
     source_file: ./sources/uk/uc_child_element_disabled_2025.txt
     oracle: policyengine
     policyengine_country: uk
-    policyengine_rac_var_hint: uc_disabled_child_element_amount
+    policyengine_rule_hint: uc_disabled_child_element_amount
 
   - kind: source
     name: uc-severely-disabled-child-element
@@ -268,7 +268,7 @@ cases:
     source_file: ./sources/uk/uc_child_element_severely_disabled_2025.txt
     oracle: policyengine
     policyengine_country: uk
-    policyengine_rac_var_hint: uc_severely_disabled_child_element_amount
+    policyengine_rule_hint: uc_severely_disabled_child_element_amount
 
   - kind: source
     name: uc-work-allowance-with-housing
@@ -276,7 +276,7 @@ cases:
     source_file: ./sources/uk/uc_work_allowance_with_housing_2025.txt
     oracle: policyengine
     policyengine_country: uk
-    policyengine_rac_var_hint: uc_work_allowance_with_housing_amount
+    policyengine_rule_hint: uc_work_allowance_with_housing_amount
 
   - kind: source
     name: uc-work-allowance-without-housing
@@ -284,7 +284,7 @@ cases:
     source_file: ./sources/uk/uc_work_allowance_without_housing_2025.txt
     oracle: policyengine
     policyengine_country: uk
-    policyengine_rac_var_hint: uc_work_allowance_without_housing_amount
+    policyengine_rule_hint: uc_work_allowance_without_housing_amount
 
   - kind: source
     name: uc-childcare-cap-one-child
@@ -292,7 +292,7 @@ cases:
     source_file: ./sources/uk/uc_childcare_cap_one_child_2025.txt
     oracle: policyengine
     policyengine_country: uk
-    policyengine_rac_var_hint: uc_maximum_childcare_element_one_child_amount
+    policyengine_rule_hint: uc_maximum_childcare_element_one_child_amount
 
   - kind: source
     name: uc-childcare-cap-two-or-more-children
@@ -300,7 +300,7 @@ cases:
     source_file: ./sources/uk/uc_childcare_cap_two_or_more_children_2025.txt
     oracle: policyengine
     policyengine_country: uk
-    policyengine_rac_var_hint: uc_maximum_childcare_element_two_or_more_children_amount
+    policyengine_rule_hint: uc_maximum_childcare_element_two_or_more_children_amount
 
   - kind: source
     name: uc-housing-non-dep-deduction-amount
@@ -308,7 +308,7 @@ cases:
     source_file: ./sources/uk/uc_housing_non_dep_deduction_2025.txt
     oracle: policyengine
     policyengine_country: uk
-    policyengine_rac_var_hint: uc_individual_non_dep_deduction_amount
+    policyengine_rule_hint: uc_individual_non_dep_deduction_amount
 
   - kind: source
     name: wtc-basic-element
@@ -316,7 +316,7 @@ cases:
     source_file: ./sources/uk/wtc_basic_element_2024.txt
     oracle: policyengine
     policyengine_country: uk
-    policyengine_rac_var_hint: wtc_basic_element_amount
+    policyengine_rule_hint: wtc_basic_element_amount
 
   - kind: source
     name: wtc-second-adult-element
@@ -324,7 +324,7 @@ cases:
     source_file: ./sources/uk/wtc_second_adult_element_2024.txt
     oracle: policyengine
     policyengine_country: uk
-    policyengine_rac_var_hint: wtc_second_adult_element_amount
+    policyengine_rule_hint: wtc_second_adult_element_amount
 
   - kind: source
     name: wtc-lone-parent-element
@@ -332,7 +332,7 @@ cases:
     source_file: ./sources/uk/wtc_lone_parent_element_2024.txt
     oracle: policyengine
     policyengine_country: uk
-    policyengine_rac_var_hint: wtc_lone_parent_element_amount
+    policyengine_rule_hint: wtc_lone_parent_element_amount
 
   - kind: source
     name: wtc-worker-element
@@ -340,7 +340,7 @@ cases:
     source_file: ./sources/uk/wtc_worker_element_2021.txt
     oracle: policyengine
     policyengine_country: uk
-    policyengine_rac_var_hint: wtc_worker_element_amount
+    policyengine_rule_hint: wtc_worker_element_amount
 
   - kind: source
     name: wtc-disabled-element
@@ -348,7 +348,7 @@ cases:
     source_file: ./sources/uk/wtc_disabled_element_2025.txt
     oracle: policyengine
     policyengine_country: uk
-    policyengine_rac_var_hint: wtc_disabled_element_amount
+    policyengine_rule_hint: wtc_disabled_element_amount
 
   - kind: source
     name: wtc-severely-disabled-element
@@ -356,7 +356,7 @@ cases:
     source_file: ./sources/uk/wtc_severely_disabled_element_2025.txt
     oracle: policyengine
     policyengine_country: uk
-    policyengine_rac_var_hint: wtc_severely_disabled_element_amount
+    policyengine_rule_hint: wtc_severely_disabled_element_amount
 
   - kind: source
     name: pension-credit-special-employment-disregard

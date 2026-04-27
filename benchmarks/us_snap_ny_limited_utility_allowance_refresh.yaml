@@ -14,7 +14,7 @@ cases:
   - kind: source
     name: snap_limited_utility_allowance_ny
     source_id: New York SNAP limited utility allowance under OTDA LDSS-5006 effective October 1, 2025
-    source_file: ../../rac-us-ny/sources/slices/otda/snap/current-effective/snap_limited_utility_allowance_ny.txt
+    source_file: ../../rules-us-ny/sources/slices/otda/snap/current-effective/snap_limited_utility_allowance_ny.txt
     oracle: policyengine
     policyengine_country: auto
-    policyengine_rac_var_hint: snap_limited_utility_allowance
+    policyengine_rule_hint: snap_limited_utility_allowance

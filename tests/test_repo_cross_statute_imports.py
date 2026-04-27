@@ -2,34 +2,34 @@ from pathlib import Path
 
 import pytest
 
-from autorac.harness.validator_pipeline import ValidatorPipeline
+from axiom_encode.harness.validator_pipeline import ValidatorPipeline
 
 
 def _repo_roots() -> tuple[Path, Path]:
     foundation_root = Path(__file__).resolve().parents[2]
-    rac_us_path = foundation_root / "rac-us" / "statute"
-    rac_path = foundation_root / "rac"
-    if not rac_us_path.exists():
-        pytest.skip("rac-us/statute repo not present")
-    if not rac_path.exists():
-        pytest.skip("rac repo not present")
-    return rac_us_path, rac_path
+    policy_repo_path = foundation_root / "rules-us" / "statute"
+    axiom_rules_path = foundation_root / "axiom-rules"
+    if not policy_repo_path.exists():
+        pytest.skip("rules-us/statute repo not present")
+    if not axiom_rules_path.exists():
+        pytest.skip("axiom-rules repo not present")
+    return policy_repo_path, axiom_rules_path
 
 
 def test_repo_cross_statute_definitions_are_imported():
-    rac_us_path, rac_path = _repo_roots()
+    policy_repo_path, axiom_rules_path = _repo_roots()
     pipeline = ValidatorPipeline(
-        rac_us_path=rac_us_path,
-        rac_path=rac_path,
+        policy_repo_path=policy_repo_path,
+        axiom_rules_path=axiom_rules_path,
         enable_oracles=False,
     )
 
     failures: list[str] = []
-    for rac_file in sorted(rac_us_path.rglob("*.rac")):
-        issues = pipeline._check_cross_statute_definition_imports(rac_file)
+    for rulespec_file in sorted(policy_repo_path.rglob("*.yaml")):
+        issues = pipeline._check_cross_statute_definition_imports(rulespec_file)
         if not issues:
             continue
-        relative = rac_file.relative_to(rac_us_path.parent)
+        relative = rulespec_file.relative_to(policy_repo_path.parent)
         for issue in issues:
             failures.append(f"{relative}: {issue}")
 

@@ -1,6 +1,6 @@
-# AutoRAC
+# Axiom Encode
 
-AI-assisted RAC encoding infrastructure. Provides the feedback loop for automated statute encoding.
+AI-assisted Axiom RuleSpec encoding infrastructure. This repo owns the automation layer for turning source legal text into `rules.yaml` / `*.yaml` RuleSpec artifacts and validating them with `axiom-rules`.
 
 ## Installation
 
@@ -10,21 +10,11 @@ pip install -e ".[dev]"
 
 ## Usage
 
-```python
-from autorac import EncoderHarness, EncoderConfig
-from pathlib import Path
+```bash
+axiom-encode encode "26 USC 32(a)(1)" \
+  --output /tmp/axiom-encode-encodings
 
-config = EncoderConfig(
-    rac_us_path=Path("../rac-us"),
-    rac_path=Path("../rac"),
-)
-
-harness = EncoderHarness(config)
-run, result = harness.encode_with_feedback(
-    citation="26 USC 32(a)(1)",
-    statute_text="...",
-    output_path=Path("rac-us/statute/26/32/a/1.rac"),
-)
+axiom-encode validate /tmp/axiom-encode-encodings/codex-gpt-5.5/26/32/a/1.yaml
 ```
 
 ## Eval suites and readiness gates
@@ -33,10 +23,10 @@ Use manifest-driven benchmark suites when you want an explicit readiness answer 
 of ad hoc spot checks.
 
 ```bash
-autorac eval-suite benchmarks/uk_starter.yaml
-autorac eval-suite benchmarks/uk_readiness.yaml
-autorac eval-suite benchmarks/uk_policyengine_readiness.yaml
-autorac eval-suite-archive /tmp/autorac-uk-wave21-bulk-codex-rerun16-20260410
+axiom-encode eval-suite benchmarks/uk_starter.yaml
+axiom-encode eval-suite benchmarks/uk_readiness.yaml
+axiom-encode eval-suite benchmarks/uk_policyengine_readiness.yaml
+axiom-encode eval-suite-archive /tmp/axiom-encode-uk-wave21-bulk-codex-rerun16-20260410
 ```
 
 - `benchmarks/uk_starter.yaml` is the core UK benchmark set and now explicitly exercises the PolicyEngine UK oracle on 11 mapped statutory rate/amount slices.
@@ -63,7 +53,7 @@ appends a record to `artifacts/eval-suites/index.jsonl`.
 The repo now keeps paper-oriented internal documentation for benchmark-relevant
 changes and current evidence.
 
-- `docs/autorac-methods-log.md` tracks the last meaningful harness changes,
+- `docs/axiom-encode-methods-log.md` tracks the last meaningful harness changes,
   their hypotheses, and the evidence path to justify them later.
 - `docs/paper-evidence-register.md` lists safe claims, claims to avoid, and
   reproducible count commands for refreshing paper numbers.
@@ -74,13 +64,13 @@ Use a fixed multi-runner manifest plus the report exporter when you want a
 reproducible GPT-vs-Claude experiment you can cite in a paper.
 
 ```bash
-autorac eval-suite benchmarks/uk_paper_head_to_head.yaml \
-  --output /tmp/autorac-uk-paper-head-to-head \
-  --json > /tmp/autorac-uk-paper-head-to-head/results.json
+axiom-encode eval-suite benchmarks/uk_paper_head_to_head.yaml \
+  --output /tmp/axiom-encode-uk-paper-head-to-head \
+  --json > /tmp/axiom-encode-uk-paper-head-to-head/results.json
 
-autorac eval-suite-report /tmp/autorac-uk-paper-head-to-head/results.json \
-  --markdown-out /tmp/autorac-uk-paper-head-to-head/report.md \
-  --csv-out /tmp/autorac-uk-paper-head-to-head/cases.csv
+axiom-encode eval-suite-report /tmp/axiom-encode-uk-paper-head-to-head/results.json \
+  --markdown-out /tmp/axiom-encode-uk-paper-head-to-head/report.md \
+  --csv-out /tmp/axiom-encode-uk-paper-head-to-head/cases.csv
 ```
 
 `benchmarks/uk_paper_head_to_head.yaml` freezes the case set and runner aliases,
@@ -111,7 +101,7 @@ promotion flow.
 - Outer-loop final-review holdout:
   - `benchmarks/uk_autoresearch_final_review.yaml`
 - Editable surface:
-  - `src/autorac/harness/eval_prompt_surface.py`
+  - `src/axiom_encode/harness/eval_prompt_surface.py`
 - Program:
   - `autoresearch/program.md`
 - Pilot runner:
@@ -124,7 +114,7 @@ uv run python scripts/run_autoresearch_pilot.py
 ```
 
 The script:
-- runs the frozen manifests through `autorac eval-suite`
+- runs the frozen manifests through `axiom-encode eval-suite`
 - writes per-manifest outputs plus an aggregate report
 - prints a single `AUTORESEARCH_SCORE=...` scalar for outer-loop optimization
 
@@ -136,7 +126,7 @@ uv run python scripts/run_autoresearch_iteration.py
 
 That script:
 - computes or reuses a baseline pilot report
-- asks Codex to edit only `src/autorac/harness/eval_prompt_surface.py`
+- asks Codex to edit only `src/axiom_encode/harness/eval_prompt_surface.py`
 - re-runs the inner-loop frozen manifests on the candidate prompt surface
 - then runs the separate final-review holdout set
 - keeps the candidate only if training improves and final review does not regress
@@ -144,5 +134,4 @@ That script:
 The score heavily rewards readiness and deterministic/semantic pass rates, with
 cost used only as a small tiebreaker.
 
-`scripts/run_autoagent_pilot.py` still exists as a compatibility wrapper, but
-the canonical path is now the autoresearch one above.
+The canonical path is the autoresearch runner above.

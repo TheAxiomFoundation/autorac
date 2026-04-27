@@ -14,7 +14,7 @@ cases:
   - kind: source
     name: snap_self_employment_expense_based_deduction_applies_tn
     source_id: Tennessee SNAP self-employment expense option under TDHS SNAP Income Policy 24.14
-    source_file: ../../rac-us-tn/sources/slices/tdhs/snap/current-effective/snap_self_employment_expense_based_deduction_applies_tn.txt
+    source_file: ../../rules-us-tn/sources/slices/tdhs/snap/current-effective/snap_self_employment_expense_based_deduction_applies_tn.txt
     oracle: policyengine
     policyengine_country: auto
-    policyengine_rac_var_hint: snap_self_employment_expense_based_deduction_applies
+    policyengine_rule_hint: snap_self_employment_expense_based_deduction_applies

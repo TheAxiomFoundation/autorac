@@ -1,4 +1,4 @@
--- Create encoding_runs table for the AutoRAC dashboard
+-- Create encoding_runs table for the Axiom Encode dashboard
 -- Run this in Supabase SQL Editor: https://supabase.com/dashboard/project/nsupqhfchdtqclomlrgs/sql
 
 CREATE TABLE IF NOT EXISTS encoding_runs (
@@ -9,11 +9,10 @@ CREATE TABLE IF NOT EXISTS encoding_runs (
     complexity JSONB DEFAULT '{}'::jsonb,
     iterations JSONB NOT NULL DEFAULT '[]'::jsonb,
     total_duration_ms INTEGER,
-    predicted_scores JSONB,
-    final_scores JSONB,
+    review_scores JSONB,
     agent_type TEXT,
     agent_model TEXT,
-    rac_content TEXT,
+    rulespec_content TEXT,
     session_id TEXT,
     synced_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -57,13 +56,13 @@ BEGIN
         er.timestamp,
         er.citation,
         er.iterations,
-        -- Map final_scores to scores format expected by frontend
+        -- Map review_scores to scores format expected by frontend
         COALESCE(
             jsonb_build_object(
-                'rac', (er.final_scores->>'rac_reviewer')::numeric,
-                'formula', (er.final_scores->>'formula_reviewer')::numeric,
-                'parameter', (er.final_scores->>'parameter_reviewer')::numeric,
-                'integration', (er.final_scores->>'integration_reviewer')::numeric
+                'rulespec', (er.review_scores->>'rulespec_reviewer')::numeric,
+                'formula', (er.review_scores->>'formula_reviewer')::numeric,
+                'parameter', (er.review_scores->>'parameter_reviewer')::numeric,
+                'integration', (er.review_scores->>'integration_reviewer')::numeric
             ),
             '{}'::jsonb
         ) as scores,

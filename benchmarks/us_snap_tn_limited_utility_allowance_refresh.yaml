@@ -14,7 +14,7 @@ cases:
   - kind: source
     name: snap_limited_utility_allowance_tn
     source_id: Tennessee SNAP limited utility allowance under TennCare ABD Manual 125.020 section 3.d.ii.1.c.ii
-    source_file: ../../rac-us-tn/sources/slices/tenncare/post-eligibility/current-effective/snap_limited_utility_allowance_tn.txt
+    source_file: ../../rules-us-tn/sources/slices/tenncare/post-eligibility/current-effective/snap_limited_utility_allowance_tn.txt
     oracle: policyengine
     policyengine_country: auto
-    policyengine_rac_var_hint: snap_limited_utility_allowance
+    policyengine_rule_hint: snap_limited_utility_allowance
