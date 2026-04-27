@@ -216,7 +216,7 @@ def fetch_runs_from_supabase(
 # Transcript Sync (from PostToolUse hook local DB to Supabase)
 # ============================================================================
 
-TRANSCRIPT_DB = Path.home() / "RulesFoundation" / "axiom_encode" / "transcripts.db"
+TRANSCRIPT_DB = Path.home() / "TheAxiomFoundation" / "axiom-encode" / "transcripts.db"
 
 
 def sync_transcripts_to_supabase(
@@ -302,7 +302,7 @@ def sync_transcripts_to_supabase(
     }
 
 
-ENCODINGS_DB = Path.home() / "RulesFoundation" / "axiom_encode" / "encodings.db"
+ENCODINGS_DB = Path.home() / "TheAxiomFoundation" / "axiom-encode" / "encodings.db"
 
 
 def sync_agent_sessions_to_supabase(

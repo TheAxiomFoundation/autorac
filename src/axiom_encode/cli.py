@@ -49,7 +49,7 @@ from .harness.validator_pipeline import ValidatorPipeline, extract_embedded_sour
 from .repo_routing import find_policy_repo_root, is_policy_repo_root
 
 # Default DB path - can be overridden with --db
-DEFAULT_DB = Path.home() / "RulesFoundation" / "axiom_encode" / "encodings.db"
+DEFAULT_DB = Path.home() / "TheAxiomFoundation" / "axiom-encode" / "encodings.db"
 DEFAULT_GPT_RUNNER = f"codex:{DEFAULT_OPENAI_MODEL}"
 
 
@@ -59,7 +59,6 @@ def _resolve_repo_checkout(name: str) -> Path:
     candidates = [
         workspace_root / name,
         Path.home() / "TheAxiomFoundation" / name,
-        Path.home() / "RulesFoundation" / name,
     ]
     for candidate in candidates:
         if candidate.exists():
@@ -242,7 +241,7 @@ def main():
     statute_parser.add_argument(
         "--xml-path",
         type=Path,
-        default=Path.home() / "RulesFoundation" / "atlas" / "data" / "uscode",
+        default=Path.home() / "TheAxiomFoundation" / "atlas" / "data" / "uscode",
         help="Path to USC XML files",
     )
 
@@ -306,7 +305,7 @@ def main():
         "--atlas-path",
         type=Path,
         default=None,
-        help="Path to atlas repo (default: ATLAS_PATH env var or ~/RulesFoundation/atlas)",
+        help="Path to atlas repo (default: ATLAS_PATH env var or ~/TheAxiomFoundation/atlas)",
     )
     encode_parser.add_argument(
         "--axiom-rules-path",

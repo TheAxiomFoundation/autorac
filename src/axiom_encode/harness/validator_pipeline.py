@@ -3665,7 +3665,7 @@ Output ONLY valid JSON:
             / "python",
             Path.home() / "worktrees" / repo_name / ".venv" / "bin" / "python",
             Path.home() / repo_name / ".venv" / "bin" / "python",
-            Path.home() / "RulesFoundation" / repo_name / ".venv" / "bin" / "python",
+            Path.home() / "TheAxiomFoundation" / repo_name / ".venv" / "bin" / "python",
             Path.home() / "PolicyEngine" / repo_name / ".venv" / "bin" / "python",
         ]
         for pe_python in pe_venv_paths:
