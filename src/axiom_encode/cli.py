@@ -1572,8 +1572,8 @@ def cmd_encode(args):
     """Encode a USC citation through the current RuleSpec eval pipeline."""
     model = args.model or DEFAULT_OPENAI_MODEL
     runner = f"{args.backend}:{model}"
-    atlas_path = args.atlas_path or _default_repo_checkout("atlas")
-    axiom_rules_path = args.axiom_rules_path or _default_repo_checkout("axiom-rules")
+    atlas_path = args.atlas_path or _resolve_repo_checkout("atlas")
+    axiom_rules_path = args.axiom_rules_path or _resolve_repo_checkout("axiom-rules")
 
     if not atlas_path.exists():
         print(f"Atlas repo not found: {atlas_path}")
@@ -1619,12 +1619,6 @@ def cmd_encode(args):
     sys.exit(0 if result.success else 1)
 
 
-def _default_repo_checkout(name: str) -> Path:
-    """Resolve sibling repo checkouts relative to this axiom_encode repo."""
-    repo_root = Path(__file__).resolve().parents[3]
-    return repo_root / name
-
-
 def _print_eval_metrics(result) -> None:
     """Print human-readable eval metrics when present."""
     if not result.metrics:
@@ -1658,8 +1652,8 @@ def cmd_eval(args):
     runners = _effective_runner_specs(
         args.runner or ["claude:opus", DEFAULT_GPT_RUNNER], args
     )
-    atlas_path = args.atlas_path or _default_repo_checkout("atlas")
-    axiom_rules_path = args.axiom_rules_path or _default_repo_checkout("axiom-rules")
+    atlas_path = args.atlas_path or _resolve_repo_checkout("atlas")
+    axiom_rules_path = args.axiom_rules_path or _resolve_repo_checkout("axiom-rules")
 
     if not atlas_path.exists():
         print(f"Atlas repo not found: {atlas_path}")
@@ -1713,7 +1707,7 @@ def cmd_eval_source(args):
     runners = _effective_runner_specs(
         args.runner or ["claude:opus", DEFAULT_GPT_RUNNER], args
     )
-    runtime_axiom_rules_path = _default_repo_checkout("axiom-rules")
+    runtime_axiom_rules_path = None
     policy_repo_path = None
     if args.axiom_rules_path:
         if is_policy_repo_root(args.axiom_rules_path):
@@ -1723,7 +1717,11 @@ def cmd_eval_source(args):
     else:
         policy_repo_path = find_policy_repo_root(args.source_file)
 
-    policy_repo_path = policy_repo_path or _default_repo_checkout("rules-us")
+    policy_repo_path = policy_repo_path or _resolve_repo_checkout("rules-us")
+    runtime_axiom_rules_path = (
+        runtime_axiom_rules_path
+        or _resolve_runtime_axiom_rules_checkout(policy_repo_path)
+    )
 
     if not runtime_axiom_rules_path.exists():
         print(f"axiom-rules repo not found: {runtime_axiom_rules_path}")
@@ -1783,7 +1781,7 @@ def cmd_eval_akn_section(args):
     runners = _effective_runner_specs(
         args.runner or ["claude:opus", DEFAULT_GPT_RUNNER], args
     )
-    axiom_rules_path = args.axiom_rules_path or _default_repo_checkout("axiom-rules")
+    axiom_rules_path = args.axiom_rules_path or _resolve_repo_checkout("axiom-rules")
 
     if not axiom_rules_path.exists():
         print(f"axiom-rules repo not found: {axiom_rules_path}")
@@ -1859,7 +1857,7 @@ def cmd_eval_uk_legislation_section(args):
     runners = _effective_runner_specs(
         args.runner or ["claude:opus", DEFAULT_GPT_RUNNER], args
     )
-    axiom_rules_path = args.axiom_rules_path or _default_repo_checkout("axiom-rules")
+    axiom_rules_path = args.axiom_rules_path or _resolve_repo_checkout("axiom-rules")
 
     if not axiom_rules_path.exists():
         print(f"axiom-rules repo not found: {axiom_rules_path}")
@@ -2049,8 +2047,8 @@ def cmd_eval_suite(args):
     """Run a manifest-driven benchmark suite and evaluate readiness gates."""
     manifest = load_eval_suite_manifest(args.manifest)
     effective_runners = _effective_runner_specs(args.runner or manifest.runners, args)
-    axiom_rules_path = args.axiom_rules_path or _default_repo_checkout("axiom-rules")
-    atlas_path = args.atlas_path or _default_repo_checkout("atlas")
+    axiom_rules_path = args.axiom_rules_path or _resolve_repo_checkout("axiom-rules")
+    atlas_path = args.atlas_path or _resolve_repo_checkout("atlas")
 
     if not axiom_rules_path.exists():
         print(f"axiom-rules repo not found: {axiom_rules_path}")
@@ -2228,7 +2226,7 @@ def cmd_eval_suite_revalidate(args):
         sys.exit(1)
 
     manifest = load_eval_suite_manifest(manifest_path)
-    axiom_rules_path = args.axiom_rules_path or _default_repo_checkout("axiom-rules")
+    axiom_rules_path = args.axiom_rules_path or _resolve_repo_checkout("axiom-rules")
     if not axiom_rules_path.exists():
         print(f"axiom-rules repo not found: {axiom_rules_path}")
         sys.exit(1)

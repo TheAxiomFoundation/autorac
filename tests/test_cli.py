@@ -2522,6 +2522,11 @@ class TestCmdValidateEdgeCases:
         rulespec_file = tmp_path / "generated" / "test.yaml"
         rulespec_file.parent.mkdir(parents=True)
         rulespec_file.write_text("# test")
+        workspace_root = tmp_path / "workspace"
+        rules_us_path = workspace_root / "rules-us"
+        axiom_rules_path = workspace_root / "axiom-rules"
+        rules_us_path.mkdir(parents=True)
+        axiom_rules_path.mkdir()
 
         args = MagicMock()
         args.file = rulespec_file
@@ -2543,7 +2548,13 @@ class TestCmdValidateEdgeCases:
             taxsim_match=None,
         )
 
-        with patch("axiom_encode.cli.ValidatorPipeline") as mock_pipeline_cls:
+        with (
+            patch(
+                "axiom_encode.cli._resolve_repo_checkout",
+                side_effect=lambda name: workspace_root / name,
+            ),
+            patch("axiom_encode.cli.ValidatorPipeline") as mock_pipeline_cls,
+        ):
             mock_pipeline = mock_pipeline_cls.return_value
             mock_pipeline.validate.return_value = mock_result
             with pytest.raises(SystemExit) as exc_info:
@@ -2551,12 +2562,8 @@ class TestCmdValidateEdgeCases:
             assert exc_info.value.code == 0
 
         call_kwargs = mock_pipeline_cls.call_args[1]
-        assert call_kwargs["policy_repo_path"] == Path(
-            "/Users/maxghenis/TheAxiomFoundation/rules-us"
-        )
-        assert call_kwargs["axiom_rules_path"] == Path(
-            "/Users/maxghenis/TheAxiomFoundation/axiom-rules"
-        )
+        assert call_kwargs["policy_repo_path"] == rules_us_path
+        assert call_kwargs["axiom_rules_path"] == axiom_rules_path
 
 
 class TestCmdCalibrationEdgeCases:
