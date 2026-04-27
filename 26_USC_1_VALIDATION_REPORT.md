@@ -3,7 +3,7 @@
 > **⚠️ STATUS: OUTDATED (as of 2026-04-16)**
 >
 > This report predates the live oracle validation pipeline
-> (PolicyEngine + TAXSIM via `rac-validators`). The methodology below uses a
+> (PolicyEngine + TAXSIM via the Axiom validator stack). The methodology below uses a
 > manual, simplified federal-income-tax calculation rather than running the
 > encoded rules against an external oracle.
 >
@@ -29,7 +29,7 @@ Total Test Cases: 6
 - Head of Household (Medium Income)
 
 ### Validation Approach
-Due to limitations in the rac-validators infrastructure, a manual validation was performed using a simplified tax calculation model.
+Due to limitations in the earlier validator infrastructure, a manual validation was performed using a simplified tax calculation model.
 
 ## Validation Results
 
