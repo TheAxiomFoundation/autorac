@@ -241,7 +241,7 @@ def main():
     statute_parser.add_argument(
         "--xml-path",
         type=Path,
-        default=Path.home() / "TheAxiomFoundation" / "axiom" / "data" / "uscode",
+        default=Path.home() / "TheAxiomFoundation" / "axiom-corpus" / "data" / "uscode",
         help="Path to USC XML files",
     )
 
@@ -302,10 +302,10 @@ def main():
         ),
     )
     encode_parser.add_argument(
-        "--axiom-path",
+        "--corpus-path",
         type=Path,
         default=None,
-        help="Path to axiom repo (defaults to sibling checkout)",
+        help="Path to axiom-corpus repo (defaults to sibling checkout)",
     )
     encode_parser.add_argument(
         "--axiom-rules-path",
@@ -347,10 +347,10 @@ def main():
         help="Directory for eval artifacts and traces",
     )
     eval_parser.add_argument(
-        "--axiom-path",
+        "--corpus-path",
         type=Path,
         default=None,
-        help="Path to axiom repo (defaults to sibling repo checkout)",
+        help="Path to axiom-corpus repo (defaults to sibling repo checkout)",
     )
     eval_parser.add_argument(
         "--axiom-rules-path",
@@ -475,10 +475,10 @@ def main():
         help="Seconds to wait before an automatic eval-suite resume attempt",
     )
     eval_suite_parser.add_argument(
-        "--axiom-path",
+        "--corpus-path",
         type=Path,
         default=None,
-        help="Path to axiom repo (needed for citation cases; defaults to sibling repo checkout)",
+        help="Path to axiom-corpus repo (needed for citation cases; defaults to sibling repo checkout)",
     )
     eval_suite_parser.add_argument(
         "--axiom-rules-path",
@@ -1411,11 +1411,11 @@ def cmd_encode(args):
     """Encode a USC citation through the current RuleSpec eval pipeline."""
     model = args.model or DEFAULT_OPENAI_MODEL
     runner = f"{args.backend}:{model}"
-    axiom_path = args.axiom_path or _resolve_repo_checkout("axiom")
+    corpus_path = args.corpus_path or _resolve_repo_checkout("axiom-corpus")
     axiom_rules_path = args.axiom_rules_path or _resolve_repo_checkout("axiom-rules")
 
-    if not axiom_path.exists():
-        print(f"Axiom repo not found: {axiom_path}")
+    if not corpus_path.exists():
+        print(f"Axiom Corpus repo not found: {corpus_path}")
         sys.exit(1)
     if not axiom_rules_path.exists():
         print(f"axiom-rules repo not found: {axiom_rules_path}")
@@ -1426,14 +1426,14 @@ def cmd_encode(args):
         runner_specs=[runner],
         output_root=args.output,
         axiom_rules_path=axiom_rules_path,
-        axiom_path=axiom_path,
+        corpus_path=corpus_path,
         mode=args.mode,
         extra_context_paths=[Path(path) for path in args.allow_context],
     )
 
     result = results[0]
     print(f"Output root: {args.output}")
-    print(f"Axiom: {axiom_path}")
+    print(f"Axiom Corpus: {corpus_path}")
     print(f"Axiom Rules: {axiom_rules_path}")
     print(f"Runner: {runner}")
     print(f"Mode: {args.mode}")
@@ -1491,11 +1491,11 @@ def cmd_eval(args):
     runners = _effective_runner_specs(
         args.runner or ["claude:opus", DEFAULT_GPT_RUNNER], args
     )
-    axiom_path = args.axiom_path or _resolve_repo_checkout("axiom")
+    corpus_path = args.corpus_path or _resolve_repo_checkout("axiom-corpus")
     axiom_rules_path = args.axiom_rules_path or _resolve_repo_checkout("axiom-rules")
 
-    if not axiom_path.exists():
-        print(f"Axiom repo not found: {axiom_path}")
+    if not corpus_path.exists():
+        print(f"Axiom Corpus repo not found: {corpus_path}")
         sys.exit(1)
     if not axiom_rules_path.exists():
         print(f"axiom-rules repo not found: {axiom_rules_path}")
@@ -1506,7 +1506,7 @@ def cmd_eval(args):
         runner_specs=runners,
         output_root=args.output,
         axiom_rules_path=axiom_rules_path,
-        axiom_path=axiom_path,
+        corpus_path=corpus_path,
         mode=args.mode,
         extra_context_paths=[Path(path) for path in args.allow_context],
     )
@@ -1516,7 +1516,7 @@ def cmd_eval(args):
         return
 
     print(f"Output root: {args.output}")
-    print(f"Axiom: {axiom_path}")
+    print(f"Axiom Corpus: {corpus_path}")
     print(f"Axiom Rules: {axiom_rules_path}")
     print(f"Mode: {args.mode}")
     print()
@@ -1751,15 +1751,15 @@ def cmd_eval_suite(args):
     manifest = load_eval_suite_manifest(args.manifest)
     effective_runners = _effective_runner_specs(args.runner or manifest.runners, args)
     axiom_rules_path = args.axiom_rules_path or _resolve_repo_checkout("axiom-rules")
-    axiom_path = args.axiom_path or _resolve_repo_checkout("axiom")
+    corpus_path = args.corpus_path or _resolve_repo_checkout("axiom-corpus")
 
     if not axiom_rules_path.exists():
         print(f"axiom-rules repo not found: {axiom_rules_path}")
         sys.exit(1)
 
     has_citation_case = any(case.kind == "citation" for case in manifest.cases)
-    if has_citation_case and not axiom_path.exists():
-        print(f"Axiom repo not found: {axiom_path}")
+    if has_citation_case and not corpus_path.exists():
+        print(f"Axiom Corpus repo not found: {corpus_path}")
         sys.exit(1)
 
     auto_resume_attempts = max(getattr(args, "auto_resume_attempts", 0), 0)
@@ -1773,7 +1773,7 @@ def cmd_eval_suite(args):
                 manifest=manifest,
                 output_root=args.output,
                 axiom_rules_path=axiom_rules_path,
-                axiom_path=axiom_path if has_citation_case else None,
+                corpus_path=corpus_path if has_citation_case else None,
                 runner_specs=effective_runners,
                 resume_existing=resume_existing,
             )
@@ -1853,7 +1853,7 @@ def cmd_eval_suite(args):
     print(f"Runners: {', '.join(effective_runners)}")
     print(f"Axiom Rules: {axiom_rules_path}")
     if has_citation_case:
-        print(f"Axiom: {axiom_path}")
+        print(f"Axiom Corpus: {corpus_path}")
     print()
 
     for runner, summary in readiness.items():
