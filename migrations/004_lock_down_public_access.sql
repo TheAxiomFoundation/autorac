@@ -1,82 +1,51 @@
--- Tighten RLS policies on Axiom Encode telemetry tables.
--- Apply this before exposing any public dashboard.
+-- Reassert the clean public-read/service-write policy surface.
 
-DO $$
-BEGIN
-    IF to_regclass('public.encoding_runs') IS NOT NULL THEN
-        ALTER TABLE public.encoding_runs ENABLE ROW LEVEL SECURITY;
-        DROP POLICY IF EXISTS "Allow public read" ON public.encoding_runs;
-        DROP POLICY IF EXISTS "Allow service write" ON public.encoding_runs;
-        DROP POLICY IF EXISTS "encoding_runs_read_all" ON public.encoding_runs;
-        DROP POLICY IF EXISTS "encoding_runs_service_write" ON public.encoding_runs;
-        CREATE POLICY "Allow service write" ON public.encoding_runs
-            FOR ALL TO service_role
-            USING (true)
-            WITH CHECK (true);
-    END IF;
-END
-$$;
+ALTER TABLE IF EXISTS encodings.encoding_runs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS lab.agent_transcripts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS lab.sdk_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS lab.sdk_session_events ENABLE ROW LEVEL SECURITY;
 
-DO $$
-BEGIN
-    IF to_regclass('axiom_encode.agent_transcripts') IS NOT NULL THEN
-        ALTER TABLE axiom_encode.agent_transcripts ENABLE ROW LEVEL SECURITY;
-        DROP POLICY IF EXISTS "Allow anonymous access to agent_transcripts" ON axiom_encode.agent_transcripts;
-        DROP POLICY IF EXISTS "Allow service access to agent_transcripts" ON axiom_encode.agent_transcripts;
-        CREATE POLICY "Allow service access to agent_transcripts" ON axiom_encode.agent_transcripts
-            FOR ALL TO service_role
-            USING (true)
-            WITH CHECK (true);
-    END IF;
+DROP POLICY IF EXISTS anon_read ON encodings.encoding_runs;
+CREATE POLICY anon_read ON encodings.encoding_runs
+    FOR SELECT TO anon USING (true);
 
-    IF to_regclass('axiom_encode.runs') IS NOT NULL THEN
-        ALTER TABLE axiom_encode.runs ENABLE ROW LEVEL SECURITY;
-        DROP POLICY IF EXISTS "Allow public read access to runs" ON axiom_encode.runs;
-        DROP POLICY IF EXISTS "Allow service write access to runs" ON axiom_encode.runs;
-        CREATE POLICY "Allow service write access to runs" ON axiom_encode.runs
-            FOR ALL TO service_role
-            USING (true)
-            WITH CHECK (true);
-    END IF;
+DROP POLICY IF EXISTS authenticated_read ON encodings.encoding_runs;
+CREATE POLICY authenticated_read ON encodings.encoding_runs
+    FOR SELECT TO authenticated USING (true);
 
-    IF to_regclass('axiom_encode.sessions') IS NOT NULL THEN
-        ALTER TABLE axiom_encode.sessions ENABLE ROW LEVEL SECURITY;
-        DROP POLICY IF EXISTS "Allow public read access to sessions" ON axiom_encode.sessions;
-        DROP POLICY IF EXISTS "Allow service write access to sessions" ON axiom_encode.sessions;
-        CREATE POLICY "Allow service write access to sessions" ON axiom_encode.sessions
-            FOR ALL TO service_role
-            USING (true)
-            WITH CHECK (true);
-    END IF;
+DROP POLICY IF EXISTS anon_read ON lab.agent_transcripts;
+CREATE POLICY anon_read ON lab.agent_transcripts
+    FOR SELECT TO anon USING (true);
 
-    IF to_regclass('axiom_encode.session_events') IS NOT NULL THEN
-        ALTER TABLE axiom_encode.session_events ENABLE ROW LEVEL SECURITY;
-        DROP POLICY IF EXISTS "Allow public read access to events" ON axiom_encode.session_events;
-        DROP POLICY IF EXISTS "Allow service write access to events" ON axiom_encode.session_events;
-        CREATE POLICY "Allow service write access to events" ON axiom_encode.session_events
-            FOR ALL TO service_role
-            USING (true)
-            WITH CHECK (true);
-    END IF;
+DROP POLICY IF EXISTS authenticated_read ON lab.agent_transcripts;
+CREATE POLICY authenticated_read ON lab.agent_transcripts
+    FOR SELECT TO authenticated USING (true);
 
-    IF to_regclass('axiom_encode.agent_sessions') IS NOT NULL THEN
-        ALTER TABLE axiom_encode.agent_sessions ENABLE ROW LEVEL SECURITY;
-        DROP POLICY IF EXISTS "Allow public read agent_sessions" ON axiom_encode.agent_sessions;
-        DROP POLICY IF EXISTS "Allow service write agent_sessions" ON axiom_encode.agent_sessions;
-        CREATE POLICY "Allow service write agent_sessions" ON axiom_encode.agent_sessions
-            FOR ALL TO service_role
-            USING (true)
-            WITH CHECK (true);
-    END IF;
+DROP POLICY IF EXISTS anon_read ON lab.sdk_sessions;
+CREATE POLICY anon_read ON lab.sdk_sessions
+    FOR SELECT TO anon USING (true);
 
-    IF to_regclass('axiom_encode.agent_session_events') IS NOT NULL THEN
-        ALTER TABLE axiom_encode.agent_session_events ENABLE ROW LEVEL SECURITY;
-        DROP POLICY IF EXISTS "Allow public read agent_session_events" ON axiom_encode.agent_session_events;
-        DROP POLICY IF EXISTS "Allow service write agent_session_events" ON axiom_encode.agent_session_events;
-        CREATE POLICY "Allow service write agent_session_events" ON axiom_encode.agent_session_events
-            FOR ALL TO service_role
-            USING (true)
-            WITH CHECK (true);
-    END IF;
-END
-$$;
+DROP POLICY IF EXISTS authenticated_read ON lab.sdk_sessions;
+CREATE POLICY authenticated_read ON lab.sdk_sessions
+    FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS anon_read ON lab.sdk_session_events;
+CREATE POLICY anon_read ON lab.sdk_session_events
+    FOR SELECT TO anon USING (true);
+
+DROP POLICY IF EXISTS authenticated_read ON lab.sdk_session_events;
+CREATE POLICY authenticated_read ON lab.sdk_session_events
+    FOR SELECT TO authenticated USING (true);
+
+GRANT USAGE ON SCHEMA encodings TO postgres, service_role, anon, authenticated;
+GRANT USAGE ON SCHEMA lab TO postgres, service_role, anon, authenticated;
+
+GRANT SELECT ON encodings.encoding_runs TO anon, authenticated;
+GRANT SELECT ON lab.agent_transcripts TO anon, authenticated;
+GRANT SELECT ON lab.sdk_sessions TO anon, authenticated;
+GRANT SELECT ON lab.sdk_session_events TO anon, authenticated;
+
+GRANT ALL ON encodings.encoding_runs TO postgres, service_role;
+GRANT ALL ON lab.agent_transcripts TO postgres, service_role;
+GRANT ALL ON lab.sdk_sessions TO postgres, service_role;
+GRANT ALL ON lab.sdk_session_events TO postgres, service_role;

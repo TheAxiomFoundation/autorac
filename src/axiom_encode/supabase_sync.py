@@ -12,6 +12,9 @@ from typing import Optional
 
 from supabase import Client, create_client
 
+ENCODINGS_SCHEMA = "encodings"
+LAB_SCHEMA = "lab"
+
 
 def _review_results_to_scores(review_results) -> dict:
     """Convert checklist review results to the dashboard score shape."""
@@ -20,14 +23,14 @@ def _review_results_to_scores(review_results) -> dict:
         "taxsim_match": review_results.taxsim_match,
     }
     reviewer_keys = {
-        "rulespec": "rulespec_reviewer",
-        "rulespec_reviewer": "rulespec_reviewer",
-        "formula": "formula_reviewer",
-        "formula_reviewer": "formula_reviewer",
-        "parameter": "parameter_reviewer",
-        "parameter_reviewer": "parameter_reviewer",
-        "integration": "integration_reviewer",
-        "integration_reviewer": "integration_reviewer",
+        "rulespec": "rulespec",
+        "rulespec_reviewer": "rulespec",
+        "formula": "formula",
+        "formula_reviewer": "formula",
+        "parameter": "parameter",
+        "parameter_reviewer": "parameter",
+        "integration": "integration",
+        "integration_reviewer": "integration",
     }
     for review in review_results.reviews:
         key = reviewer_keys.get(review.reviewer)
@@ -133,11 +136,16 @@ def sync_run_to_supabase(
     }
 
     if run.review_results:
-        data["review_scores"] = _review_results_to_scores(run.review_results)
+        data["scores"] = _review_results_to_scores(run.review_results)
 
     try:
         # Upsert to handle both new and updated runs
-        result = client.table("encoding_runs").upsert(data).execute()
+        result = (
+            client.schema(ENCODINGS_SCHEMA)
+            .table("encoding_runs")
+            .upsert(data)
+            .execute()
+        )
         return len(result.data) > 0
     except Exception as e:
         print(f"Error syncing run {run.id}: {e}")
@@ -201,7 +209,7 @@ def fetch_runs_from_supabase(
     if client is None:
         client = get_supabase_client(require_write=False)
 
-    query = client.table("encoding_runs").select("*")
+    query = client.schema(ENCODINGS_SCHEMA).table("encoding_runs").select("*")
 
     if citation:
         query = query.eq("citation", citation)
@@ -273,7 +281,7 @@ def sync_transcripts_to_supabase(
             }
 
             result = (
-                client.schema("axiom_encode")
+                client.schema(LAB_SCHEMA)
                 .table("agent_transcripts")
                 .upsert(data)
                 .execute()
@@ -384,14 +392,14 @@ def sync_agent_sessions_to_supabase(
             ]
 
             # Upsert session
-            client.schema("axiom_encode").table("sdk_sessions").upsert(
+            client.schema(LAB_SCHEMA).table("sdk_sessions").upsert(
                 session_data
             ).execute()
 
             # Upsert events (in batches of 100)
             for i in range(0, len(events_data), 100):
                 batch = events_data[i : i + 100]
-                client.schema("axiom_encode").table("sdk_session_events").upsert(
+                client.schema(LAB_SCHEMA).table("sdk_session_events").upsert(
                     batch
                 ).execute()
 

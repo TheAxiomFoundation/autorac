@@ -13,6 +13,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from axiom_encode.supabase_sync import (
+    ENCODINGS_SCHEMA,
+    LAB_SCHEMA,
     fetch_runs_from_supabase,
     get_local_transcript_stats,
     get_supabase_client,
@@ -109,8 +111,8 @@ class TestSyncRunToSupabase:
             mock_run.review_results = None
 
             mock_client = MagicMock()
-            mock_client.table.return_value.upsert.return_value.execute.return_value = (
-                MagicMock(data=[{"id": "test-123"}])
+            mock_client.schema.return_value.table.return_value.upsert.return_value.execute.return_value = MagicMock(
+                data=[{"id": "test-123"}]
             )
 
             result = sync_run_to_supabase(mock_run, source, client=mock_client)
@@ -143,16 +145,20 @@ class TestSyncRunToSupabase:
         )
 
         mock_client = MagicMock()
-        mock_client.table.return_value.upsert.return_value.execute.return_value = (
-            MagicMock(data=[{"id": "test-123"}])
+        mock_client.schema.return_value.table.return_value.upsert.return_value.execute.return_value = MagicMock(
+            data=[{"id": "test-123"}]
         )
 
         result = sync_run_to_supabase(mock_run, "reviewer_agent", client=mock_client)
         assert result is True
-        upsert_payload = mock_client.table.return_value.upsert.call_args.args[0]
+        mock_client.schema.assert_called_once_with(ENCODINGS_SCHEMA)
+        mock_client.schema.return_value.table.assert_called_once_with("encoding_runs")
+        upsert_payload = (
+            mock_client.schema.return_value.table.return_value.upsert.call_args.args[0]
+        )
         assert upsert_payload["rulespec_content"] == "format: rulespec/v1"
-        assert upsert_payload["review_scores"]["rulespec_reviewer"] == 8.0
-        assert upsert_payload["review_scores"]["formula_reviewer"] == 7.0
+        assert upsert_payload["scores"]["rulespec"] == 8.0
+        assert upsert_payload["scores"]["formula"] == 7.0
 
     def test_upsert_failure(self, capsys):
         mock_run = MagicMock()
@@ -164,8 +170,8 @@ class TestSyncRunToSupabase:
         mock_run.review_results = None
 
         mock_client = MagicMock()
-        mock_client.table.return_value.upsert.return_value.execute.side_effect = (
-            Exception("Connection error")
+        mock_client.schema.return_value.table.return_value.upsert.return_value.execute.side_effect = Exception(
+            "Connection error"
         )
 
         result = sync_run_to_supabase(mock_run, "ci_only", client=mock_client)
@@ -181,8 +187,8 @@ class TestSyncRunToSupabase:
         mock_run.review_results = None
 
         mock_client = MagicMock()
-        mock_client.table.return_value.upsert.return_value.execute.return_value = (
-            MagicMock(data=[])
+        mock_client.schema.return_value.table.return_value.upsert.return_value.execute.return_value = MagicMock(
+            data=[]
         )
 
         result = sync_run_to_supabase(mock_run, "ci_only", client=mock_client)
@@ -198,8 +204,8 @@ class TestSyncRunToSupabase:
         mock_run.review_results = None
 
         mock_client = MagicMock()
-        mock_client.table.return_value.upsert.return_value.execute.return_value = (
-            MagicMock(data=[{"id": "test-123"}])
+        mock_client.schema.return_value.table.return_value.upsert.return_value.execute.return_value = MagicMock(
+            data=[{"id": "test-123"}]
         )
 
         with patch(
@@ -233,8 +239,8 @@ class TestSyncAllRuns:
         db.log_run(run)
 
         mock_client = MagicMock()
-        mock_client.table.return_value.upsert.return_value.execute.return_value = (
-            MagicMock(data=[{"id": run.id}])
+        mock_client.schema.return_value.table.return_value.upsert.return_value.execute.return_value = MagicMock(
+            data=[{"id": run.id}]
         )
 
         stats = sync_all_runs(db_path, "ci_only", client=mock_client)
@@ -258,8 +264,8 @@ class TestSyncAllRuns:
         db.log_run(run)
 
         mock_client = MagicMock()
-        mock_client.table.return_value.upsert.return_value.execute.side_effect = (
-            Exception("Error")
+        mock_client.schema.return_value.table.return_value.upsert.return_value.execute.side_effect = Exception(
+            "Error"
         )
 
         stats = sync_all_runs(db_path, "ci_only", client=mock_client)
@@ -272,8 +278,8 @@ class TestSyncAllRuns:
         EncodingDB(db_path)
 
         mock_client = MagicMock()
-        mock_client.table.return_value.upsert.return_value.execute.return_value = (
-            MagicMock(data=[])
+        mock_client.schema.return_value.table.return_value.upsert.return_value.execute.return_value = MagicMock(
+            data=[]
         )
 
         with patch(
@@ -292,22 +298,24 @@ class TestFetchRunsFromSupabase:
     def test_fetch_without_citation(self):
         mock_client = MagicMock()
         mock_result = MagicMock(data=[{"id": "1"}, {"id": "2"}])
-        mock_client.table.return_value.select.return_value.order.return_value.limit.return_value.execute.return_value = mock_result
+        mock_client.schema.return_value.table.return_value.select.return_value.order.return_value.limit.return_value.execute.return_value = mock_result
 
         results = fetch_runs_from_supabase(limit=20, client=mock_client)
         assert len(results) == 2
+        mock_client.schema.assert_called_once_with(ENCODINGS_SCHEMA)
+        mock_client.schema.return_value.table.assert_called_once_with("encoding_runs")
 
     def test_fetch_with_citation(self):
         mock_client = MagicMock()
         mock_result = MagicMock(data=[{"id": "1", "citation": "26 USC 1"}])
-        mock_client.table.return_value.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = mock_result
+        mock_client.schema.return_value.table.return_value.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = mock_result
 
         results = fetch_runs_from_supabase(citation="26 USC 1", client=mock_client)
         assert len(results) == 1
 
     def test_creates_client_if_not_provided(self):
         mock_client = MagicMock()
-        mock_client.table.return_value.select.return_value.order.return_value.limit.return_value.execute.return_value = MagicMock(
+        mock_client.schema.return_value.table.return_value.select.return_value.order.return_value.limit.return_value.execute.return_value = MagicMock(
             data=[]
         )
 
@@ -365,6 +373,10 @@ class TestSyncTranscriptsToSupabase:
             result = sync_transcripts_to_supabase(client=mock_client)
             assert result["synced"] == 1
             assert result["total"] == 1
+            mock_client.schema.assert_called_once_with(LAB_SCHEMA)
+            mock_client.schema.return_value.table.assert_called_once_with(
+                "agent_transcripts"
+            )
 
     def test_sync_with_session_filter(self, tmp_path):
         db_path = tmp_path / "transcripts.db"
@@ -565,6 +577,9 @@ class TestSyncAgentSessionsToSupabase:
             result = sync_agent_sessions_to_supabase(client=mock_client)
             assert result["synced"] == 1
             assert result["total"] == 1
+            mock_client.schema.assert_any_call(LAB_SCHEMA)
+            mock_client.schema.return_value.table.assert_any_call("sdk_sessions")
+            mock_client.schema.return_value.table.assert_any_call("sdk_session_events")
 
     def test_sync_with_session_filter(self, tmp_path):
         db_path = tmp_path / "encodings.db"
