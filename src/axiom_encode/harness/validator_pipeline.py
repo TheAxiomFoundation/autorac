@@ -662,27 +662,163 @@ def _extract_codex_text_output(output: str) -> str:
     return "\n".join(assistant_messages).strip() or last_error or output
 
 
+_REVIEW_JSON_KEYS = {
+    "score",
+    "passed",
+    "issues",
+    "blocking_issues",
+    "non_blocking_issues",
+    "reasoning",
+}
+
+
+def _looks_like_review_json(data: dict[str, Any]) -> bool:
+    """Return true for the reviewer payload, not surrounding CLI metadata."""
+    return bool(_REVIEW_JSON_KEYS.intersection(data))
+
+
+def _strip_trailing_json_commas(text: str) -> str:
+    """Remove common model-emitted trailing commas before JSON closers."""
+    return re.sub(r",(\s*[}\]])", r"\1", text)
+
+
+def _decode_json_object_candidate(text: str) -> dict[str, Any] | None:
+    """Decode a JSON object candidate with strict and reviewer-friendly modes."""
+    cleaned = text.strip()
+    if not cleaned:
+        return None
+
+    variants = [cleaned]
+    without_trailing_commas = _strip_trailing_json_commas(cleaned)
+    if without_trailing_commas != cleaned:
+        variants.append(without_trailing_commas)
+
+    for variant in variants:
+        for strict in (True, False):
+            with contextlib.suppress(json.JSONDecodeError):
+                data = json.loads(variant, strict=strict)
+                if isinstance(data, dict):
+                    return data
+
+        for strict in (True, False):
+            decoder = json.JSONDecoder(strict=strict)
+            with contextlib.suppress(json.JSONDecodeError):
+                data, _ = decoder.raw_decode(variant)
+                if isinstance(data, dict):
+                    return data
+
+    return None
+
+
+def _iter_balanced_json_object_snippets(output: str) -> list[str]:
+    """Return brace-balanced object snippets for repair-oriented parsing."""
+    snippets: list[str] = []
+    for start, char in enumerate(output):
+        if char != "{":
+            continue
+
+        depth = 0
+        in_string = False
+        escaped = False
+        for index in range(start, len(output)):
+            current = output[index]
+            if escaped:
+                escaped = False
+                continue
+            if current == "\\":
+                escaped = True
+                continue
+            if current == '"':
+                in_string = not in_string
+                continue
+            if in_string:
+                continue
+            if current == "{":
+                depth += 1
+            elif current == "}":
+                depth -= 1
+                if depth == 0:
+                    snippets.append(output[start : index + 1])
+                    break
+    return snippets
+
+
+def _iter_terminal_object_brace_repairs(output: str) -> list[str]:
+    """Repair reviewer output that is missing only the final top-level brace."""
+    snippets: list[str] = []
+    for start, char in enumerate(output):
+        if char != "{":
+            continue
+
+        stack: list[str] = []
+        in_string = False
+        escaped = False
+        balanced_before_end = False
+        invalid = False
+        for index in range(start, len(output)):
+            current = output[index]
+            if escaped:
+                escaped = False
+                continue
+            if current == "\\":
+                escaped = True
+                continue
+            if current == '"':
+                in_string = not in_string
+                continue
+            if in_string:
+                continue
+            if current == "{":
+                stack.append("}")
+            elif current == "[":
+                stack.append("]")
+            elif current in "}]":
+                if not stack or stack[-1] != current:
+                    invalid = True
+                    break
+                stack.pop()
+                if not stack:
+                    balanced_before_end = True
+                    break
+
+        if invalid or balanced_before_end or in_string or stack != ["}"]:
+            continue
+
+        candidate = output[start:].strip()
+        candidate = re.sub(r"\s*```\s*$", "", candidate).strip()
+        snippets.append(candidate + "}")
+
+    return snippets
+
+
 def _extract_json_object(output: str) -> dict[str, Any]:
-    """Extract the first full JSON object from reviewer output."""
+    """Extract the reviewer JSON object from model output."""
+    candidates: list[dict[str, Any]] = []
     fenced_blocks = re.findall(
         r"```(?:json)?\s*(.*?)```",
         output,
         flags=re.DOTALL | re.IGNORECASE,
     )
     for block in fenced_blocks:
-        with contextlib.suppress(json.JSONDecodeError):
-            data = json.loads(block.strip())
-            if isinstance(data, dict):
-                return data
+        data = _decode_json_object_candidate(block)
+        if data is not None:
+            candidates.append(data)
 
-    decoder = json.JSONDecoder()
-    for index, char in enumerate(output):
-        if char != "{":
-            continue
-        with contextlib.suppress(json.JSONDecodeError):
-            data, _ = decoder.raw_decode(output[index:])
-            if isinstance(data, dict):
-                return data
+    for snippet in _iter_balanced_json_object_snippets(output):
+        data = _decode_json_object_candidate(snippet)
+        if data is not None:
+            candidates.append(data)
+
+    for snippet in _iter_terminal_object_brace_repairs(output):
+        data = _decode_json_object_candidate(snippet)
+        if data is not None:
+            candidates.append(data)
+
+    for data in candidates:
+        if _looks_like_review_json(data):
+            return data
+    if candidates:
+        return candidates[0]
 
     raise ValueError("No JSON found in output")
 

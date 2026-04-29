@@ -4,6 +4,7 @@ import pytest
 
 from axiom_encode.harness.validator_pipeline import (
     ValidatorPipeline,
+    _extract_json_object,
     extract_embedded_source_text,
     extract_grounding_values,
     extract_named_scalar_occurrences,
@@ -86,6 +87,74 @@ rules:
 """
 
     assert find_ungrounded_numeric_issues(content) == []
+
+
+def test_extract_json_object_accepts_literal_newline_in_reviewer_string():
+    output = """{
+  "score": 9.0,
+  "passed": true,
+  "blocking_issues": [],
+  "non_blocking_issues": [
+    "self_employment_income is treated as an external input
+rather than imported from a canonical definition"
+  ],
+  "reasoning": "safe to promote"
+}"""
+
+    data = _extract_json_object(output)
+
+    assert data["score"] == 9.0
+    assert data["passed"] is True
+    assert "external input\nrather than" in data["non_blocking_issues"][0]
+
+
+def test_extract_json_object_prefers_reviewer_payload_over_cli_metadata():
+    output = """{"type":"thread.started"}
+{"score":8.5,"passed":true,"issues":[],"reasoning":"ok"}"""
+
+    data = _extract_json_object(output)
+
+    assert data == {
+        "score": 8.5,
+        "passed": True,
+        "issues": [],
+        "reasoning": "ok",
+    }
+
+
+def test_extract_json_object_repairs_trailing_commas():
+    output = """```json
+{
+  "score": 8,
+  "passed": true,
+  "issues": [],
+}
+```"""
+
+    data = _extract_json_object(output)
+
+    assert data["score"] == 8
+    assert data["passed"] is True
+
+
+def test_extract_json_object_repairs_missing_terminal_object_brace():
+    output = """{
+  "score": 8.5,
+  "passed": true,
+  "blocking_issues": [],
+  "non_blocking_issues": [
+    "self_employment_income should eventually import IRC 1402"
+  ],
+  "reasoning": "Suitable for promotion."
+"""
+
+    data = _extract_json_object(output)
+
+    assert data["score"] == 8.5
+    assert data["passed"] is True
+    assert data["non_blocking_issues"] == [
+        "self_employment_income should eventually import IRC 1402"
+    ]
 
 
 def test_rulespec_ci_executes_companion_test_outputs(tmp_path):
