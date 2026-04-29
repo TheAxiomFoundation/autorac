@@ -7,10 +7,10 @@ from axiom_encode.harness.validator_pipeline import ValidatorPipeline
 
 def _repo_roots() -> tuple[Path, Path]:
     foundation_root = Path(__file__).resolve().parents[2]
-    policy_repo_path = foundation_root / "rules-us" / "statute"
+    policy_repo_path = foundation_root / "rules-us"
     axiom_rules_path = foundation_root / "axiom-rules"
     if not policy_repo_path.exists():
-        pytest.skip("rules-us/statute repo not present")
+        pytest.skip("rules-us repo not present")
     if not axiom_rules_path.exists():
         pytest.skip("axiom-rules repo not present")
     return policy_repo_path, axiom_rules_path
@@ -18,6 +18,9 @@ def _repo_roots() -> tuple[Path, Path]:
 
 def test_repo_cross_statute_definitions_are_imported():
     policy_repo_path, axiom_rules_path = _repo_roots()
+    statutes_root = policy_repo_path / "statutes"
+    if not statutes_root.exists():
+        pytest.skip("rules-us/statutes repo not present")
     pipeline = ValidatorPipeline(
         policy_repo_path=policy_repo_path,
         axiom_rules_path=axiom_rules_path,
@@ -25,7 +28,9 @@ def test_repo_cross_statute_definitions_are_imported():
     )
 
     failures: list[str] = []
-    for rulespec_file in sorted(policy_repo_path.rglob("*.yaml")):
+    for rulespec_file in sorted(statutes_root.rglob("*.yaml")):
+        if rulespec_file.name.endswith(".test.yaml"):
+            continue
         issues = pipeline._check_cross_statute_definition_imports(rulespec_file)
         if not issues:
             continue

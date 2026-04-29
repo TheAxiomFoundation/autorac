@@ -23,6 +23,8 @@ def parse_usc_citation(citation: str) -> CitationParts:
 
     if "/" in cleaned and "USC" not in cleaned.upper():
         parts = [part for part in cleaned.split("/") if part]
+        if parts and parts[0] == "statutes":
+            parts = parts[1:]
         if len(parts) < 2:
             raise ValueError(f"Could not parse citation: {citation}")
         return CitationParts(
@@ -69,11 +71,10 @@ def citation_to_relative_rulespec_path(citation: str | CitationParts) -> Path:
         if isinstance(citation, CitationParts)
         else parse_usc_citation(citation)
     )
+    section_path = Path("statutes") / parts.title / parts.section
     if not parts.fragments:
-        return Path(parts.title) / parts.section / f"{parts.section}.yaml"
-    return (
-        Path(parts.title) / parts.section / Path(*parts.fragments).with_suffix(".yaml")
-    )
+        return section_path.with_suffix(".yaml")
+    return section_path / Path(*parts.fragments).with_suffix(".yaml")
 
 
 def uscode_xml_path(xml_root: Path, citation: str | CitationParts) -> Path:

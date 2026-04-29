@@ -316,6 +316,12 @@ def main():
         help="Path to axiom-rules repo (defaults to sibling checkout)",
     )
     encode_parser.add_argument(
+        "--policy-repo-path",
+        type=Path,
+        default=None,
+        help="Path to jurisdiction rules repo (defaults to sibling rules-us checkout)",
+    )
+    encode_parser.add_argument(
         "--mode",
         choices=["cold", "repo-augmented"],
         default="repo-augmented",
@@ -359,6 +365,12 @@ def main():
         type=Path,
         default=None,
         help="Path to axiom-rules repo (defaults to sibling checkout)",
+    )
+    eval_parser.add_argument(
+        "--policy-repo-path",
+        type=Path,
+        default=None,
+        help="Path to jurisdiction rules repo (defaults to sibling rules-us checkout)",
     )
     eval_parser.add_argument(
         "--mode",
@@ -1413,6 +1425,7 @@ def cmd_encode(args):
     runner = f"{args.backend}:{model}"
     corpus_path = args.corpus_path or _resolve_repo_checkout("axiom-corpus")
     axiom_rules_path = args.axiom_rules_path or _resolve_repo_checkout("axiom-rules")
+    policy_repo_path = args.policy_repo_path or _resolve_repo_checkout("rules-us")
 
     if not corpus_path.exists():
         print(f"Axiom Corpus repo not found: {corpus_path}")
@@ -1420,12 +1433,16 @@ def cmd_encode(args):
     if not axiom_rules_path.exists():
         print(f"axiom-rules repo not found: {axiom_rules_path}")
         sys.exit(1)
+    if not policy_repo_path.exists():
+        print(f"Policy repo not found: {policy_repo_path}")
+        sys.exit(1)
 
     results = run_model_eval(
         citations=[args.citation],
         runner_specs=[runner],
         output_root=args.output,
-        axiom_rules_path=axiom_rules_path,
+        policy_path=policy_repo_path,
+        runtime_axiom_rules_path=axiom_rules_path,
         corpus_path=corpus_path,
         mode=args.mode,
         extra_context_paths=[Path(path) for path in args.allow_context],
@@ -1436,6 +1453,7 @@ def cmd_encode(args):
     print(f"Output root: {args.output}")
     print(f"Axiom Corpus: {corpus_path}")
     print(f"Axiom Rules: {axiom_rules_path}")
+    print(f"Policy repo: {policy_repo_path}")
     print(f"Runner: {runner}")
     print(f"Mode: {args.mode}")
     print()
@@ -1494,6 +1512,7 @@ def cmd_eval(args):
     )
     corpus_path = args.corpus_path or _resolve_repo_checkout("axiom-corpus")
     axiom_rules_path = args.axiom_rules_path or _resolve_repo_checkout("axiom-rules")
+    policy_repo_path = args.policy_repo_path or _resolve_repo_checkout("rules-us")
 
     if not corpus_path.exists():
         print(f"Axiom Corpus repo not found: {corpus_path}")
@@ -1501,12 +1520,16 @@ def cmd_eval(args):
     if not axiom_rules_path.exists():
         print(f"axiom-rules repo not found: {axiom_rules_path}")
         sys.exit(1)
+    if not policy_repo_path.exists():
+        print(f"Policy repo not found: {policy_repo_path}")
+        sys.exit(1)
 
     results = run_model_eval(
         citations=args.citations,
         runner_specs=runners,
         output_root=args.output,
-        axiom_rules_path=axiom_rules_path,
+        policy_path=policy_repo_path,
+        runtime_axiom_rules_path=axiom_rules_path,
         corpus_path=corpus_path,
         mode=args.mode,
         extra_context_paths=[Path(path) for path in args.allow_context],
@@ -1519,6 +1542,7 @@ def cmd_eval(args):
     print(f"Output root: {args.output}")
     print(f"Axiom Corpus: {corpus_path}")
     print(f"Axiom Rules: {axiom_rules_path}")
+    print(f"Policy repo: {policy_repo_path}")
     print(f"Mode: {args.mode}")
     print()
 

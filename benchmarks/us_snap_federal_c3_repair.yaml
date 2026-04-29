@@ -16,5 +16,5 @@ cases:
     source_id: 7 USC 2017(c)(3)
     source_file: ../../rules-us/sources/slices/7-USC/2017/c/3.txt
     allow_context:
-      - ../../rules-us/statute/7/2017/a.yaml
-      - ../../rules-us/statute/7/2017/c/1.yaml
+      - ../../rules-us/statutes/7/2017/a.yaml
+      - ../../rules-us/statutes/7/2017/c/1.yaml

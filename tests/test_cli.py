@@ -1942,8 +1942,10 @@ class TestCmdEncode:
         """Helper to create args with sensible defaults."""
         corpus_path = tmp_path / "axiom-corpus"
         axiom_rules_path = tmp_path / "axiom-rules"
+        policy_repo_path = tmp_path / "rules-us"
         corpus_path.mkdir(exist_ok=True)
         axiom_rules_path.mkdir(exist_ok=True)
+        policy_repo_path.mkdir(exist_ok=True)
         args = MagicMock()
         args.citation = overrides.get("citation", "26 USC 1(j)(2)")
         args.output = overrides.get("output", tmp_path / "out")
@@ -1951,6 +1953,7 @@ class TestCmdEncode:
         args.backend = overrides.get("backend", "codex")
         args.corpus_path = overrides.get("corpus_path", corpus_path)
         args.axiom_rules_path = overrides.get("axiom_rules_path", axiom_rules_path)
+        args.policy_repo_path = overrides.get("policy_repo_path", policy_repo_path)
         args.mode = overrides.get("mode", "repo-augmented")
         args.allow_context = overrides.get("allow_context", [])
         return args
@@ -1990,6 +1993,11 @@ class TestCmdEncode:
         mock_run.assert_called_once()
         assert mock_run.call_args.kwargs["runner_specs"] == ["codex:test-model"]
         assert mock_run.call_args.kwargs["include_tests"] is True
+        assert mock_run.call_args.kwargs["policy_path"] == args.policy_repo_path
+        assert (
+            mock_run.call_args.kwargs["runtime_axiom_rules_path"]
+            == args.axiom_rules_path
+        )
 
     def test_encode_with_errors(self, capsys, tmp_path):
         args = self._make_args(tmp_path, citation="26 USC 1", model=None)
@@ -2325,7 +2333,7 @@ class TestExtractSubsections:
 class TestCmdValidateEdgeCases:
     def test_validate_rules_us_found_in_path(self, capsys, tmp_path):
         """Test validate when file is inside a rules-us directory (line 350)."""
-        rules_us = tmp_path / "rules-us" / "statute" / "26" / "1"
+        rules_us = tmp_path / "rules-us" / "statutes" / "26" / "1"
         rules_us.mkdir(parents=True)
         rulespec_file = rules_us / "test.yaml"
         rulespec_file.write_text("# test")

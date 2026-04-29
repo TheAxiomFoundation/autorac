@@ -16,4 +16,4 @@ cases:
     source_id: USDA SNAP FY 2026 COLA allotment table
     source_file: ../../rules-us/sources/slices/usda/snap/fy-2026-cola/allotment-table.txt
     allow_context:
-      - ../../rules-us/statute/7/2017/a.yaml
+      - ../../rules-us/statutes/7/2017/a.yaml

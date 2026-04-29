@@ -93,7 +93,7 @@ _CONDITIONAL_AMOUNT_SLICE_PATTERN = re.compile(
     r"\b(?:if|where|unless|except|subject to|treated as paid)\b",
     re.IGNORECASE,
 )
-_LOCAL_IMPORT_ROOT_TOKENS = {"legislation", "statute", "regulation"}
+_LOCAL_IMPORT_ROOT_TOKENS = {"legislation", "statutes", "regulation"}
 
 
 def _matching_numeric_occurrence_count(
@@ -327,7 +327,8 @@ def run_model_eval(
     citations: list[str],
     runner_specs: list[str],
     output_root: Path,
-    axiom_rules_path: Path,
+    policy_path: Path,
+    runtime_axiom_rules_path: Path,
     corpus_path: Path,
     mode: EvalMode = "repo-augmented",
     extra_context_paths: list[Path] | None = None,
@@ -344,7 +345,8 @@ def run_model_eval(
                     citation=citation,
                     runner=runner,
                     output_root=output_root,
-                    axiom_rules_path=axiom_rules_path,
+                    policy_path=policy_path,
+                    runtime_axiom_rules_path=runtime_axiom_rules_path,
                     xml_root=xml_root,
                     mode=mode,
                     extra_context_paths=extra_context_paths or [],
@@ -584,7 +586,12 @@ def run_eval_suite(
                             citations=[case.citation or ""],
                             runner_specs=resolved_runners,
                             output_root=case_output_root,
-                            axiom_rules_path=axiom_rules_path,
+                            policy_path=(
+                                axiom_rules_path.parent / "rules-us"
+                                if axiom_rules_path.name == "axiom-rules"
+                                else axiom_rules_path
+                            ),
+                            runtime_axiom_rules_path=axiom_rules_path,
                             corpus_path=corpus_path,
                             mode=case.mode,
                             extra_context_paths=extra_context,
@@ -1240,7 +1247,7 @@ def _max_gate(
 
 def select_context_files(
     citation: str | CitationParts,
-    statute_root: Path,
+    policy_root: Path,
     max_files: int = 6,
 ) -> list[Path]:
     """Select canonical implementation precedent files for repo-augmented evals."""
@@ -1249,9 +1256,11 @@ def select_context_files(
         if isinstance(citation, CitationParts)
         else parse_usc_citation(citation)
     )
-    section_root = Path(statute_root) / parts.title / parts.section
+    repo_root = Path(policy_root)
+    statutes_root = repo_root / "statutes"
+    section_root = statutes_root / parts.title / parts.section
     target_rel = citation_to_relative_rulespec_path(parts)
-    target_path = Path(statute_root) / target_rel
+    target_path = repo_root / target_rel
 
     candidates: list[Path] = []
     if section_root.exists():
@@ -1265,7 +1274,7 @@ def select_context_files(
         )
 
     if not candidates:
-        title_root = Path(statute_root) / parts.title
+        title_root = statutes_root / parts.title
         candidates.extend(
             sorted(
                 path
@@ -1278,7 +1287,7 @@ def select_context_files(
     candidates.sort(
         key=lambda path: (
             0 if path.parent == section_root else 1,
-            len(path.relative_to(statute_root).parts),
+            len(path.relative_to(statutes_root).parts),
             str(path),
         )
     )
@@ -1508,10 +1517,10 @@ def _materialize_resolved_canonical_concept(
     )
 
 
-def _auto_select_context_files(citation: str, statute_root: Path) -> list[Path]:
+def _auto_select_context_files(citation: str, policy_root: Path) -> list[Path]:
     """Best-effort auto-context selection for statute citations only."""
     try:
-        return select_context_files(citation, statute_root)
+        return select_context_files(citation, policy_root)
     except Exception:
         return []
 
@@ -1520,20 +1529,15 @@ def _repo_augmented_context_root(policy_path: Path) -> Path:
     """Resolve the corpus root used for automatic repo-augmented context selection."""
     resolved = Path(policy_path).resolve()
     if resolved.name == "axiom-rules":
-        fallback = resolved.parent / "rules-us" / "statute"
+        fallback = resolved.parent / "rules-us"
         if fallback.exists():
             return fallback
-        return resolved
-
-    statute_root = resolved / "statute"
-    if statute_root.exists():
-        return statute_root
     return resolved
 
 
-def _context_import_relative_target(source_path: Path, axiom_rules_path: Path) -> Path:
+def _context_import_relative_target(source_path: Path, policy_path: Path) -> Path:
     """Prefer canonical repo-relative import targets for copied precedent files."""
-    repo_parent = axiom_rules_path.parent.resolve()
+    repo_parent = policy_path.parent.resolve()
     resolved_source = source_path.resolve()
 
     for candidate in sorted(repo_parent.glob("rules-*")):
@@ -1542,8 +1546,6 @@ def _context_import_relative_target(source_path: Path, axiom_rules_path: Path) -
         resolved_candidate = candidate.resolve()
         with contextlib.suppress(ValueError):
             relative = resolved_source.relative_to(resolved_candidate)
-            if relative.parts and relative.parts[0] == "statute":
-                return Path(*relative.parts[1:])
             return relative
 
     return Path("external") / resolved_source.name
@@ -1749,7 +1751,8 @@ def _run_single_eval(
     citation: str,
     runner: EvalRunnerSpec,
     output_root: Path,
-    axiom_rules_path: Path,
+    policy_path: Path,
+    runtime_axiom_rules_path: Path,
     xml_root: Path,
     mode: EvalMode,
     extra_context_paths: list[Path],
@@ -1764,7 +1767,7 @@ def _run_single_eval(
         runner=runner,
         output_root=output_root,
         source_text=source_text,
-        axiom_rules_path=axiom_rules_path,
+        axiom_rules_path=policy_path,
         mode=mode,
         extra_context_paths=extra_context_paths,
     )
@@ -1790,7 +1793,8 @@ def _run_single_eval(
         workspace_root=workspace.root,
     )
     if wrote_artifact:
-        _hydrate_eval_root(output_file.parents[1], workspace)
+        eval_root = Path(output_root) / runner.name
+        _hydrate_eval_root(eval_root, workspace)
 
     trace_file = (
         Path(output_root) / "traces" / runner.name / f"{_slugify(citation)}.json"
@@ -1802,8 +1806,8 @@ def _run_single_eval(
     if output_file.exists():
         metrics = evaluate_artifact(
             rulespec_file=output_file,
-            policy_repo_root=output_file.parents[1],
-            axiom_rules_path=axiom_rules_path,
+            policy_repo_root=Path(output_root) / runner.name,
+            axiom_rules_path=runtime_axiom_rules_path,
             source_text=source_text,
         )
 
@@ -1890,7 +1894,8 @@ def _run_single_source_eval(
         policyengine_rule_hint=policyengine_rule_hint,
     )
     if wrote_artifact:
-        _hydrate_eval_root(output_file.parents[1], workspace)
+        eval_root = Path(output_root) / runner.name
+        _hydrate_eval_root(eval_root, workspace)
 
     trace_file = (
         Path(output_root) / "traces" / runner.name / f"{_slugify(source_id)}.json"
@@ -1902,7 +1907,7 @@ def _run_single_source_eval(
     if output_file.exists():
         metrics = evaluate_artifact(
             rulespec_file=output_file,
-            policy_repo_root=output_file.parents[1],
+            policy_repo_root=Path(output_root) / runner.name,
             axiom_rules_path=runtime_axiom_rules_path,
             source_text=source_text,
             oracle=oracle,
@@ -2043,7 +2048,7 @@ Import and context rules:
 - do not wrap import targets in quotes.
 - Every import path must point to a file that is actually copied into the workspace.
 - If a copied context file already defines the exact symbol you need, import that exact symbol instead of inventing renamed locals that overlap with the copied file.
-- Do not fabricate same-instrument imports or `statute/...#symbol` paths unless that exact `path#symbol` import target is listed.
+- Do not fabricate same-instrument imports or `statutes/...#symbol` paths unless that exact `path#symbol` import target is listed.
 - do not fabricate sibling-file imports for uncopied same-instrument provisions.
 - When a copied chart or parameter file supplies values, keep `.test.yaml` inputs and expected outputs consistent with the rows visible in that imported file; do not guess contradictory expectations for those imported values.
 - Do not invent degenerate placeholder rows like `number_of_children_in_assistance_unit: 0` plus `number_of_caretakers_in_assistance_unit: 0` unless that row is visible in the copied chart file.
@@ -2289,7 +2294,7 @@ def _collect_scaffold_dates(
 
 def _expand_context_files(
     selected_paths: list[Path],
-    statute_root: Path,
+    policy_root: Path,
     target_rel: Path | None,
 ) -> list[tuple[Path, str]]:
     """Expand selected precedent files with their transitive canonical imports."""
@@ -2300,7 +2305,7 @@ def _expand_context_files(
     for path in selected_paths:
         kind = (
             "implementation_precedent"
-            if _is_under_root(path, statute_root)
+            if _is_under_root(path, policy_root)
             else "implementation_external"
         )
         pending.append((path, kind))
@@ -2312,16 +2317,16 @@ def _expand_context_files(
             continue
         if (
             target_rel is not None
-            and _relative_to_root(source_path, statute_root) == target_rel
+            and _relative_to_root(source_path, policy_root) == target_rel
         ):
             continue
         seen.add(resolved)
         expanded.append((source_path, kind))
 
-        if not _is_under_root(source_path, statute_root):
+        if not _is_under_root(source_path, policy_root):
             continue
 
-        for dependency in _resolve_context_imports(source_path, statute_root):
+        for dependency in _resolve_context_imports(source_path, policy_root):
             if dependency.resolve() in seen:
                 continue
             pending.append((dependency, "implementation_dependency"))
@@ -2329,18 +2334,18 @@ def _expand_context_files(
     return expanded
 
 
-def _resolve_context_imports(source_path: Path, statute_root: Path) -> list[Path]:
+def _resolve_context_imports(source_path: Path, policy_root: Path) -> list[Path]:
     """Resolve canonical import targets for one copied precedent file."""
     dependencies: list[Path] = []
     for import_target in _extract_import_targets(source_path.read_text()):
         target_path = _import_target_to_path(import_target)
-        candidates = [statute_root / target_path]
+        candidates = [policy_root / target_path]
         if target_path.parts:
             first = target_path.parts[0]
-            if first == statute_root.name:
-                candidates.append(statute_root / Path(*target_path.parts[1:]))
+            if first == policy_root.name:
+                candidates.append(policy_root / Path(*target_path.parts[1:]))
             if first in _LOCAL_IMPORT_ROOT_TOKENS:
-                candidates.append(statute_root.parent / target_path)
+                candidates.append(policy_root.parent / target_path)
 
         for candidate in candidates:
             if candidate.exists():

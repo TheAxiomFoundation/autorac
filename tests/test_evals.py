@@ -2742,7 +2742,7 @@ class TestEvalPrompt:
         self, tmp_path
     ):
         policy_repo_root = tmp_path / "rules-us-co"
-        concept_file = policy_repo_root / "statute" / "crs" / "26-2-703" / "12.yaml"
+        concept_file = policy_repo_root / "statutes" / "crs" / "26-2-703" / "12.yaml"
         concept_file.parent.mkdir(parents=True, exist_ok=True)
         concept_file.write_text(
             """format: rulespec/v1
@@ -2775,8 +2775,10 @@ rules:
             item for item in workspace.context_files if item.kind == "canonical_concept"
         ]
         assert len(concept_files) == 1
-        assert concept_files[0].workspace_path == "context/statute/crs/26-2-703/12.yaml"
-        assert concept_files[0].import_path == "statute/crs/26-2-703/12"
+        assert (
+            concept_files[0].workspace_path == "context/statutes/crs/26-2-703/12.yaml"
+        )
+        assert concept_files[0].import_path == "statutes/crs/26-2-703/12"
         copied_path = workspace.root / concept_files[0].workspace_path
         assert copied_path.exists()
         assert "is_individual_responsibility_contract" in copied_path.read_text()
@@ -2859,7 +2861,7 @@ rules:
         self, tmp_path
     ):
         policy_repo_root = tmp_path / "rules-us-co"
-        concept_file = policy_repo_root / "statute" / "crs" / "26-2-703" / "12.yaml"
+        concept_file = policy_repo_root / "statutes" / "crs" / "26-2-703" / "12.yaml"
         concept_file.parent.mkdir(parents=True, exist_ok=True)
         concept_file.write_text(
             """format: rulespec/v1
@@ -2903,7 +2905,9 @@ rules:
             in prompt
         )
         assert "individual responsibility contract" in prompt
-        assert "statute/crs/26-2-703/12#is_individual_responsibility_contract" in prompt
+        assert (
+            "statutes/crs/26-2-703/12#is_individual_responsibility_contract" in prompt
+        )
         assert (
             "import or re-export that exact canonical concept instead of duplicating it locally"
             in prompt
@@ -3828,12 +3832,12 @@ cases:
         ]
         assert manifest.cases[0].allow_context == [
             (
-                repo_root.parent / "rules-us" / "statute" / "7" / "2014" / "e.yaml"
+                repo_root.parent / "rules-us" / "statutes" / "7" / "2014" / "e.yaml"
             ).resolve(),
             (
                 repo_root.parent
                 / "rules-us"
-                / "statute"
+                / "statutes"
                 / "7"
                 / "2014"
                 / "g"
@@ -3842,17 +3846,17 @@ cases:
         ]
         assert manifest.cases[1].allow_context == [
             (
-                repo_root.parent / "rules-us" / "statute" / "7" / "2017" / "a.yaml"
+                repo_root.parent / "rules-us" / "statutes" / "7" / "2017" / "a.yaml"
             ).resolve()
         ]
         assert manifest.cases[2].allow_context == [
             (
-                repo_root.parent / "rules-us" / "statute" / "7" / "2017" / "a.yaml"
+                repo_root.parent / "rules-us" / "statutes" / "7" / "2017" / "a.yaml"
             ).resolve(),
             (
                 repo_root.parent
                 / "rules-us"
-                / "statute"
+                / "statutes"
                 / "7"
                 / "2017"
                 / "c"
@@ -3861,7 +3865,7 @@ cases:
         ]
         assert manifest.cases[3].allow_context == [
             (
-                repo_root.parent / "rules-us" / "statute" / "7" / "2017" / "a.yaml"
+                repo_root.parent / "rules-us" / "statutes" / "7" / "2017" / "a.yaml"
             ).resolve()
         ]
 
@@ -3902,12 +3906,12 @@ cases:
         )
         assert case.allow_context == [
             (
-                repo_root.parent / "rules-us" / "statute" / "7" / "2017" / "a.yaml"
+                repo_root.parent / "rules-us" / "statutes" / "7" / "2017" / "a.yaml"
             ).resolve(),
             (
                 repo_root.parent
                 / "rules-us"
-                / "statute"
+                / "statutes"
                 / "7"
                 / "2017"
                 / "c"
@@ -3952,7 +3956,7 @@ cases:
         )
         assert case.allow_context == [
             (
-                repo_root.parent / "rules-us" / "statute" / "7" / "2017" / "a.yaml"
+                repo_root.parent / "rules-us" / "statutes" / "7" / "2017" / "a.yaml"
             ).resolve()
         ]
 
@@ -4044,7 +4048,7 @@ cases:
             (
                 repo_root.parent
                 / "rules-us"
-                / "statute"
+                / "statutes"
                 / "7"
                 / "2014"
                 / "g"
@@ -4090,12 +4094,12 @@ cases:
         )
         assert case.allow_context == [
             (
-                repo_root.parent / "rules-us" / "statute" / "7" / "2014" / "c.yaml"
+                repo_root.parent / "rules-us" / "statutes" / "7" / "2014" / "c.yaml"
             ).resolve(),
             (
                 repo_root.parent
                 / "rules-us"
-                / "statute"
+                / "statutes"
                 / "7"
                 / "2014"
                 / "g"
@@ -5651,7 +5655,7 @@ class TestRepoAugmentedContext:
         policy_repo_root = repo_root / "axiom-rules"
         policy_repo_root.mkdir(parents=True)
         context_file = (
-            repo_root / "rules-us" / "statute" / "26" / "32" / "b" / "2" / "A.yaml"
+            repo_root / "rules-us" / "statutes" / "26" / "32" / "b" / "2" / "A.yaml"
         )
         context_file.parent.mkdir(parents=True)
         context_file.write_text("format: rulespec/v1\nrules: []\n")
@@ -5670,19 +5674,19 @@ class TestRepoAugmentedContext:
         manifest = json.loads(workspace.manifest_file.read_text())
         assert manifest["mode"] == "repo-augmented"
         assert manifest["context_files"][0]["source_path"] == str(context_file)
-        assert manifest["context_files"][0]["import_path"] == "26/32/b/2/A"
+        assert manifest["context_files"][0]["import_path"] == "statutes/26/32/b/2/A"
         copied = workspace.root / manifest["context_files"][0]["workspace_path"]
         assert copied.exists()
 
     def test_select_context_files_excludes_target(self, tmp_path):
-        statute_root = tmp_path / "rules-us" / "statute"
-        section_dir = statute_root / "26" / "24"
+        policy_repo_root = tmp_path / "rules-us"
+        section_dir = policy_repo_root / "statutes" / "26" / "24"
         section_dir.mkdir(parents=True)
         (section_dir / "a.yaml").write_text("target")
         (section_dir / "b.yaml").write_text("sibling b")
         (section_dir / "c.yaml").write_text("sibling c")
 
-        selected = select_context_files("26 USC 24(a)", statute_root)
+        selected = select_context_files("26 USC 24(a)", policy_repo_root)
 
         assert section_dir / "a.yaml" not in selected
         assert section_dir / "b.yaml" in selected
@@ -5692,7 +5696,7 @@ class TestRepoAugmentedContext:
         repo_root = tmp_path / "repos"
         policy_repo_root = repo_root / "axiom-rules"
         policy_repo_root.mkdir(parents=True)
-        statute_root = repo_root / "rules-us" / "statute" / "26" / "24"
+        statute_root = repo_root / "rules-us" / "statutes" / "26" / "24"
         statute_root.mkdir(parents=True)
         context_file = statute_root / "b.yaml"
         context_file.write_text("format: rulespec/v1\nrules: []\n")
@@ -5716,7 +5720,7 @@ class TestRepoAugmentedContext:
         assert manifest["mode"] == "repo-augmented"
         assert manifest["source_file"] == "source.txt"
         assert manifest["context_files"][0]["source_path"] == str(context_file)
-        assert manifest["context_files"][0]["import_path"] == "26/24/b"
+        assert manifest["context_files"][0]["import_path"] == "statutes/26/24/b"
         copied = workspace.root / manifest["context_files"][0]["workspace_path"]
         assert copied.exists()
 
@@ -5830,7 +5834,7 @@ class TestRepoAugmentedContext:
         repo_root = tmp_path / "repos"
         policy_repo_root = repo_root / "axiom-rules"
         policy_repo_root.mkdir(parents=True)
-        statute_root = repo_root / "rules-us" / "statute" / "26" / "24"
+        statute_root = repo_root / "rules-us" / "statutes" / "26" / "24"
         statute_root.mkdir(parents=True)
         context_file = statute_root / "c.yaml"
         context_file.write_text(
@@ -5855,7 +5859,7 @@ class TestRepoAugmentedContext:
         eval_root = tmp_path / "eval-root"
         _hydrate_eval_root(eval_root, workspace)
 
-        assert (eval_root / "26" / "24" / "c.yaml").read_text() == (
+        assert (eval_root / "statutes" / "26" / "24" / "c.yaml").read_text() == (
             "format: rulespec/v1\nmodule:\n  status: stub\nrules: []\n"
         )
 
@@ -5864,14 +5868,14 @@ class TestRepoAugmentedContext:
         policy_repo_root = repo_root / "axiom-rules"
         policy_repo_root.mkdir(parents=True)
 
-        section_root = repo_root / "rules-us" / "statute" / "26" / "24"
+        section_root = repo_root / "rules-us" / "statutes" / "26" / "24"
         section_root.mkdir(parents=True)
         aggregator = section_root / "24.yaml"
         aggregator.write_text(
             "format: rulespec/v1\n"
             "imports:\n"
-            "  - 26/24/a#ctc_allowance\n"
-            "  - 26/24/c#qualifying_child_count\n"
+            "  - statutes/26/24/a#ctc_allowance\n"
+            "  - statutes/26/24/c#qualifying_child_count\n"
             "rules:\n"
             "  - name: section_24_credit\n"
             "    kind: derived\n"
@@ -5883,8 +5887,8 @@ class TestRepoAugmentedContext:
         selected.write_text(
             "format: rulespec/v1\n"
             "imports:\n"
-            "  - 26/24/c/2#ctc_meets_citizenship_requirement\n"
-            "  - 26/152/c#qualifying_child_of_taxpayer\n"
+            "  - statutes/26/24/c/2#ctc_meets_citizenship_requirement\n"
+            "  - statutes/26/152/c#qualifying_child_of_taxpayer\n"
             "rules:\n"
             "  - name: qualifying_child_count\n"
             "    kind: derived\n"
@@ -5897,7 +5901,9 @@ class TestRepoAugmentedContext:
         dep_local.parent.mkdir(parents=True)
         dep_local.write_text("format: rulespec/v1\nrules: []\n")
 
-        dep_cross_section = repo_root / "rules-us" / "statute" / "26" / "152" / "c.yaml"
+        dep_cross_section = (
+            repo_root / "rules-us" / "statutes" / "26" / "152" / "c.yaml"
+        )
         dep_cross_section.parent.mkdir(parents=True)
         dep_cross_section.write_text("format: rulespec/v1\nrules: []\n")
 
@@ -5929,10 +5935,10 @@ class TestRepoAugmentedContext:
         eval_root = tmp_path / "eval-root"
         _hydrate_eval_root(eval_root, workspace)
         assert (
-            eval_root / "26" / "24" / "c" / "2.yaml"
+            eval_root / "statutes" / "26" / "24" / "c" / "2.yaml"
         ).read_text() == "format: rulespec/v1\nrules: []\n"
         assert (
-            eval_root / "26" / "152" / "c.yaml"
+            eval_root / "statutes" / "26" / "152" / "c.yaml"
         ).read_text() == "format: rulespec/v1\nrules: []\n"
 
     def test_repo_augmented_context_resolves_statute_prefixed_dependencies(
@@ -5941,15 +5947,15 @@ class TestRepoAugmentedContext:
         repo_root = tmp_path / "repos"
         policy_repo_root = repo_root / "axiom-rules"
         policy_repo_root.mkdir(parents=True)
-        statute_root = repo_root / "rules-us" / "statute" / "7" / "2014"
+        statute_root = repo_root / "rules-us" / "statutes" / "7" / "2014"
         statute_root.mkdir(parents=True)
 
         selected = statute_root / "e.yaml"
         selected.write_text(
             "format: rulespec/v1\n"
             "imports:\n"
-            "  - statute/7/2014/2014#snap_household_has_elderly_or_disabled_member\n"
-            "  - statute/7/2014/d#snap_gross_income\n"
+            "  - statutes/7/2014/2014#snap_household_has_elderly_or_disabled_member\n"
+            "  - statutes/7/2014/d#snap_gross_income\n"
             "rules:\n"
             "  - name: snap_net_income\n"
             "    kind: derived\n"
@@ -5993,7 +5999,7 @@ class TestRepoAugmentedContext:
         repo_root = tmp_path / "repos"
         policy_repo_root = repo_root / "axiom-rules"
         policy_repo_root.mkdir(parents=True)
-        statute_root = repo_root / "rules-us" / "statute" / "26" / "24"
+        statute_root = repo_root / "rules-us" / "statutes" / "26" / "24"
         statute_root.mkdir(parents=True)
         context_file = statute_root / "b.yaml"
         context_file.write_text(
@@ -6453,7 +6459,7 @@ class TestSourceEval:
 
     def test_allows_relative_workspace_reads(self, tmp_path):
         (tmp_path / "source.txt").write_text("text\n")
-        command = "bash -lc 'cat ./source.txt && sed -n \"1,40p\" context/26/24/b.yaml'"
+        command = "bash -lc 'cat ./source.txt && sed -n \"1,40p\" context/statutes/26/24/b.yaml'"
         assert not _command_looks_out_of_bounds(command, tmp_path)
 
 

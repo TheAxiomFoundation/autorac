@@ -1250,7 +1250,7 @@ def _default_snap_utility_region_for_jurisdiction(
 
 def extract_grounding_values(content: str) -> list[tuple[int, str, float]]:
     """Extract grounded numeric values from RuleSpec definitions."""
-    with contextlib.suppress(yaml.YAMLError, TypeError):
+    with contextlib.suppress(yaml.YAMLError, TypeError, ValueError):
         payload = yaml.safe_load(content)
         if (
             isinstance(payload, dict)
@@ -1681,7 +1681,7 @@ def extract_numeric_occurrences_from_text(text: str) -> list[float]:
 
 def extract_named_scalar_occurrences(content: str) -> list[NamedScalarOccurrence]:
     """Extract direct named scalar definitions from a RuleSpec file."""
-    with contextlib.suppress(yaml.YAMLError, TypeError):
+    with contextlib.suppress(yaml.YAMLError, TypeError, ValueError):
         payload = yaml.safe_load(content)
         if (
             isinstance(payload, dict)
@@ -1728,7 +1728,7 @@ def extract_named_scalar_occurrences(content: str) -> list[NamedScalarOccurrence
 
 def extract_embedded_source_text(content: str) -> str:
     """Extract embedded source text from RuleSpec YAML."""
-    with contextlib.suppress(yaml.YAMLError, TypeError):
+    with contextlib.suppress(yaml.YAMLError, TypeError, ValueError):
         payload = yaml.safe_load(content)
         if isinstance(payload, dict) and payload.get("format") == "rulespec/v1":
             module = payload.get("module")
@@ -2086,7 +2086,7 @@ class ValidatorPipeline:
             return False
         try:
             payload = yaml.safe_load(rules_file.read_text())
-        except (OSError, yaml.YAMLError):
+        except (OSError, yaml.YAMLError, ValueError):
             return False
         return isinstance(payload, dict) and payload.get("format") == "rulespec/v1"
 
@@ -2734,7 +2734,7 @@ class ValidatorPipeline:
         if test_path.exists():
             try:
                 payload = yaml.safe_load(test_path.read_text())
-            except yaml.YAMLError as exc:
+            except (yaml.YAMLError, ValueError) as exc:
                 issues.append(f"Test YAML parse failed: {exc}")
             else:
                 if payload in (None, ""):
@@ -2779,7 +2779,7 @@ class ValidatorPipeline:
         """Return true when a RuleSpec artifact intentionally has no assertions."""
         try:
             payload = yaml.safe_load(rules_file.read_text())
-        except yaml.YAMLError:
+        except (yaml.YAMLError, ValueError):
             return False
         if not isinstance(payload, dict):
             return False
@@ -2854,7 +2854,7 @@ class ValidatorPipeline:
             runner_root = resolved_file.parent.parent
             if any(
                 (runner_root / sibling).exists()
-                for sibling in ("external", "legislation", "regulation", "statute")
+                for sibling in ("external", "legislation", "regulation", "statutes")
             ):
                 return runner_root
         return resolved_file.parent
@@ -2919,7 +2919,7 @@ class ValidatorPipeline:
 
     def _extract_defined_symbols(self, content: str) -> list[str]:
         """Extract RuleSpec rule names."""
-        with contextlib.suppress(yaml.YAMLError, TypeError):
+        with contextlib.suppress(yaml.YAMLError, TypeError, ValueError):
             payload = yaml.safe_load(content)
             if isinstance(payload, dict) and isinstance(payload.get("rules"), list):
                 return sorted(
@@ -3268,7 +3268,7 @@ class ValidatorPipeline:
         """Extract simple summaries of RuleSpec rules."""
         try:
             payload = yaml.safe_load(content)
-        except yaml.YAMLError:
+        except (yaml.YAMLError, ValueError):
             return []
         if not isinstance(payload, dict) or not isinstance(payload.get("rules"), list):
             return []
@@ -3372,7 +3372,7 @@ class ValidatorPipeline:
         issues: list[tuple[int, str, str, str]] = []
         try:
             payload = yaml.safe_load(content)
-        except yaml.YAMLError:
+        except (yaml.YAMLError, ValueError):
             return []
         if not isinstance(payload, dict) or not isinstance(payload.get("rules"), list):
             return []
@@ -3527,6 +3527,13 @@ class ValidatorPipeline:
         with contextlib.suppress(ValueError):
             relative = resolved_file.relative_to(resolved_root)
             if (
+                len(relative.parts) >= 2
+                and relative.parts[0] == "statutes"
+                and re.fullmatch(r"[0-9A-Za-z.-]+", relative.parts[1])
+                and any(ch.isdigit() for ch in relative.parts[1])
+            ):
+                return relative.parts[1]
+            if (
                 relative.parts
                 and re.fullmatch(r"[0-9A-Za-z.-]+", relative.parts[0])
                 and any(ch.isdigit() for ch in relative.parts[0])
@@ -3536,9 +3543,9 @@ class ValidatorPipeline:
 
         parts = list(resolved_file.parts)
         with contextlib.suppress(ValueError):
-            statute_idx = parts.index("statute")
-            if statute_idx + 1 < len(parts):
-                return parts[statute_idx + 1]
+            statutes_idx = parts.index("statutes")
+            if statutes_idx + 1 < len(parts):
+                return parts[statutes_idx + 1]
         return None
 
     def _run_reviewer(

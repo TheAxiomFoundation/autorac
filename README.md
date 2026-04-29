@@ -1,6 +1,6 @@
 # Axiom Encode
 
-AI-assisted Axiom RuleSpec encoding infrastructure. This repo owns the automation layer for turning source legal text into `rules.yaml` / `*.yaml` RuleSpec artifacts and validating them with `axiom-rules`.
+AI-assisted Axiom RuleSpec encoding infrastructure. This repo owns the automation layer for turning source legal text into jurisdiction-repo `*.yaml` RuleSpec artifacts and validating them with `axiom-rules`.
 
 ## Installation
 
@@ -14,7 +14,7 @@ pip install -e ".[dev]"
 axiom-encode encode "26 USC 32(a)(1)" \
   --output /tmp/axiom-encode-encodings
 
-axiom-encode validate /tmp/axiom-encode-encodings/codex-gpt-5.5/26/32/a/1.yaml
+axiom-encode validate /tmp/axiom-encode-encodings/codex-gpt-5.5/statutes/26/32/a/1.yaml
 ```
 
 ## Eval suites and readiness gates

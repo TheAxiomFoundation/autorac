@@ -71,7 +71,7 @@ _QUOTED_DEFINITION_PATTERN = re.compile(
     r"[\"“]([^\"”]+)[\"”](?:\s+or\s+[\"“]([^\"”]+)[\"”])?\s+means\b",
     re.IGNORECASE,
 )
-_SOURCE_ROOT_SEGMENTS = {"legislation", "statute", "regulation"}
+_SOURCE_ROOT_SEGMENTS = {"legislation", "statutes", "regulation"}
 _SOURCE_SLICE_EXTENSIONS = (".txt", ".xml", ".html", ".json", ".md")
 
 
@@ -226,7 +226,9 @@ def materialize_registered_stub(
 
 def rulespec_content_has_stub_status(content: str) -> bool:
     """Return whether a RuleSpec file declares `module.status: stub`."""
-    with contextlib.suppress(yaml.YAMLError, TypeError, AttributeError, NameError):
+    with contextlib.suppress(
+        yaml.YAMLError, TypeError, ValueError, AttributeError, NameError
+    ):
         payload = yaml.safe_load(content)
         if isinstance(payload, dict):
             module = payload.get("module")
@@ -284,7 +286,7 @@ def find_ingested_source_artifacts(import_target: str, corpus_root: Path) -> lis
 
 
 def _extract_embedded_source_text(content: str) -> str:
-    with contextlib.suppress(yaml.YAMLError, TypeError):
+    with contextlib.suppress(yaml.YAMLError, TypeError, ValueError):
         payload = yaml.safe_load(content)
         if isinstance(payload, dict):
             module = payload.get("module")
@@ -313,7 +315,7 @@ def _iter_official_source_roots(sources_root: Path, relative: Path) -> list[Path
     if not parts:
         return []
 
-    if parts[0] == "statute" and len(parts) >= 3:
+    if parts[0] == "statutes" and len(parts) >= 3:
         return [sources_root / "official" / parts[0] / parts[1] / parts[2]]
 
     if parts[0] == "legislation" and len(parts) >= 4:
@@ -407,7 +409,7 @@ def _build_canonical_concept_candidate(
 def _extract_principal_symbol_metadata(
     content: str,
 ) -> tuple[str, str, str, str] | None:
-    with contextlib.suppress(yaml.YAMLError, TypeError):
+    with contextlib.suppress(yaml.YAMLError, TypeError, ValueError):
         payload = yaml.safe_load(content)
         if not isinstance(payload, dict) or not isinstance(payload.get("rules"), list):
             return None
