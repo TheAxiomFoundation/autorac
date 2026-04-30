@@ -1289,7 +1289,7 @@ SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 def _extract_subsections_from_xml(xml_path: Path, section: str) -> list[dict]:
     """Extract all subsections from USC XML file.
 
-    Returns list of dicts with: path, heading, body, line_count, depth
+    Returns list of dicts with: citation_path, heading, body, line_count.
     """
     import html as html_module
     import re
@@ -1366,7 +1366,7 @@ def _extract_subsections_from_xml(xml_path: Path, section: str) -> list[dict]:
             heading = clean(heading_match.group(1)) if heading_match else ""
             body = clean(content_match.group(1)) if content_match else ""
 
-            # Build path from identifier (e.g., /us/usc/t26/s1/h/1/E -> 1/h/1/E)
+            # Build path from source XML identifier (e.g., /us/usc/t26/s1/h/1/E -> 1/h/1/E)
             path_parts = ident.split("/")
             # Find section and take everything after
             try:
@@ -1379,7 +1379,7 @@ def _extract_subsections_from_xml(xml_path: Path, section: str) -> list[dict]:
 
             results.append(
                 {
-                    "source_path": f"usc/{title}/{local_path}",
+                    "citation_path": f"us/statute/{title}/{local_path}",
                     "heading": heading,
                     "body": body,
                     "line_count": len(body.split("\n")) if body else 0,
@@ -1404,7 +1404,7 @@ def _extract_subsections_from_xml(xml_path: Path, section: str) -> list[dict]:
         rules.insert(
             0,
             {
-                "source_path": f"usc/{title}/{section}",
+                "citation_path": f"us/statute/{title}/{section}",
                 "heading": clean(sec_heading.group(1)),
                 "body": clean(sec_content.group(1)) if sec_content else "",
                 "line_count": 0,

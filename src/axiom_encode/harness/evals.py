@@ -1987,7 +1987,7 @@ Prefer the earliest scaffold date that is relevant to the copied precedent when 
         source_metadata_section = f"""
 Structured source metadata is available in `./source-metadata.json` and copied below.
 If a metadata relation says this source `sets` a canonical target, model this artifact as setting the effective jurisdiction-specific value for that delegated slot and record the absolute target path under `metadata.sets`. This is not an `amends` relationship unless the source itself amends another source.
-For state option/source-slice metadata, do not add a top-level `imports:` entry to the bare canonical `cfr/...#...` or `usc/...#...` path unless a copied context file actually provides that import target.
+For state option/source-slice metadata, do not add a top-level `imports:` entry to the absolute canonical target path such as `us:regulation/...#...` or `us:statutes/...#...` unless a copied context file actually provides that import target.
 If the canonical target is an option/applies/uses-style slot such as `...#*_applies` or `...#*_uses_*`, encode the canonical boolean slot as a direct dated constant `true` or `false` when the source text itself sets that option.
 Do not invent jurisdiction guards like `*_is_in_state` or `*_is_in_jurisdiction` unless `./source.txt` states them; for a jurisdiction-specific source slice, use only positive/continuity cases rather than a fabricated out-of-jurisdiction false case.
 For a jurisdiction-specific setting slice, omit an inapplicable false test unless `./source.txt` itself states a narrower in-jurisdiction condition.

@@ -5738,7 +5738,7 @@ class TestRepoAugmentedContext:
             "version: 1\n"
             "relations:\n"
             "  - relation: sets\n"
-            "    target: cfr/7/273.9/d/6/iii#snap_standard_utility_allowance\n"
+            "    target: us:regulation/7-cfr/273/9/d/6/iii#snap_standard_utility_allowance\n"
             "    jurisdiction: TN\n"
         )
 
@@ -5758,7 +5758,7 @@ class TestRepoAugmentedContext:
         assert manifest["source_metadata_file"] == "source-metadata.json"
         assert (
             manifest["source_metadata"]["relations"][0]["target"]
-            == "cfr/7/273.9/d/6/iii#snap_standard_utility_allowance"
+            == "us:regulation/7-cfr/273/9/d/6/iii#snap_standard_utility_allowance"
         )
         assert workspace.source_metadata_file is not None
         assert workspace.source_metadata_file.exists()
@@ -6294,7 +6294,7 @@ class TestSourceEval:
             "version: 1\n"
             "relations:\n"
             "  - relation: sets\n"
-            "    target: cfr/7/273.9/d/6/iii#snap_standard_utility_allowance\n"
+            "    target: us:regulation/7-cfr/273/9/d/6/iii#snap_standard_utility_allowance\n"
             "    jurisdiction: TN\n"
         )
         workspace = prepare_eval_workspace(
@@ -6326,10 +6326,13 @@ class TestSourceEval:
             "setting the effective jurisdiction-specific value for that delegated slot"
             in prompt
         )
-        assert "cfr/7/273.9/d/6/iii#snap_standard_utility_allowance" in prompt
+        assert (
+            "us:regulation/7-cfr/273/9/d/6/iii#snap_standard_utility_allowance"
+            in prompt
+        )
         assert "...#*_applies` or `...#*_uses_*" in prompt
         assert (
-            "do not add a top-level `imports:` entry to the bare canonical `cfr/...#...` or `usc/...#...` path"
+            "do not add a top-level `imports:` entry to the absolute canonical target path"
             in prompt
         )
         assert "`*_is_in_state` or `*_is_in_jurisdiction`" in prompt

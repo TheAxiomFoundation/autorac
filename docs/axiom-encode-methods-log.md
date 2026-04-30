@@ -546,7 +546,7 @@ As of 2026-04-10:
 - Hypothesis:
   - The next real state-overlay test after utility tables was whether Axiom Encode could cleanly encode a delegated jurisdictional SNAP option as the option itself, rather than overfitting everything to numeric table parameters or restating a downstream federal formula.
 - Effect:
-  - Added a Tennessee SNAP Policy Manual source slice plus `relation: sets` sidecar in `rules-us-tn`, anchored to `usc/7/2014/e/4#snap_state_uses_child_support_deduction`.
+  - Added a Tennessee SNAP Policy Manual source slice plus `relation: sets` sidecar in `rules-us-tn`, anchored to `us:statutes/7/2014/e/4#snap_state_uses_child_support_deduction`.
   - Added a checked-in Axiom Encode benchmark for the Tennessee child-support deduction option.
   - Extended the PolicyEngine US bridge so delegated state-option booleans can be compared directly through parameter access, rather than only via downstream benefit variables.
   - Tightened CI so constant booleans are not misclassified as placeholder facts when eval source metadata explicitly marks them as delegated `sets` targets.
@@ -565,7 +565,7 @@ As of 2026-04-10:
 - Hypothesis:
   - After Tennessee closed as a positive delegated child-support deduction option, the next check was whether the same `sets` pathway also works for the opposite state election: a jurisdiction that does not use the deduction because it excludes the payments from gross income instead.
 - Effect:
-  - Added a New York OTDA SNAP Source Book source slice plus `relation: sets` sidecar in `rules-us-ny`, anchored to `usc/7/2014/e/4#snap_state_uses_child_support_deduction`.
+  - Added a New York OTDA SNAP Source Book source slice plus `relation: sets` sidecar in `rules-us-ny`, anchored to `us:statutes/7/2014/e/4#snap_state_uses_child_support_deduction`.
   - Added a checked-in Axiom Encode benchmark for the New York child-support deduction option.
   - Generalized the PolicyEngine replay path so delegated state-option booleans no longer default to Tennessee when no explicit state input is present; replay now derives the state from eval source metadata jurisdiction when available.
   - The first New York run already passed generation, generalist review, and PolicyEngine. Its only miss was CI counting the editorial header `Rev. 7/2025` as a substantive numeric. After teaching numeric extraction to ignore revision markers and revalidating the existing output, the lane closed fully ready.
@@ -582,7 +582,7 @@ As of 2026-04-10:
 - Hypothesis:
   - With the delegated-boolean replay path repaired for jurisdiction inference, a second positive state-option lane should close without further harness work if the source slice is clean and current.
 - Effect:
-  - Added a North Carolina FNS 340 child-support deduction source slice plus `relation: sets` sidecar in `rules-us-nc`, anchored to `usc/7/2014/e/4#snap_state_uses_child_support_deduction`.
+  - Added a North Carolina FNS 340 child-support deduction source slice plus `relation: sets` sidecar in `rules-us-nc`, anchored to `us:statutes/7/2014/e/4#snap_state_uses_child_support_deduction`.
   - Added a checked-in Axiom Encode benchmark for the North Carolina child-support deduction option.
   - The first run closed fully ready on compile, CI, generalist review, and PolicyEngine with no additional harness changes, confirming that the repaired delegated-boolean path generalizes to another jurisdiction that affirmatively elects the deduction.
 - Primary evidence paths:
@@ -597,7 +597,7 @@ As of 2026-04-10:
 - Hypothesis:
   - The delegated `sets` pathway should generalize beyond the child-support election if the PolicyEngine bridge can treat state-option booleans as parameter-backed slots rather than one-off hard-coded cases.
 - Effect:
-  - Added a California CalFresh source slice plus `relation: sets` sidecar in `rules-us-ca`, anchored to `cfr/7/273.11/b/3#snap_self_employment_expense_based_deduction_applies`.
+  - Added a California CalFresh source slice plus `relation: sets` sidecar in `rules-us-ca`, anchored to `us:regulation/7-cfr/273/11/b/3#snap_self_employment_expense_based_deduction_applies`.
   - Updated `rules-us-ca` repo-boundary docs so California-administered SNAP overlays are treated as first-class jurisdiction content, not as out-of-repo federal leftovers.
   - Generalized the PolicyEngine US adapter model with a reusable parameter-path field for delegated state-option booleans, then used it for both the existing child-support election and the new California self-employment expense option.
   - The first California run already passed generation, compile, generalist review, and PolicyEngine; its only miss was CI counting the structural section citation `63-503.413` as a missing scalar. After teaching source numeric extraction to ignore manual section references of that form, the rerun closed fully ready.
@@ -616,7 +616,7 @@ As of 2026-04-10:
 - Hypothesis:
   - The parameter-backed delegated `sets` path for SNAP self-employment expense options should transfer from California to another jurisdiction without new oracle-adapter logic. If the first Colorado replay fails, the most likely remaining gap is structural numeric cleanup for state code citations rather than the legal model itself.
 - Effect:
-  - Added a Colorado SNAP regulation source slice plus `relation: sets` sidecar in `rules-us-co`, anchored to `cfr/7/273.11/b/3#snap_self_employment_expense_based_deduction_applies`.
+  - Added a Colorado SNAP regulation source slice plus `relation: sets` sidecar in `rules-us-co`, anchored to `us:regulation/7-cfr/273/11/b/3#snap_self_employment_expense_based_deduction_applies`.
   - Updated `rules-us-co` repo-boundary docs so Colorado-administered SNAP overlays are treated as first-class jurisdiction content alongside Colorado Works materials.
   - Added a checked-in Axiom Encode benchmark for the Colorado self-employment expense option.
   - The first Colorado run already passed generation, compile, generalist review, and PolicyEngine; its only miss was CI counting structural citation numerics from `10 CCR 2506-1` and `section 4.403.11(B)-(C)(3)` as missing scalars.
@@ -636,7 +636,7 @@ As of 2026-04-10:
 - Hypothesis:
   - After California, Colorado, Tennessee, and North Carolina closed on the delegated parameter-backed `sets` path for SNAP self-employment expense treatment, the same lane should transfer to New York without new harness work. The remaining question was whether the event-driven Codex queue would close the slice cleanly rather than needing a one-off manual replay.
 - Effect:
-  - Added a New York OTDA SNAP Source Book source slice plus `relation: sets` sidecar in `rules-us-ny`, anchored to `cfr/7/273.11/b/3#snap_self_employment_expense_based_deduction_applies`.
+  - Added a New York OTDA SNAP Source Book source slice plus `relation: sets` sidecar in `rules-us-ny`, anchored to `us:regulation/7-cfr/273/11/b/3#snap_self_employment_expense_based_deduction_applies`.
   - Added a checked-in Axiom Encode benchmark for the New York self-employment expense option.
   - Seeded the local event-driven SNAP queue with the new New York benchmark and let the Codex-backed runner process it end to end.
   - The first queue run closed fully ready on success, compile, CI, generalist review, and PolicyEngine. The only reviewer notes were non-blocking suggestions about using a dated start boundary instead of the `0001-01-01` sentinel and adding a second temporal-stability test case.
@@ -675,7 +675,7 @@ As of 2026-04-10:
 - Hypothesis:
   - California should transfer on the already-proven delegated SNAP child-support state-option lane without any new harness work. The useful system check is whether the manifest-driven queue seeding path discovers and runs the new California benchmark automatically.
 - Effect:
-  - Added a California CalFresh current-effective source slice plus `relation: sets` sidecar for `snap_state_uses_child_support_deduction`, anchored to `usc/7/2014/e/4#snap_state_uses_child_support_deduction`.
+  - Added a California CalFresh current-effective source slice plus `relation: sets` sidecar for `snap_state_uses_child_support_deduction`, anchored to `us:statutes/7/2014/e/4#snap_state_uses_child_support_deduction`.
   - Added a checked-in Axiom Encode benchmark for the California child-support option and matching manifest-load coverage.
   - Let the local event-driven Codex queue auto-discover the new benchmark from the checked-in `axiom_encode/benchmarks` directory and process it end to end without a manual queue edit.
   - The first California run closed fully ready on success, compile, CI, zero ungrounded numerics, generalist review, and PolicyEngine, with no harness change required after the benchmark landed.
@@ -691,7 +691,7 @@ As of 2026-04-10:
 - Hypothesis:
   - Colorado should transfer on the same delegated SNAP child-support state-option lane as California and New York. If it fails, the most likely causes are either a real PolicyEngine state-option data bug or one more structural-source numeric false positive in the validator.
 - Effect:
-  - Added a Colorado SNAP current-effective source slice plus `relation: sets` sidecar for `snap_state_uses_child_support_deduction`, anchored to `usc/7/2014/e/4#snap_state_uses_child_support_deduction`.
+  - Added a Colorado SNAP current-effective source slice plus `relation: sets` sidecar for `snap_state_uses_child_support_deduction`, anchored to `us:statutes/7/2014/e/4#snap_state_uses_child_support_deduction`.
   - Added a checked-in Axiom Encode benchmark for the Colorado child-support option and matching manifest-load coverage.
   - The first event-driven Codex run generated the correct delegated boolean shape and passed compile, but failed review and PolicyEngine because local PolicyEngine incorrectly flipped Colorado to `true` in the SNAP child-support state-option parameter file despite the cited current Colorado regulation still using an exclusion.
   - Patched local PolicyEngine to keep Colorado `false` under the cited 2023 rule and added a direct Colorado SNAP gross-income-deduction regression.
@@ -732,7 +732,7 @@ As of 2026-04-10:
 - Hypothesis:
   - The Maryland DHS source slice does not support the previously benchmarked boolean `snap_self_employment_expense_based_deduction_applies`. It states a concrete 50 percent simplified deduction rate. The correct fix is to change the benchmark ontology, not to keep repairing the wrong boolean target.
 - Effect:
-  - Replaced the Maryland source slice and sidecar so the jurisdiction sets `cfr/7/273.11/b/3#snap_self_employment_simplified_deduction_rate` instead of the expense-based boolean slot.
+  - Replaced the Maryland source slice and sidecar so the jurisdiction sets `us:regulation/7-cfr/273/11/b/3#snap_self_employment_simplified_deduction_rate` instead of the expense-based boolean slot.
   - Replaced the checked-in Maryland benchmark with a new Axiom Encode refresh manifest for `snap_self_employment_simplified_deduction_rate`.
   - Extended the PE-US adapter so parameter-backed SNAP state options can read numeric parameter values, not just booleans.
   - Re-ran the event-driven Codex queue. It retired the deleted Maryland expense-based manifest automatically, queued the new simplified-rate manifest, and the new run closed fully ready on success, compile, CI, zero ungrounded numerics, generalist review, and PolicyEngine.

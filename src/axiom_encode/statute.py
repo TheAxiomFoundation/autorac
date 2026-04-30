@@ -20,10 +20,16 @@ class CitationParts:
 def parse_usc_citation(citation: str) -> CitationParts:
     """Parse a USC citation or slash path into title, section, and fragments."""
     cleaned = citation.strip().replace("§", "")
+    for prefix in ("us:statutes/", "us:statute/"):
+        if cleaned.startswith(prefix):
+            cleaned = cleaned.removeprefix(prefix)
+            break
 
     if "/" in cleaned and "USC" not in cleaned.upper():
         parts = [part for part in cleaned.split("/") if part]
-        if parts and parts[0] == "statutes":
+        if parts[:2] in (["us", "statute"], ["us", "statutes"]):
+            parts = parts[2:]
+        elif parts and parts[0] == "statutes":
             parts = parts[1:]
         if len(parts) < 2:
             raise ValueError(f"Could not parse citation: {citation}")
@@ -53,15 +59,15 @@ def parse_usc_citation(citation: str) -> CitationParts:
     )
 
 
-def citation_to_source_path(citation: str | CitationParts) -> str:
-    """Convert a citation into the XML subsection source path format."""
+def citation_to_citation_path(citation: str | CitationParts) -> str:
+    """Convert a citation into Axiom's canonical citation path format."""
     parts = (
         citation
         if isinstance(citation, CitationParts)
         else parse_usc_citation(citation)
     )
     path_parts = [parts.title, parts.section, *parts.fragments]
-    return "usc/" + "/".join(path_parts)
+    return "us/statute/" + "/".join(path_parts)
 
 
 def citation_to_relative_rulespec_path(citation: str | CitationParts) -> Path:
@@ -201,7 +207,7 @@ def extract_subsections_from_xml(xml_path: Path, section: str) -> list[dict]:
 
             results.append(
                 {
-                    "source_path": f"usc/{title}/{local_path}",
+                    "citation_path": f"us/statute/{title}/{local_path}",
                     "heading": heading,
                     "body": body,
                 }
@@ -219,7 +225,7 @@ def extract_subsections_from_xml(xml_path: Path, section: str) -> list[dict]:
         rules.insert(
             0,
             {
-                "source_path": f"usc/{title}/{section}",
+                "citation_path": f"us/statute/{title}/{section}",
                 "heading": clean(sec_heading.group(1)),
                 "body": clean(sec_content.group(1)) if sec_content else "",
             },
@@ -237,9 +243,9 @@ def find_citation_text(citation: str, xml_root: Path) -> str | None:
     if not parts.fragments:
         return extract_section_text_from_xml(xml_path, parts.section)
 
-    target_source_path = citation_to_source_path(parts)
+    target_citation_path = citation_to_citation_path(parts)
     for rule in extract_subsections_from_xml(xml_path, parts.section):
-        if rule.get("source_path") == target_source_path:
+        if rule.get("citation_path") == target_citation_path:
             label = parts.fragments[-1]
             heading = (rule.get("heading") or "").strip()
             body = (rule.get("body") or "").strip()

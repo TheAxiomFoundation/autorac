@@ -49,10 +49,25 @@ from axiom_encode.harness.encoding_db import (
     ReviewResults,
 )
 from axiom_encode.harness.evals import EvalArtifactMetrics
+from axiom_encode.statute import citation_to_citation_path, parse_usc_citation
 
 # =========================================================================
 # Test main() dispatch
 # =========================================================================
+
+
+class TestStatuteCitationPaths:
+    def test_builds_clean_citation_path_from_us_code_citation(self):
+        assert citation_to_citation_path("26 USC 3101(a)") == "us/statute/26/3101/a"
+
+    def test_parses_absolute_rulespec_statute_path(self):
+        parts = parse_usc_citation("us:statutes/26/3101/a")
+
+        assert (parts.title, parts.section, parts.fragments) == (
+            "26",
+            "3101",
+            ("a",),
+        )
 
 
 class TestRunnerOverrides:
