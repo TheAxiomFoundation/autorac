@@ -1866,6 +1866,42 @@ def find_structured_scale_parameter_issues(content: str) -> list[str]:
     return issues
 
 
+def find_reiteration_issues(content: str) -> list[str]:
+    """Validate non-executable reiteration markers."""
+    try:
+        payload = yaml.safe_load(content)
+    except (yaml.YAMLError, ValueError):
+        return []
+    if not isinstance(payload, dict) or payload.get("format") != "rulespec/v1":
+        return []
+    rules = payload.get("rules")
+    if not isinstance(rules, list):
+        return []
+
+    issues: list[str] = []
+    for rule in rules:
+        if not isinstance(rule, dict):
+            continue
+        if str(rule.get("kind") or "").lower() != "reiteration":
+            continue
+        name = str(rule.get("name") or "<unknown>")
+        reiterates = rule.get("reiterates")
+        if (
+            not isinstance(reiterates, dict)
+            or not str(reiterates.get("target") or "").strip()
+        ):
+            issues.append(
+                "Reiteration target required: "
+                f"{name} must declare `reiterates.target` pointing to the canonical RuleSpec rule."
+            )
+        if rule.get("versions"):
+            issues.append(
+                "Reiteration must be non-executable: "
+                f"{name} should not declare `versions`; use the canonical target for formulas and values."
+            )
+    return issues
+
+
 def _embedded_integer_scale_selector(formula: str) -> str | None:
     normalized = re.sub(r"\s+", " ", formula)
     for match in re.finditer(r"\bmatch\s+([A-Za-z_][\w.]*)\s*:", normalized):
@@ -2874,6 +2910,7 @@ class ValidatorPipeline:
 
         issues.extend(find_ungrounded_numeric_issues(content))
         issues.extend(find_structured_scale_parameter_issues(content))
+        issues.extend(find_reiteration_issues(content))
 
         duration = int((time.time() - start) * 1000)
         try:
@@ -2902,6 +2939,17 @@ class ValidatorPipeline:
             if isinstance(module, dict)
             else str(payload.get("status", "")).strip()
         )
+        rules = payload.get("rules")
+        if (
+            isinstance(rules, list)
+            and rules
+            and all(
+                isinstance(rule, dict)
+                and str(rule.get("kind") or "").lower() == "reiteration"
+                for rule in rules
+            )
+        ):
+            return True
         return status in {"deferred", "entity_not_supported"} and not payload.get(
             "rules"
         )

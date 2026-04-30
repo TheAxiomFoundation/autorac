@@ -15,6 +15,10 @@ Hard requirements:
   numeric literals inside a derived formula.
 - Use `kind: derived` for entity-scoped outputs.
 - Use `kind: relation` only for relation facts.
+- Use `kind: reiteration` for a provision that merely restates another
+  canonical rule. It must include `reiterates.target` and must not include
+  executable `versions`; optional `verification` may record matching source
+  values for audit.
 - Emit only RuleSpec YAML; use `.test.yaml` companions when tests are requested.
 - Do not emit Python code, markdown fences, prose, or file-write confirmations.
 - Do not invent values or ontology beyond the source text.

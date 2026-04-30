@@ -461,6 +461,66 @@ rules:
     assert any("does not declare `indexed_by`" in issue for issue in result.issues)
 
 
+def test_rulespec_ci_accepts_reiteration_without_tests(tmp_path):
+    if not AXIOM_RULES_BINARY.exists():
+        pytest.skip("local axiom-rules binary is not built")
+
+    rules_file = tmp_path / "rules.yaml"
+    rules_file.write_text(
+        """format: rulespec/v1
+rules:
+  - name: co_snap_maximum_allotment_reiterates_usda_fy_2026
+    kind: reiteration
+    source: 10 CCR 2506-1 section 4.207.3(D)
+    source_url: https://example.test/co-snap
+    reiterates:
+      target: us:policies/usda/snap/fy-2026-cola#snap_maximum_allotment
+      authority: federal
+      relationship: restates
+    verification:
+      values:
+        snap_maximum_allotment_table:
+          1: 298
+          2: 546
+"""
+    )
+
+    pipeline = ValidatorPipeline(
+        policy_repo_path=tmp_path,
+        axiom_rules_path=AXIOM_RULES_PATH,
+        enable_oracles=False,
+    )
+
+    assert pipeline._run_ci(rules_file).passed is True
+
+
+def test_rulespec_ci_rejects_reiteration_without_target(tmp_path):
+    if not AXIOM_RULES_BINARY.exists():
+        pytest.skip("local axiom-rules binary is not built")
+
+    rules_file = tmp_path / "rules.yaml"
+    rules_file.write_text(
+        """format: rulespec/v1
+rules:
+  - name: co_snap_maximum_allotment_reiterates_usda_fy_2026
+    kind: reiteration
+    source: 10 CCR 2506-1 section 4.207.3(D)
+    reiterates:
+      authority: federal
+"""
+    )
+
+    pipeline = ValidatorPipeline(
+        policy_repo_path=tmp_path,
+        axiom_rules_path=AXIOM_RULES_PATH,
+        enable_oracles=False,
+    )
+    result = pipeline._run_ci(rules_file)
+
+    assert result.passed is False
+    assert any("Reiteration target required" in issue for issue in result.issues)
+
+
 def test_rulespec_ci_rejects_scalar_kind_mismatches(tmp_path):
     if not AXIOM_RULES_BINARY.exists():
         pytest.skip("local axiom-rules binary is not built")
