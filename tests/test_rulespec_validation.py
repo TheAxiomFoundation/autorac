@@ -89,6 +89,29 @@ rules:
     assert find_ungrounded_numeric_issues(content) == []
 
 
+def test_rulespec_grounding_treats_household_size_match_keys_as_structural():
+    content = """format: rulespec/v1
+module:
+  summary: The deduction amounts are 209, 223, 261, and 299.
+rules:
+  - name: standard_deduction
+    kind: derived
+    entity: Household
+    dtype: Money
+    period: Month
+    unit: USD
+    versions:
+      - effective_from: '2025-10-01'
+        formula: |-
+          match household_size:
+              4 => 223
+              5 => 261
+              6 => 299
+"""
+
+    assert find_ungrounded_numeric_issues(content) == []
+
+
 def test_extract_json_object_accepts_literal_newline_in_reviewer_string():
     output = """{
   "score": 9.0,

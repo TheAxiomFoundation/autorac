@@ -1342,8 +1342,17 @@ def _is_structural_schedule_index_literal(expression: str, literal: str) -> bool
     delta_pattern = re.compile(
         rf"(?:\(\s*)?{_SCHEDULE_INDEX_NAME_PATTERN}\s*-\s*{re.escape(literal)}(?:\s*\))?"
     )
+    match_arm_pattern = re.compile(rf"\b{re.escape(literal)}\s*=>")
     return bool(
-        comparison_pattern.search(normalized) or delta_pattern.search(normalized)
+        comparison_pattern.search(normalized)
+        or delta_pattern.search(normalized)
+        or (
+            re.search(
+                rf"\bmatch\s+{_SCHEDULE_INDEX_NAME_PATTERN}\s*:",
+                normalized,
+            )
+            and match_arm_pattern.search(normalized)
+        )
     )
 
 
