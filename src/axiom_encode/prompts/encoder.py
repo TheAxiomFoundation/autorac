@@ -9,6 +9,10 @@ Hard requirements:
 - Include `module.summary: |-` with the operative source text or an exact audit excerpt.
 - Use `rules:` as a list of rule objects.
 - Use `kind: parameter` for source-stated amounts, rates, thresholds, caps, and limits.
+- Use `kind: parameter` with `indexed_by` and versioned `values` for source-stated
+  numeric tables/scales keyed by household size, family size, income band,
+  age band, or another row key. Do not encode those cells as `match` arms or
+  numeric literals inside a derived formula.
 - Use `kind: derived` for entity-scoped outputs.
 - Use `kind: relation` only for relation facts.
 - Emit only RuleSpec YAML; use `.test.yaml` companions when tests are requested.
@@ -16,6 +20,7 @@ Hard requirements:
 - Do not invent values or ontology beyond the source text.
 - Put formulas under `versions: - effective_from: 'YYYY-MM-DD'` and `formula: |-`.
 - Formula strings use Axiom formula syntax: `if condition: value else: other`, `==`, `and`, and `or`.
+- Formula strings reference indexed parameter tables with `table_name[index_expr]`.
 - Every substantive numeric literal must be grounded in the supplied source text unless it is -1, 0, 1, 2, or 3.
 
 Minimal shape:
@@ -33,6 +38,29 @@ rules:
       - effective_from: '2024-01-01'
         formula: |-
           451
+
+Indexed table shape:
+
+rules:
+  - name: example_amount_by_household_size
+    kind: parameter
+    dtype: Money
+    unit: USD
+    indexed_by: household_size
+    versions:
+      - effective_from: '2025-10-01'
+        values:
+          1: 298
+          2: 546
+  - name: example_amount
+    kind: derived
+    entity: Household
+    dtype: Money
+    period: Month
+    unit: USD
+    versions:
+      - effective_from: '2025-10-01'
+        formula: example_amount_by_household_size[household_size]
 """
 
 

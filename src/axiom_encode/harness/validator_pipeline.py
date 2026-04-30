@@ -882,10 +882,11 @@ PARAMETER_REVIEWER_PROMPT = (
 Review the RuleSpec file for policy value usage:
 1. **No Magic Numbers**: Only -1, 0, 1, 2, 3 allowed as literals. All other values must be defined as named entries.
 2. **No Embedded Scalars**: Legal scalar amounts, thresholds, and limits should be declared as named variables, not embedded inside formulas or conditional branches.
-3. **Sourcing**: Policy values should reference authoritative sources
-4. **Time-Varying Values**: Rate thresholds and amounts should use `versions` with `effective_from`
-5. **Reference Format**: Correct RuleSpec syntax (`kind: parameter`, no standalone `parameter` keyword block)
-6. **Default Values**: Appropriate defaults for optional inputs
+3. **Structured Scales**: Source-stated numeric tables/scales keyed by household size, family size, age band, income band, or similar row keys must use `kind: parameter`, `indexed_by`, and versioned `values`; formulas should reference them with `table_name[index_expr]`, not `match` arms with embedded policy cells.
+4. **Sourcing**: Policy values should reference authoritative sources
+5. **Time-Varying Values**: Rate thresholds and amounts should use `versions` with `effective_from`
+6. **Reference Format**: Correct RuleSpec syntax (`kind: parameter`, no standalone `parameter` keyword block)
+7. **Default Values**: Appropriate defaults for optional inputs
 """
     + _REVIEW_JSON_FORMAT
 )
@@ -915,12 +916,13 @@ Review the file holistically for:
 3. **No semantic compression**: Distinct statutory branches or repeated scalar occurrences are not collapsed into a single over-generic helper.
 4. **Defined terms and imports**: Explicitly or implicitly legally defined terms are imported from their canonical source when one exists.
 5. **Fact modeling**: Factual predicates are modeled as inputs or canonical imports, not hard-coded booleans or deferred placeholders.
-6. **Entity / period / dtype plausibility**: Core variables use a coherent ontology for the rule being encoded.
-7. **Tests reflect applicability**: Tests cover both applicable and inapplicable branches when the source text makes them meaningful.
-8. **Blocking threshold**: Fail only for substantive fidelity defects that would make promotion unsafe. Minor cleanup notes, naming issues, dead code, or arguably missing-but-uncertain imports are non-blocking.
-9. **Unsupported ontology fallback**: A file that honestly declares `status: entity_not_supported` is not automatically a blocking failure. If the source slice genuinely depends on an unsupported ontology or granularity, treat that explicit fallback as acceptable so long as the file does not pretend to compute the rule and the unsupported reason is plausible from the source text.
-10. **Editorial omission fallback**: If the embedded source text is only an editorial omission or dotted ellipsis with no operative rule content for the target slice, a top-level `status: deferred` fallback is acceptable and should not be failed merely for lacking a computable rule body.
-11. **Subject-to qualification placeholders**: When a slice says `Subject to paragraphs ...` and the cited provisions are not available in the workspace, paragraph-specific local inputs can be acceptable for an isolated slice artifact so long as they preserve the cited paragraph numbers and the branch-specific legal effect. Prefer imports when available, but do not fail solely because the file cannot import unavailable cited paragraphs.
+6. **Structured parameters**: Source-stated numeric schedules are parameter tables with `indexed_by` and versioned `values`, not derived `match` formulas with embedded policy cells.
+7. **Entity / period / dtype plausibility**: Core variables use a coherent ontology for the rule being encoded.
+8. **Tests reflect applicability**: Tests cover both applicable and inapplicable branches when the source text makes them meaningful.
+9. **Blocking threshold**: Fail only for substantive fidelity defects that would make promotion unsafe. Minor cleanup notes, naming issues, dead code, or arguably missing-but-uncertain imports are non-blocking.
+10. **Unsupported ontology fallback**: A file that honestly declares `status: entity_not_supported` is not automatically a blocking failure. If the source slice genuinely depends on an unsupported ontology or granularity, treat that explicit fallback as acceptable so long as the file does not pretend to compute the rule and the unsupported reason is plausible from the source text.
+11. **Editorial omission fallback**: If the embedded source text is only an editorial omission or dotted ellipsis with no operative rule content for the target slice, a top-level `status: deferred` fallback is acceptable and should not be failed merely for lacking a computable rule body.
+12. **Subject-to qualification placeholders**: When a slice says `Subject to paragraphs ...` and the cited provisions are not available in the workspace, paragraph-specific local inputs can be acceptable for an isolated slice artifact so long as they preserve the cited paragraph numbers and the branch-specific legal effect. Prefer imports when available, but do not fail solely because the file cannot import unavailable cited paragraphs.
 
 Scoring rubric:
 - 9-10: strong, promotion-ready
@@ -1276,9 +1278,30 @@ def extract_grounding_values(content: str) -> list[tuple[int, str, float]]:
                             values.append((1, str(formula), value))
                     elif isinstance(formula, str):
                         values.extend(_extract_formula_grounding_values(1, formula))
+                    table_values = version.get("values")
+                    if isinstance(table_values, dict):
+                        for table_value in table_values.values():
+                            extracted = _numeric_rule_value(table_value)
+                            if extracted is None:
+                                continue
+                            raw, value = extracted
+                            if value not in GROUNDING_ALLOWED_VALUES:
+                                values.append((1, raw, value))
             return values
 
     return []
+
+
+def _numeric_rule_value(value: Any) -> tuple[str, float] | None:
+    """Return a display string and numeric value for a YAML scalar."""
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return str(value), float(value)
+    if isinstance(value, str) and _DIRECT_SCALAR_VALUE_PATTERN.fullmatch(value.strip()):
+        raw = value.strip()
+        return raw, float(raw.replace(",", ""))
+    return None
 
 
 def _extract_formula_grounding_values(
@@ -1720,16 +1743,29 @@ def extract_named_scalar_occurrences(content: str) -> list[NamedScalarOccurrence
                         stripped = formula.strip()
                         if _DIRECT_SCALAR_VALUE_PATTERN.fullmatch(stripped):
                             raw = stripped
-                    if raw is None:
-                        continue
-                    with contextlib.suppress(ValueError):
-                        occurrences.append(
-                            NamedScalarOccurrence(
-                                line=1,
-                                name=name,
-                                value=float(raw.replace(",", "")),
+                    if raw is not None:
+                        with contextlib.suppress(ValueError):
+                            occurrences.append(
+                                NamedScalarOccurrence(
+                                    line=1,
+                                    name=name,
+                                    value=float(raw.replace(",", "")),
+                                )
                             )
-                        )
+                    table_values = version.get("values")
+                    if isinstance(table_values, dict):
+                        for key, table_value in table_values.items():
+                            extracted = _numeric_rule_value(table_value)
+                            if extracted is None:
+                                continue
+                            _, value = extracted
+                            occurrences.append(
+                                NamedScalarOccurrence(
+                                    line=1,
+                                    name=f"{name}[{key}]",
+                                    value=value,
+                                )
+                            )
             return occurrences
 
     return []
@@ -1773,6 +1809,73 @@ def find_ungrounded_numeric_issues(
             f"{display} does not appear as a substantive numeric value in the source text."
         )
     return issues
+
+
+def find_structured_scale_parameter_issues(content: str) -> list[str]:
+    """Flag source-stated numeric scales encoded as branch formulas."""
+    try:
+        payload = yaml.safe_load(content)
+    except (yaml.YAMLError, ValueError):
+        return []
+    if not isinstance(payload, dict) or payload.get("format") != "rulespec/v1":
+        return []
+    rules = payload.get("rules")
+    if not isinstance(rules, list):
+        return []
+
+    issues: list[str] = []
+    for rule in rules:
+        if not isinstance(rule, dict):
+            continue
+        kind = str(rule.get("kind") or "").lower()
+        if kind == "parameter":
+            if rule.get("indexed_by") is None and any(
+                isinstance(version, dict)
+                and isinstance(version.get("values"), dict)
+                and version.get("values")
+                for version in rule.get("versions") or []
+            ):
+                name = str(rule.get("name") or "<unknown>")
+                issues.append(
+                    "Structured parameter table malformed: "
+                    f"{name} uses versioned `values` but does not declare `indexed_by`."
+                )
+            continue
+        if kind != "derived":
+            continue
+        name = str(rule.get("name") or "<unknown>")
+        versions = rule.get("versions")
+        if not isinstance(versions, list):
+            continue
+        for version in versions:
+            if not isinstance(version, dict):
+                continue
+            formula = version.get("formula")
+            if not isinstance(formula, str):
+                continue
+            selector = _embedded_integer_scale_selector(formula)
+            if selector is not None:
+                issues.append(
+                    "Structured parameter table required: "
+                    f"{name} encodes a numeric schedule keyed by {selector} "
+                    "inside a derived formula; move source-stated cells to a "
+                    "`kind: parameter` rule with `indexed_by` and versioned `values`, "
+                    "then reference it with table lookup syntax."
+                )
+                break
+    return issues
+
+
+def _embedded_integer_scale_selector(formula: str) -> str | None:
+    normalized = re.sub(r"\s+", " ", formula)
+    for match in re.finditer(r"\bmatch\s+([A-Za-z_][\w.]*)\s*:", normalized):
+        numeric_arms = re.findall(
+            r"=>\s*-?(?:\d{2,}|\d+\.\d+)",
+            normalized[match.end() :],
+        )
+        if len(numeric_arms) >= 2:
+            return match.group(1)
+    return None
 
 
 def numeric_value_is_grounded(value: float, source_numbers: set[float]) -> bool:
@@ -2770,6 +2873,7 @@ class ValidatorPipeline:
             issues.append("No tests found.")
 
         issues.extend(find_ungrounded_numeric_issues(content))
+        issues.extend(find_structured_scale_parameter_issues(content))
 
         duration = int((time.time() - start) * 1000)
         try:

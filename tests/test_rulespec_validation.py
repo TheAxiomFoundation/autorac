@@ -312,6 +312,156 @@ rules:
     assert pipeline._run_ci(rules_file).passed is True
 
 
+def test_rulespec_ci_executes_indexed_parameter_table_lookup(tmp_path):
+    if not AXIOM_RULES_BINARY.exists():
+        pytest.skip("local axiom-rules binary is not built")
+
+    rules_file = tmp_path / "rules.yaml"
+    rules_file.write_text(
+        """format: rulespec/v1
+module:
+  summary: |-
+    The maximum monthly allotments are 298 and 546 for household sizes 1 and 2,
+    plus 218 for each additional person.
+rules:
+  - name: snap_maximum_allotment_table
+    kind: parameter
+    dtype: Money
+    unit: USD
+    indexed_by: household_size
+    versions:
+      - effective_from: '2025-10-01'
+        values:
+          1: 298
+          2: 546
+  - name: snap_maximum_allotment_additional_member
+    kind: parameter
+    dtype: Money
+    unit: USD
+    versions:
+      - effective_from: '2025-10-01'
+        formula: '218'
+  - name: max_allotment
+    kind: derived
+    entity: Household
+    dtype: Money
+    period: Month
+    unit: USD
+    versions:
+      - effective_from: '2025-10-01'
+        formula: |-
+          if household_size > 2:
+              snap_maximum_allotment_table[2] + ((household_size - 2) * snap_maximum_allotment_additional_member)
+          else: snap_maximum_allotment_table[household_size]
+"""
+    )
+    rules_file.with_name("rules.test.yaml").write_text(
+        """- name: third_household_member_uses_additional_member_amount
+  period: 2026-01
+  input:
+    household_size: 3
+  output:
+    max_allotment: 764
+"""
+    )
+
+    pipeline = ValidatorPipeline(
+        policy_repo_path=tmp_path,
+        axiom_rules_path=AXIOM_RULES_PATH,
+        enable_oracles=False,
+    )
+
+    assert pipeline._run_ci(rules_file).passed is True
+
+
+def test_rulespec_ci_rejects_scale_tables_encoded_as_match_literals(tmp_path):
+    if not AXIOM_RULES_BINARY.exists():
+        pytest.skip("local axiom-rules binary is not built")
+
+    rules_file = tmp_path / "rules.yaml"
+    rules_file.write_text(
+        """format: rulespec/v1
+module:
+  summary: |-
+    The maximum monthly allotments are 298 and 546 for household sizes 1 and 2.
+rules:
+  - name: max_allotment
+    kind: derived
+    entity: Household
+    dtype: Money
+    period: Month
+    unit: USD
+    versions:
+      - effective_from: '2025-10-01'
+        formula: |-
+          match household_size:
+              1 => 298
+              2 => 546
+"""
+    )
+    rules_file.with_name("rules.test.yaml").write_text(
+        """- name: one_person
+  period: 2026-01
+  input:
+    household_size: 1
+  output:
+    max_allotment: 298
+"""
+    )
+
+    pipeline = ValidatorPipeline(
+        policy_repo_path=tmp_path,
+        axiom_rules_path=AXIOM_RULES_PATH,
+        enable_oracles=False,
+    )
+    result = pipeline._run_ci(rules_file)
+
+    assert result.passed is False
+    assert any(
+        "Structured parameter table required" in issue
+        and "max_allotment" in issue
+        for issue in result.issues
+    )
+
+
+def test_rulespec_ci_rejects_parameter_values_without_indexed_by(tmp_path):
+    if not AXIOM_RULES_BINARY.exists():
+        pytest.skip("local axiom-rules binary is not built")
+
+    rules_file = tmp_path / "rules.yaml"
+    rules_file.write_text(
+        """format: rulespec/v1
+rules:
+  - name: snap_maximum_allotment_table
+    kind: parameter
+    dtype: Money
+    unit: USD
+    versions:
+      - effective_from: '2025-10-01'
+        values:
+          1: 298
+          2: 546
+"""
+    )
+    rules_file.with_name("rules.test.yaml").write_text(
+        """- name: placeholder
+  period: 2026-01
+  input: {}
+  output: {}
+"""
+    )
+
+    pipeline = ValidatorPipeline(
+        policy_repo_path=tmp_path,
+        axiom_rules_path=AXIOM_RULES_PATH,
+        enable_oracles=False,
+    )
+    result = pipeline._run_ci(rules_file)
+
+    assert result.passed is False
+    assert any("does not declare `indexed_by`" in issue for issue in result.issues)
+
+
 def test_rulespec_ci_rejects_scalar_kind_mismatches(tmp_path):
     if not AXIOM_RULES_BINARY.exists():
         pytest.skip("local axiom-rules binary is not built")
