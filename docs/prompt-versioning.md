@@ -14,9 +14,9 @@ version field in addition to the automatically recorded prompt hash.
 - **Registry correlation.** Logs, dashboards, and paper experiments
   reference encoder/reviewer generations. Humans read "encoder v3" much
   faster than they read a 40-character hash.
-- **Rollback signalling.** A version bump is a clear signal in code review
-  that reviewers should think about compatibility with downstream artifacts
-  (cached runs, saved traces, reference encodings).
+- **Artifact impact signalling.** A version bump is a clear signal in code
+  review that reviewers should think about downstream artifacts such as cached
+  runs, saved traces, and reference encodings.
 
 ## When to bump
 

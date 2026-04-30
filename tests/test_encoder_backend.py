@@ -563,8 +563,8 @@ class TestCodexCLIBackend:
             assert response.trace["provider"] == "openai"
 
 
-class TestBackendCompatibility:
-    """Test that both backends produce compatible outputs."""
+class TestBackendContract:
+    """Test that each backend returns the shared response contract."""
 
     def test_both_backends_return_encoder_response(self):
         """Both backends return EncoderResponse from encode()."""
