@@ -418,8 +418,7 @@ rules:
 
     assert result.passed is False
     assert any(
-        "Structured parameter table required" in issue
-        and "max_allotment" in issue
+        "Structured parameter table required" in issue and "max_allotment" in issue
         for issue in result.issues
     )
 
