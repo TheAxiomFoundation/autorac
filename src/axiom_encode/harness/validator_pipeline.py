@@ -1866,7 +1866,21 @@ def find_structured_scale_parameter_issues(content: str) -> list[str]:
     return issues
 
 
-def find_reiteration_issues(content: str) -> list[str]:
+@dataclass(frozen=True)
+class _ReiterationTargetRef:
+    """Parsed canonical RuleSpec target for a reiteration marker."""
+
+    prefix: str
+    repo_name: str
+    relative_path: Path
+    symbol: str | None
+
+
+def find_reiteration_issues(
+    content: str,
+    *,
+    policy_repo_path: Path | None = None,
+) -> list[str]:
     """Validate non-executable reiteration markers."""
     try:
         payload = yaml.safe_load(content)
@@ -1886,6 +1900,8 @@ def find_reiteration_issues(content: str) -> list[str]:
             continue
         name = str(rule.get("name") or "<unknown>")
         reiterates = rule.get("reiterates")
+        target = ""
+        target_ref: _ReiterationTargetRef | None = None
         if (
             not isinstance(reiterates, dict)
             or not str(reiterates.get("target") or "").strip()
@@ -1894,12 +1910,293 @@ def find_reiteration_issues(content: str) -> list[str]:
                 "Reiteration target required: "
                 f"{name} must declare `reiterates.target` pointing to the canonical RuleSpec rule."
             )
+        else:
+            target = str(reiterates.get("target") or "").strip()
+            target_ref = _parse_reiteration_target(target)
+            if target_ref is None:
+                issues.append(
+                    "Reiteration target invalid: "
+                    f"{name} uses `{target}`, expected `<jurisdiction>:<path>#<rule>`."
+                )
+            elif target_ref.symbol is None:
+                issues.append(
+                    "Reiteration target rule required: "
+                    f"{name} must point to a specific RuleSpec rule with `#rule_name`."
+                )
         if rule.get("versions"):
             issues.append(
                 "Reiteration must be non-executable: "
                 f"{name} should not declare `versions`; use the canonical target for formulas and values."
             )
+        verification = rule.get("verification")
+        if (
+            target
+            and target_ref is not None
+            and target_ref.symbol is not None
+            and isinstance(verification, dict)
+            and isinstance(verification.get("values"), dict)
+        ):
+            issues.extend(
+                _find_reiteration_value_verification_issues(
+                    name=name,
+                    target=target,
+                    target_ref=target_ref,
+                    expected_values=verification["values"],
+                    policy_repo_path=policy_repo_path,
+                )
+            )
     return issues
+
+
+def _find_reiteration_value_verification_issues(
+    *,
+    name: str,
+    target: str,
+    target_ref: _ReiterationTargetRef,
+    expected_values: dict[Any, Any],
+    policy_repo_path: Path | None,
+) -> list[str]:
+    """Compare a reiteration's expected values against its canonical target file."""
+    target_file = _resolve_reiteration_target_file(target_ref, policy_repo_path)
+    if target_file is None:
+        return [
+            "Reiteration verification target unavailable: "
+            f"{name} points to `{target}`, but repository `{target_ref.repo_name}` "
+            "was not found."
+        ]
+
+    target_values, target_symbols, load_issue = _extract_reiteration_target_values(
+        target_file
+    )
+    if load_issue is not None:
+        return [
+            "Reiteration verification target invalid: "
+            f"{name} points to `{target}`, but {load_issue}"
+        ]
+
+    issues: list[str] = []
+    if target_ref.symbol and target_ref.symbol not in target_symbols:
+        issues.append(
+            "Reiteration target rule missing: "
+            f"{name} points to `{target}`, but `{target_ref.symbol}` is not defined "
+            f"in {target_ref.relative_path}."
+        )
+
+    for value_name, expected_value in expected_values.items():
+        value_key = str(value_name)
+        if value_key not in target_values:
+            issues.append(
+                "Reiteration verification target missing value: "
+                f"{name} expects `{value_key}` but `{target}` does not define it."
+            )
+            continue
+        actual_value = target_values[value_key]
+        issues.extend(
+            _compare_reiteration_verification_value(
+                name=name,
+                target=target,
+                value_name=value_key,
+                expected_value=expected_value,
+                actual_value=actual_value,
+            )
+        )
+
+    return issues
+
+
+def _parse_reiteration_target(target: str) -> _ReiterationTargetRef | None:
+    """Parse `us:policies/foo#rule` into a target repo and relative file path."""
+    normalized = target.strip().strip("'\"")
+    match = re.match(
+        r"^(?P<prefix>[a-z][a-z0-9_-]*):(?P<path>[^#]+)(?:#(?P<symbol>[^#]+))?$",
+        normalized,
+    )
+    if match is None:
+        return None
+
+    path_text = match.group("path").strip().strip("/")
+    if not path_text:
+        return None
+    relative_path = Path(path_text)
+    if relative_path.is_absolute() or any(
+        part in {"", ".", ".."} for part in relative_path.parts
+    ):
+        return None
+    if not path_text.endswith((".yaml", ".yml")):
+        relative_path = Path(f"{path_text}.yaml")
+
+    prefix = match.group("prefix")
+    symbol = match.group("symbol")
+    return _ReiterationTargetRef(
+        prefix=prefix,
+        repo_name=f"rules-{prefix}",
+        relative_path=relative_path,
+        symbol=symbol.strip() if symbol and symbol.strip() else None,
+    )
+
+
+def _resolve_reiteration_target_file(
+    target_ref: _ReiterationTargetRef,
+    policy_repo_path: Path | None,
+) -> Path | None:
+    """Resolve a canonical RuleSpec target file across sibling/CI checkouts."""
+    for root in _candidate_reiteration_repo_roots(
+        target_ref.repo_name,
+        policy_repo_path,
+    ):
+        target_file = root / target_ref.relative_path
+        if target_file.exists():
+            return target_file
+    return None
+
+
+def _candidate_reiteration_repo_roots(
+    repo_name: str,
+    policy_repo_path: Path | None,
+) -> list[Path]:
+    """Return possible local roots for a canonical rules repository."""
+    candidates: list[Path] = []
+
+    def add(candidate: Path | None) -> None:
+        if candidate is None:
+            return
+        expanded = candidate.expanduser()
+        if expanded.name == repo_name:
+            candidates.append(expanded)
+        else:
+            candidates.append(expanded / repo_name)
+
+    env_roots = os.environ.get("AXIOM_RULE_REPO_ROOTS", "")
+    for raw_root in env_roots.split(os.pathsep):
+        if raw_root.strip():
+            add(Path(raw_root.strip()))
+
+    if policy_repo_path is not None:
+        policy_root = Path(policy_repo_path).resolve()
+        add(policy_root)
+        add(policy_root.parent / repo_name)
+        add(policy_root / "_axiom" / repo_name)
+        add(policy_root.parent / "_axiom" / repo_name)
+
+    cwd = Path.cwd()
+    add(cwd / repo_name)
+    add(cwd / "_axiom" / repo_name)
+
+    unique: list[Path] = []
+    seen: set[Path] = set()
+    for candidate in candidates:
+        resolved = candidate.resolve() if candidate.exists() else candidate
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        unique.append(candidate)
+    return unique
+
+
+def _extract_reiteration_target_values(
+    target_file: Path,
+) -> tuple[dict[str, Any], set[str], str | None]:
+    """Extract scalar/table parameter values from a canonical RuleSpec file."""
+    try:
+        payload = yaml.safe_load(target_file.read_text())
+    except (OSError, yaml.YAMLError, ValueError) as exc:
+        return {}, set(), f"{target_file} could not be read as RuleSpec YAML: {exc}"
+    if not isinstance(payload, dict) or payload.get("format") != "rulespec/v1":
+        return {}, set(), f"{target_file} is not a RuleSpec v1 file"
+    rules = payload.get("rules")
+    if not isinstance(rules, list):
+        return {}, set(), f"{target_file} has no `rules` list"
+
+    values: dict[str, Any] = {}
+    symbols: set[str] = set()
+    for rule in rules:
+        if not isinstance(rule, dict):
+            continue
+        raw_name = rule.get("name")
+        if not isinstance(raw_name, str) or not raw_name.strip():
+            continue
+        name = raw_name.strip()
+        symbols.add(name)
+        versions = rule.get("versions")
+        if not isinstance(versions, list):
+            continue
+        for version in versions:
+            if not isinstance(version, dict):
+                continue
+            table_values = version.get("values")
+            if isinstance(table_values, dict):
+                values[name] = {str(key): value for key, value in table_values.items()}
+                continue
+            scalar = _numeric_rule_value(version.get("formula"))
+            if scalar is not None:
+                values[name] = scalar[0]
+    return values, symbols, None
+
+
+def _compare_reiteration_verification_value(
+    *,
+    name: str,
+    target: str,
+    value_name: str,
+    expected_value: Any,
+    actual_value: Any,
+) -> list[str]:
+    """Return mismatch issues for one verified scalar or table value."""
+    if isinstance(expected_value, dict):
+        if not isinstance(actual_value, dict):
+            return [
+                "Reiteration verification mismatch: "
+                f"{name} expects `{value_name}` to be a table, but `{target}` "
+                "defines a scalar."
+            ]
+        issues: list[str] = []
+        for raw_key, expected_cell in expected_value.items():
+            cell_key = str(raw_key)
+            if cell_key not in actual_value:
+                issues.append(
+                    "Reiteration verification target missing value: "
+                    f"{name} expects `{value_name}[{cell_key}]` but `{target}` "
+                    "does not define it."
+                )
+                continue
+            actual_cell = actual_value[cell_key]
+            if not _reiteration_values_equal(expected_cell, actual_cell):
+                issues.append(
+                    "Reiteration verification mismatch: "
+                    f"{name} expects `{value_name}[{cell_key}]` = "
+                    f"{_format_reiteration_value(expected_cell)}, but `{target}` "
+                    f"has {_format_reiteration_value(actual_cell)}."
+                )
+        return issues
+
+    if isinstance(actual_value, dict):
+        return [
+            "Reiteration verification mismatch: "
+            f"{name} expects `{value_name}` to be a scalar, but `{target}` "
+            "defines a table."
+        ]
+    if _reiteration_values_equal(expected_value, actual_value):
+        return []
+    return [
+        "Reiteration verification mismatch: "
+        f"{name} expects `{value_name}` = "
+        f"{_format_reiteration_value(expected_value)}, but `{target}` has "
+        f"{_format_reiteration_value(actual_value)}."
+    ]
+
+
+def _reiteration_values_equal(expected_value: Any, actual_value: Any) -> bool:
+    """Compare verification scalar values, allowing numeric text/int equivalence."""
+    expected_numeric = _numeric_rule_value(expected_value)
+    actual_numeric = _numeric_rule_value(actual_value)
+    if expected_numeric is not None and actual_numeric is not None:
+        return math.isclose(expected_numeric[1], actual_numeric[1], abs_tol=1e-12)
+    return str(expected_value).strip() == str(actual_value).strip()
+
+
+def _format_reiteration_value(value: Any) -> str:
+    """Format a verification value for validation messages."""
+    return repr(value)
 
 
 def _embedded_integer_scale_selector(formula: str) -> str | None:
@@ -2910,7 +3207,9 @@ class ValidatorPipeline:
 
         issues.extend(find_ungrounded_numeric_issues(content))
         issues.extend(find_structured_scale_parameter_issues(content))
-        issues.extend(find_reiteration_issues(content))
+        issues.extend(
+            find_reiteration_issues(content, policy_repo_path=self.policy_repo_path)
+        )
 
         duration = int((time.time() - start) * 1000)
         try:

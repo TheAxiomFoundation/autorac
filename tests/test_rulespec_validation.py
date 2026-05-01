@@ -477,11 +477,6 @@ rules:
       target: us:policies/usda/snap/fy-2026-cola#snap_maximum_allotment
       authority: federal
       relationship: restates
-    verification:
-      values:
-        snap_maximum_allotment_table:
-          1: 298
-          2: 546
 """
     )
 
@@ -492,6 +487,142 @@ rules:
     )
 
     assert pipeline._run_ci(rules_file).passed is True
+
+
+def test_rulespec_ci_verifies_reiteration_values_against_target(tmp_path):
+    if not AXIOM_RULES_BINARY.exists():
+        pytest.skip("local axiom-rules binary is not built")
+
+    us_root = tmp_path / "rules-us"
+    target_file = us_root / "policies/usda/snap/fy-2026-cola.yaml"
+    target_file.parent.mkdir(parents=True)
+    target_file.write_text(
+        """format: rulespec/v1
+rules:
+  - name: snap_maximum_allotment_table
+    kind: parameter
+    dtype: Money
+    unit: USD
+    indexed_by: household_size
+    versions:
+      - effective_from: '2025-10-01'
+        values:
+          1: 298
+          2: 546
+  - name: snap_maximum_allotment_additional_member
+    kind: parameter
+    dtype: Money
+    unit: USD
+    versions:
+      - effective_from: '2025-10-01'
+        formula: '218'
+  - name: snap_maximum_allotment
+    kind: derived
+    entity: Household
+    dtype: Money
+    period: Month
+    unit: USD
+    versions:
+      - effective_from: '2025-10-01'
+        formula: snap_maximum_allotment_table[household_size]
+"""
+    )
+
+    co_root = tmp_path / "rules-us-co"
+    rules_file = co_root / "regulations/10-ccr-2506-1/4.207.3.yaml"
+    rules_file.parent.mkdir(parents=True)
+    rules_file.write_text(
+        """format: rulespec/v1
+rules:
+  - name: co_snap_maximum_allotment_reiterates_usda_fy_2026
+    kind: reiteration
+    reiterates:
+      target: us:policies/usda/snap/fy-2026-cola#snap_maximum_allotment
+      authority: federal
+      relationship: restates
+    verification:
+      values:
+        snap_maximum_allotment_table:
+          1: 298
+          2: 546
+        snap_maximum_allotment_additional_member: 218
+"""
+    )
+
+    pipeline = ValidatorPipeline(
+        policy_repo_path=co_root,
+        axiom_rules_path=AXIOM_RULES_PATH,
+        enable_oracles=False,
+    )
+
+    assert pipeline._run_ci(rules_file).passed is True
+
+
+def test_rulespec_ci_rejects_reiteration_value_mismatch(tmp_path):
+    if not AXIOM_RULES_BINARY.exists():
+        pytest.skip("local axiom-rules binary is not built")
+
+    us_root = tmp_path / "rules-us"
+    target_file = us_root / "policies/usda/snap/fy-2026-cola.yaml"
+    target_file.parent.mkdir(parents=True)
+    target_file.write_text(
+        """format: rulespec/v1
+rules:
+  - name: snap_maximum_allotment_table
+    kind: parameter
+    dtype: Money
+    unit: USD
+    indexed_by: household_size
+    versions:
+      - effective_from: '2025-10-01'
+        values:
+          1: 298
+          2: 546
+  - name: snap_maximum_allotment
+    kind: derived
+    entity: Household
+    dtype: Money
+    period: Month
+    unit: USD
+    versions:
+      - effective_from: '2025-10-01'
+        formula: snap_maximum_allotment_table[household_size]
+"""
+    )
+
+    co_root = tmp_path / "rules-us-co"
+    rules_file = co_root / "regulations/10-ccr-2506-1/4.207.3.yaml"
+    rules_file.parent.mkdir(parents=True)
+    rules_file.write_text(
+        """format: rulespec/v1
+rules:
+  - name: co_snap_maximum_allotment_reiterates_usda_fy_2026
+    kind: reiteration
+    reiterates:
+      target: us:policies/usda/snap/fy-2026-cola#snap_maximum_allotment
+      authority: federal
+      relationship: restates
+    verification:
+      values:
+        snap_maximum_allotment_table:
+          1: 298
+          2: 545
+"""
+    )
+
+    pipeline = ValidatorPipeline(
+        policy_repo_path=co_root,
+        axiom_rules_path=AXIOM_RULES_PATH,
+        enable_oracles=False,
+    )
+    result = pipeline._run_ci(rules_file)
+
+    assert result.passed is False
+    assert any(
+        "Reiteration verification mismatch" in issue
+        and "snap_maximum_allotment_table[2]" in issue
+        for issue in result.issues
+    )
 
 
 def test_rulespec_ci_rejects_reiteration_without_target(tmp_path):
