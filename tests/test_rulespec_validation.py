@@ -1,7 +1,9 @@
+import json
 from pathlib import Path
 
 import pytest
 
+from axiom_encode.harness import validator_pipeline
 from axiom_encode.harness.validator_pipeline import (
     OracleSubprocessResult,
     ValidatorPipeline,
@@ -705,6 +707,45 @@ rules:
         find_ungrounded_numeric_issues(
             content,
             source_text="The deduction amounts are 209, 223, 261, and 299.",
+        )
+        == []
+    )
+
+
+def test_rulespec_grounding_treats_filing_status_codes_as_structural():
+    content = """format: rulespec/v1
+module:
+  source_verification:
+    corpus_citation_path: us/guidance/example/page-1
+    values:
+      additional_standard_deduction_married: 1650
+rules:
+  - name: additional_standard_deduction_married
+    kind: parameter
+    dtype: Money
+    unit: USD
+    versions:
+      - effective_from: '2026-01-01'
+        formula: '1650'
+  - name: additional_standard_deduction_per_condition_amount
+    kind: derived
+    entity: TaxUnit
+    dtype: Money
+    period: Year
+    unit: USD
+    versions:
+      - effective_from: '2026-01-01'
+        formula: |-
+          if filing_status == 4:
+              additional_standard_deduction_married
+          else:
+              0
+"""
+
+    assert (
+        find_ungrounded_numeric_issues(
+            content,
+            source_text="The additional standard deduction amount is $1,650.",
         )
         == []
     )
@@ -1984,6 +2025,55 @@ rules:
     assert issues == []
 
 
+def test_source_verification_reads_local_corpus_artifact_before_source_url(
+    tmp_path,
+    monkeypatch,
+):
+    provisions_dir = tmp_path / "provisions" / "us" / "guidance"
+    provisions_dir.mkdir(parents=True)
+    (provisions_dir / "test-source.jsonl").write_text(
+        json.dumps(
+            {
+                "citation_path": "us/guidance/example/page-1",
+                "body": "The official normalized corpus source states the amount is $123.",
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("AXIOM_CORPUS_ARTIFACT_ROOT", str(tmp_path))
+    validator_pipeline._fetch_corpus_source_text.cache_clear()
+    validator_pipeline._fetch_local_corpus_source_text.cache_clear()
+
+    def reject_source_url_fetch(source_url: str) -> str | None:
+        raise AssertionError(f"source_url fetch should not run: {source_url}")
+
+    monkeypatch.setattr(
+        "axiom_encode.harness.validator_pipeline._fetch_source_url_text",
+        reject_source_url_fetch,
+    )
+    content = """format: rulespec/v1
+module:
+  source_verification:
+    corpus_citation_path: us/guidance/example/page-1
+    source_url: https://example.gov/raw.pdf
+    values:
+      official_amount: 123
+rules:
+  - name: official_amount
+    kind: parameter
+    dtype: Money
+    unit: USD
+    versions:
+      - effective_from: '2026-01-01'
+        formula: '123'
+"""
+
+    assert find_source_verification_issues(content) == []
+    assert find_ungrounded_numeric_issues(content) == []
+
+
 def test_source_verification_accepts_values_in_official_source_url_text():
     content = """format: rulespec/v1
 module:
@@ -2052,6 +2142,44 @@ rules:
                 "48 States & District of Columbia "
                 "$209 $209 $209 $223 $261 $299"
             )
+        },
+    )
+
+    assert issues == []
+
+
+def test_source_verification_accepts_multiple_corpus_source_paths():
+    content = """format: rulespec/v1
+module:
+  source_verification:
+    corpus_citation_paths:
+      - us/guidance/example/page-1
+      - us/guidance/example/page-2
+    values:
+      page_one_amount: 100
+      page_two_amount: 200
+rules:
+  - name: page_one_amount
+    kind: parameter
+    dtype: Money
+    unit: USD
+    versions:
+      - effective_from: '2026-01-01'
+        formula: '100'
+  - name: page_two_amount
+    kind: parameter
+    dtype: Money
+    unit: USD
+    versions:
+      - effective_from: '2026-01-01'
+        formula: '200'
+"""
+
+    issues = find_source_verification_issues(
+        content,
+        source_texts={
+            "us/guidance/example/page-1": "Page 1 source states $100.",
+            "us/guidance/example/page-2": "Page 2 source states $200.",
         },
     )
 

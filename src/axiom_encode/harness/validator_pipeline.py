@@ -737,6 +737,7 @@ _SCHEDULE_SIZE_CAP_RESTATEMENT_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _SCHEDULE_INDEX_NAME_PATTERN = r"[A-Za-z_]\w*_size(?:_[A-Za-z_]\w*)*"
+_STRUCTURAL_ENUM_INDEX_NAME_PATTERN = r"(?:filing_status|tax_filing_status)"
 _CARDINAL_WORD_VALUES = {
     "zero": 0.0,
     "one": 1.0,
@@ -1088,6 +1089,8 @@ def _extract_formula_grounding_values(
             continue
         if _is_structural_schedule_index_literal(cleaned, raw):
             continue
+        if _is_structural_enum_index_literal(cleaned, raw):
+            continue
         with contextlib.suppress(ValueError):
             value = float(raw)
             if value not in GROUNDING_ALLOWED_VALUES:
@@ -1142,6 +1145,36 @@ def _is_structural_schedule_index_literal(expression: str, literal: str) -> bool
         or (
             re.search(
                 rf"\bmatch\s+{_SCHEDULE_INDEX_NAME_PATTERN}\s*:",
+                normalized,
+            )
+            and match_arm_pattern.search(normalized)
+        )
+    )
+
+
+def _is_structural_enum_index_literal(expression: str, literal: str) -> bool:
+    """Return True when a small integer only serves as an internal enum code."""
+    if literal in _EMBEDDED_SCALAR_ALLOWED_VALUES:
+        return False
+    if not re.fullmatch(r"\d+(?:\.0+)?", literal):
+        return False
+    with contextlib.suppress(ValueError):
+        numeric_value = float(literal)
+        if not numeric_value.is_integer() or not (0 <= int(numeric_value) <= 20):
+            return False
+    if not re.search(rf"\b{_STRUCTURAL_ENUM_INDEX_NAME_PATTERN}\b", expression):
+        return False
+
+    normalized = re.sub(r"\s+", " ", expression)
+    comparison_pattern = re.compile(
+        rf"\b{_STRUCTURAL_ENUM_INDEX_NAME_PATTERN}\s*(?:==|!=|>=|>|<=|<)\s*{re.escape(literal)}\b"
+    )
+    match_arm_pattern = re.compile(rf"\b{re.escape(literal)}\s*=>")
+    return bool(
+        comparison_pattern.search(normalized)
+        or (
+            re.search(
+                rf"\bmatch\s+{_STRUCTURAL_ENUM_INDEX_NAME_PATTERN}\s*:",
                 normalized,
             )
             and match_arm_pattern.search(normalized)
@@ -2470,14 +2503,14 @@ def find_source_verification_issues(
     if source_verification is None:
         return []
 
-    citation_path, source_url, source_label = _source_verification_source_fields(
+    citation_paths, source_url, source_label = _source_verification_source_fields(
         source_verification
     )
     expected_values = source_verification.get("values")
-    if not citation_path and not source_url:
+    if not citation_paths and not source_url:
         return [
-            "Source verification source required: missing `corpus_citation_path` "
-            "or `source_url`."
+            "Source verification source required: missing `corpus_citation_path`, "
+            "`corpus_citation_paths`, or `source_url`."
         ]
     if not isinstance(expected_values, dict) or not expected_values:
         return [
@@ -2508,7 +2541,7 @@ def find_source_verification_issues(
         )
 
     source_text = _source_verification_text(
-        citation_path=citation_path,
+        citation_paths=citation_paths,
         source_url=source_url,
         source_label=source_label,
         source_texts=source_texts,
@@ -2517,8 +2550,9 @@ def find_source_verification_issues(
         issues.append(
             "Source verification source missing: "
             + (
-                f"`{citation_path}` was not found in corpus.provisions."
-                if citation_path
+                f"{_format_source_verification_paths(citation_paths)} "
+                "was not found in corpus.provisions."
+                if citation_paths
                 else f"`{source_url}` could not be fetched."
             )
         )
@@ -2550,15 +2584,30 @@ def _source_verification_block(payload: dict[str, Any]) -> dict[str, Any] | None
 
 def _source_verification_source_fields(
     source_verification: dict[str, Any],
-) -> tuple[str, str, str]:
-    citation_path = str(source_verification.get("corpus_citation_path") or "").strip()
+) -> tuple[tuple[str, ...], str, str]:
+    citation_paths: list[str] = []
+    raw_citation_path = str(
+        source_verification.get("corpus_citation_path") or ""
+    ).strip()
+    if raw_citation_path:
+        citation_paths.append(raw_citation_path)
+    raw_citation_paths = source_verification.get("corpus_citation_paths")
+    if isinstance(raw_citation_paths, list):
+        for raw_path in raw_citation_paths:
+            if not isinstance(raw_path, str):
+                continue
+            citation_path = raw_path.strip()
+            if citation_path:
+                citation_paths.append(citation_path)
+    citation_path_tuple = tuple(dict.fromkeys(citation_paths))
     source_url = str(source_verification.get("source_url") or "").strip()
-    return citation_path, source_url, citation_path or source_url
+    source_label = ", ".join(citation_path_tuple) if citation_path_tuple else source_url
+    return citation_path_tuple, source_url, source_label
 
 
 def _source_verification_text(
     *,
-    citation_path: str,
+    citation_paths: tuple[str, ...],
     source_url: str,
     source_label: str,
     source_texts: dict[str, str] | None = None,
@@ -2567,11 +2616,19 @@ def _source_verification_text(
         source_text = source_texts.get(source_label)
         if source_text is not None:
             return source_text
-    return (
-        _fetch_corpus_source_text(citation_path)
-        if citation_path
-        else _fetch_source_url_text(source_url)
-    )
+    if citation_paths:
+        source_text_values: list[str] = []
+        for citation_path in citation_paths:
+            source_text = (
+                source_texts.get(citation_path) if source_texts is not None else None
+            )
+            if source_text is None:
+                source_text = _fetch_corpus_source_text(citation_path)
+            if source_text is None:
+                return None
+            source_text_values.append(source_text)
+        return "\n\n".join(source_text_values)
+    return _fetch_source_url_text(source_url)
 
 
 def _extract_source_verification_text(content: str) -> str | None:
@@ -2584,15 +2641,25 @@ def _extract_source_verification_text(content: str) -> str | None:
     source_verification = _source_verification_block(payload)
     if source_verification is None:
         return None
-    citation_path, source_url, source_label = _source_verification_source_fields(
+    citation_paths, source_url, source_label = _source_verification_source_fields(
         source_verification
     )
     if not source_label:
         return None
     return _source_verification_text(
-        citation_path=citation_path,
+        citation_paths=citation_paths,
         source_url=source_url,
         source_label=source_label,
+    )
+
+
+def _format_source_verification_paths(citation_paths: tuple[str, ...]) -> str:
+    if len(citation_paths) == 1:
+        return f"`{citation_paths[0]}`"
+    return (
+        "`"
+        + "`, `".join(citation_paths[:3])
+        + ("`, ..." if len(citation_paths) > 3 else "`")
     )
 
 
@@ -2724,6 +2791,134 @@ def _find_source_text_value_issues(
 
 @functools.lru_cache(maxsize=512)
 def _fetch_corpus_source_text(citation_path: str) -> str | None:
+    """Fetch a corpus.provisions body by exact citation path.
+
+    Local corpus artifacts are preferred so encoder and CI runs verify against
+    normalized source text without re-reading original PDFs or HTML pages.
+    Supabase is the network fallback for environments without local artifacts.
+    """
+    local_text = _fetch_local_corpus_source_text(citation_path)
+    if local_text is not None:
+        return local_text
+    return _fetch_supabase_corpus_source_text(citation_path)
+
+
+@functools.lru_cache(maxsize=512)
+def _fetch_local_corpus_source_text(citation_path: str) -> str | None:
+    normalized_path = citation_path.strip().strip("/")
+    if not normalized_path:
+        return None
+
+    for provisions_root in _local_corpus_provisions_roots():
+        for provision_file in _candidate_local_corpus_provision_files(
+            provisions_root,
+            normalized_path,
+        ):
+            source_text = _read_local_corpus_provision_file(
+                provision_file,
+                normalized_path,
+            )
+            if source_text is not None:
+                return source_text
+    return None
+
+
+def _local_corpus_provisions_roots() -> tuple[Path, ...]:
+    roots: list[Path] = []
+    for env_name in ("AXIOM_CORPUS_ARTIFACT_ROOT", "AXIOM_CORPUS_REPO"):
+        raw_root = os.environ.get(env_name)
+        if raw_root:
+            roots.append(Path(raw_root).expanduser())
+
+    with contextlib.suppress(OSError):
+        cwd = Path.cwd().resolve()
+        for base in (cwd, *cwd.parents):
+            roots.extend(
+                (
+                    base,
+                    base / "axiom-corpus",
+                    base / "TheAxiomFoundation" / "axiom-corpus",
+                    base.parent / "axiom-corpus",
+                )
+            )
+
+    with contextlib.suppress(RuntimeError, OSError):
+        roots.append(Path.home() / "TheAxiomFoundation" / "axiom-corpus")
+
+    provisions_roots: list[Path] = []
+    seen: set[Path] = set()
+    for root in roots:
+        for candidate in (
+            root,
+            root / "provisions",
+            root / "data" / "corpus",
+            root / "data" / "corpus" / "provisions",
+        ):
+            provisions_root = (
+                candidate
+                if candidate.name == "provisions"
+                else candidate / "provisions"
+            )
+            with contextlib.suppress(OSError):
+                resolved = provisions_root.resolve()
+                if resolved.is_dir() and resolved not in seen:
+                    seen.add(resolved)
+                    provisions_roots.append(resolved)
+    return tuple(provisions_roots)
+
+
+def _candidate_local_corpus_provision_files(
+    provisions_root: Path,
+    citation_path: str,
+) -> tuple[Path, ...]:
+    parts = citation_path.split("/")
+    candidates: list[Path] = []
+    seen: set[Path] = set()
+
+    def add_files(base: Path) -> None:
+        for path in sorted(base.glob("*.jsonl")):
+            with contextlib.suppress(OSError):
+                resolved = path.resolve()
+                if resolved not in seen:
+                    seen.add(resolved)
+                    candidates.append(resolved)
+
+    if len(parts) >= 2:
+        add_files(provisions_root / parts[0] / parts[1])
+    if not candidates:
+        for path in sorted(provisions_root.rglob("*.jsonl")):
+            with contextlib.suppress(OSError):
+                resolved = path.resolve()
+                if resolved not in seen:
+                    seen.add(resolved)
+                    candidates.append(resolved)
+    return tuple(candidates)
+
+
+def _read_local_corpus_provision_file(
+    provision_file: Path,
+    citation_path: str,
+) -> str | None:
+    try:
+        lines = provision_file.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    for line in lines:
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(record, dict) or record.get("citation_path") != citation_path:
+            continue
+        body = record.get("body")
+        return str(body) if body is not None else None
+    return None
+
+
+@functools.lru_cache(maxsize=512)
+def _fetch_supabase_corpus_source_text(citation_path: str) -> str | None:
     """Fetch a corpus.provisions body by exact citation path from Supabase."""
     supabase_url = os.environ.get(
         "AXIOM_SUPABASE_URL", DEFAULT_AXIOM_SUPABASE_URL
@@ -4994,6 +5189,8 @@ class ValidatorPipeline:
             if literal == "0.5" and half_up_rounding_expression:
                 continue
             if _is_structural_schedule_index_literal(scrubbed_expression, literal):
+                continue
+            if _is_structural_enum_index_literal(scrubbed_expression, literal):
                 continue
             literals.append(literal)
         return sorted(set(literals))
