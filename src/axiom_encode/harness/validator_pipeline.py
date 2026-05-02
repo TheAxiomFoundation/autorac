@@ -1882,6 +1882,7 @@ def find_upstream_placement_issues(
     content: str,
     *,
     rules_file: Path | None = None,
+    source_metadata: dict[str, object] | None = None,
 ) -> list[str]:
     """Flag rules encoded downstream of their canonical legal authority."""
     try:
@@ -1898,8 +1899,16 @@ def find_upstream_placement_issues(
     imports = {
         str(item).strip() for item in payload.get("imports") or [] if str(item).strip()
     }
+    if source_metadata is None and rules_file is not None:
+        source_metadata = _load_nearby_eval_source_metadata(rules_file)
 
     issues: list[str] = []
+    issues.extend(
+        _find_source_metadata_upstream_issues(
+            rules=rules,
+            source_metadata=source_metadata,
+        )
+    )
     for contract in _UPSTREAM_PLACEMENT_CONTRACTS:
         issues.extend(
             _find_upstream_placement_contract_issues(
@@ -1916,6 +1925,155 @@ def _normalized_rulespec_path(rules_file: Path | None) -> str:
     if rules_file is None:
         return ""
     return rules_file.as_posix().lstrip("./").lower()
+
+
+_SOURCE_METADATA_REITERATION_RELATIONS = {
+    "reiterate",
+    "reiterates",
+    "reiterated",
+    "restate",
+    "restates",
+    "restated",
+    "copy",
+    "copies",
+    "copied",
+}
+_SOURCE_METADATA_DECLARATIVE_RELATIONS = {
+    "sets": "metadata.sets",
+    "set": "metadata.sets",
+    "amends": "metadata.amends",
+    "amend": "metadata.amends",
+    "amended": "metadata.amends",
+}
+
+
+def _find_source_metadata_upstream_issues(
+    *,
+    rules: list[Any],
+    source_metadata: dict[str, object] | None,
+) -> list[str]:
+    """Enforce generic upstream/source relations from structured source metadata."""
+    issues: list[str] = []
+    for relation, target in _iter_source_metadata_target_relations(source_metadata):
+        if relation in _SOURCE_METADATA_REITERATION_RELATIONS:
+            if _rules_include_reiteration_target(rules, target):
+                continue
+            issues.append(
+                "Source metadata upstream relation requires reiteration: "
+                f"source metadata says this source `{relation}` `{target}`, so "
+                "encode it as `kind: reiteration` with `reiterates.target` "
+                "instead of redefining executable policy locally."
+            )
+            continue
+
+        metadata_path = _SOURCE_METADATA_DECLARATIVE_RELATIONS.get(relation)
+        if metadata_path is None:
+            continue
+        metadata_key = metadata_path.split(".", 1)[1]
+        if _rules_include_metadata_target(rules, metadata_key, target):
+            continue
+        issues.append(
+            "Source metadata upstream relation not recorded: "
+            f"source metadata says this source `{relation}` `{target}`, so "
+            f"the corresponding RuleSpec rule must declare `{metadata_path}: "
+            f"{target}`."
+        )
+    return issues
+
+
+def _iter_source_metadata_target_relations(
+    source_metadata: dict[str, object] | None,
+) -> Iterable[tuple[str, str]]:
+    if not isinstance(source_metadata, dict):
+        return
+
+    relations = source_metadata.get("relations")
+    if not isinstance(relations, list):
+        return
+
+    for relation in relations:
+        if not isinstance(relation, dict):
+            continue
+        relation_name = str(relation.get("relation") or "").strip().lower()
+        target = _normalize_relation_target(relation.get("target"))
+        if relation_name and target:
+            yield relation_name, target
+
+
+def _rules_include_reiteration_target(rules: list[Any], target: str) -> bool:
+    return any(
+        isinstance(rule, dict)
+        and str(rule.get("kind") or "").lower() == "reiteration"
+        and _target_matches(
+            _normalize_relation_target(
+                (rule.get("reiterates") or {}).get("target")
+                if isinstance(rule.get("reiterates"), dict)
+                else None
+            ),
+            target,
+        )
+        for rule in rules
+    )
+
+
+def _rules_include_metadata_target(
+    rules: list[Any],
+    metadata_key: str,
+    target: str,
+) -> bool:
+    return any(
+        isinstance(rule, dict)
+        and any(
+            _target_matches(candidate, target)
+            for candidate in _iter_rule_metadata_targets(rule, metadata_key)
+        )
+        for rule in rules
+    )
+
+
+def _iter_rule_metadata_targets(
+    rule: dict[str, Any],
+    metadata_key: str,
+) -> Iterable[str]:
+    metadata = rule.get("metadata")
+    if isinstance(metadata, dict):
+        yield from _iter_relation_target_values(metadata.get(metadata_key))
+
+
+def _iter_relation_target_values(value: Any) -> Iterable[str]:
+    target = _normalize_relation_target(value)
+    if target:
+        yield target
+        return
+
+    if isinstance(value, dict):
+        target = _normalize_relation_target(value.get("target"))
+        if target:
+            yield target
+        return
+
+    if isinstance(value, list):
+        for item in value:
+            yield from _iter_relation_target_values(item)
+
+
+def _normalize_relation_target(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().strip('"').strip("'")
+    if not normalized:
+        return None
+    base, separator, symbol = normalized.partition("#")
+    if base.endswith((".yaml", ".yml")):
+        base = str(Path(base).with_suffix(""))
+        base = str(Path(base).with_suffix(""))
+    return f"{base}{separator}{symbol}" if separator else base
+
+
+def _target_matches(left: str | None, right: str | None) -> bool:
+    if left is None or right is None:
+        return False
+    return _normalize_relation_target(left) == _normalize_relation_target(right)
 
 
 @dataclass(frozen=True)

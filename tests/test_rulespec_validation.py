@@ -609,6 +609,151 @@ rules:
     )
 
 
+def test_upstream_placement_requires_reiteration_from_source_metadata():
+    content = """format: rulespec/v1
+rules:
+  - name: local_benefit_limit
+    kind: parameter
+    dtype: Money
+    unit: USD
+    versions:
+      - effective_from: '2026-01-01'
+        formula: '500'
+"""
+
+    issues = find_upstream_placement_issues(
+        content,
+        source_metadata={
+            "relations": [
+                {
+                    "relation": "restates",
+                    "target": "us:policies/example/fy-2026#benefit_limit",
+                }
+            ]
+        },
+    )
+
+    assert len(issues) == 1
+    assert "Source metadata upstream relation requires reiteration" in issues[0]
+    assert "us:policies/example/fy-2026#benefit_limit" in issues[0]
+
+
+def test_upstream_placement_allows_reiteration_from_source_metadata():
+    content = """format: rulespec/v1
+rules:
+  - name: local_benefit_limit_reiterates_example_policy
+    kind: reiteration
+    reiterates:
+      target: us:policies/example/fy-2026#benefit_limit
+      authority: federal
+      relationship: restates
+"""
+
+    assert (
+        find_upstream_placement_issues(
+            content,
+            source_metadata={
+                "relations": [
+                    {
+                        "relation": "restates",
+                        "target": "us:policies/example/fy-2026#benefit_limit",
+                    }
+                ]
+            },
+        )
+        == []
+    )
+
+
+def test_upstream_placement_requires_metadata_sets_from_source_metadata():
+    content = """format: rulespec/v1
+rules:
+  - name: local_standard_allowance
+    kind: parameter
+    dtype: Money
+    unit: USD
+    versions:
+      - effective_from: '2026-01-01'
+        formula: '451'
+"""
+
+    issues = find_upstream_placement_issues(
+        content,
+        source_metadata={
+            "relations": [
+                {
+                    "relation": "sets",
+                    "target": "us:regulation/7-cfr/273/9/d/6/iii#standard_allowance",
+                }
+            ]
+        },
+    )
+
+    assert len(issues) == 1
+    assert "Source metadata upstream relation not recorded" in issues[0]
+    assert "metadata.sets" in issues[0]
+    assert "us:regulation/7-cfr/273/9/d/6/iii#standard_allowance" in issues[0]
+
+
+def test_upstream_placement_allows_metadata_sets_from_source_metadata():
+    content = """format: rulespec/v1
+rules:
+  - name: local_standard_allowance
+    kind: parameter
+    dtype: Money
+    unit: USD
+    metadata:
+      sets: us:regulation/7-cfr/273/9/d/6/iii#standard_allowance
+    versions:
+      - effective_from: '2026-01-01'
+        formula: '451'
+"""
+
+    assert (
+        find_upstream_placement_issues(
+            content,
+            source_metadata={
+                "relations": [
+                    {
+                        "relation": "sets",
+                        "target": "us:regulation/7-cfr/273/9/d/6/iii#standard_allowance",
+                    }
+                ]
+            },
+        )
+        == []
+    )
+
+
+def test_upstream_placement_requires_metadata_amends_from_source_metadata():
+    content = """format: rulespec/v1
+rules:
+  - name: updated_threshold
+    kind: parameter
+    dtype: Money
+    unit: USD
+    versions:
+      - effective_from: '2026-01-01'
+        formula: '100'
+"""
+
+    issues = find_upstream_placement_issues(
+        content,
+        source_metadata={
+            "relations": [
+                {
+                    "relation": "amends",
+                    "target": "us:statutes/7/2014/c#income_threshold",
+                }
+            ]
+        },
+    )
+
+    assert len(issues) == 1
+    assert "metadata.amends" in issues[0]
+    assert "us:statutes/7/2014/c#income_threshold" in issues[0]
+
+
 def test_extract_json_object_accepts_literal_newline_in_reviewer_string():
     output = """{
   "score": 9.0,
