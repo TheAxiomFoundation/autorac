@@ -1660,7 +1660,7 @@ def evaluate_artifact(
     content = rulespec_file.read_text()
     embedded_source = extract_embedded_source_text(content)
     numeric_source_text = extract_numeric_grounding_source_text(content)
-    if not numeric_source_text and source_text and source_text != embedded_source:
+    if not numeric_source_text and source_text:
         numeric_source_text = source_text
     source_numbers = extract_numbers_from_text(numeric_source_text or "")
     source_numeric_occurrences = Counter(

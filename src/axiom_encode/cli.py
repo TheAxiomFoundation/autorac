@@ -12,7 +12,6 @@ Self-contained -- no external plugin dependencies.
 """
 
 import argparse
-import contextlib
 import csv
 import json
 import os
@@ -45,7 +44,7 @@ from .harness.evals import (
     run_source_eval,
     summarize_readiness,
 )
-from .harness.validator_pipeline import ValidatorPipeline, extract_embedded_source_text
+from .harness.validator_pipeline import ValidatorPipeline
 from .repo_routing import find_policy_repo_root, is_policy_repo_root
 
 # Default DB path - can be overridden with --db
@@ -2048,11 +2047,8 @@ def cmd_eval_suite_revalidate(args):
             continue
 
         source_text = ""
-        with contextlib.suppress(OSError):
-            source_text = extract_embedded_source_text(rulespec_file.read_text())
         if (
-            not source_text
-            and case.kind == "source"
+            case.kind == "source"
             and case.source_file is not None
             and case.source_file.exists()
         ):
