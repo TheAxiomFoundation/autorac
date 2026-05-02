@@ -15,8 +15,10 @@ Uses Claude Code CLI (subprocess) for reviewer agents - cheaper than direct API.
 """
 
 import contextlib
+import functools
 import hashlib
 import html
+import io
 import json
 import logging
 import math
@@ -555,7 +557,9 @@ GROUNDING_MONTH_PERIOD_PATTERN = re.compile(r"\b\d{4}-\d{2}\b")
 GROUNDING_FORMULA_NUMBER_PATTERN = re.compile(
     r"(?<![\w./])(-?[\d,]+(?:\.\d+)?)(?![\w./])"
 )
-SOURCE_TEXT_NUMBER_PATTERN = re.compile(r"(?:^|(?<=[\s$£€(\[,]))(-?[\d,]+(?:\.\d+)?)\b")
+SOURCE_TEXT_NUMBER_PATTERN = re.compile(
+    r"(?:^|(?<=[\s$£€(\[,]))(-?(?:[\d,]+(?:\.\d+)?|\.\d+))\b"
+)
 IMPORT_ITEM_PATTERN = re.compile(r"^\s*-\s*(['\"]?)([^'\"]+?)\1\s*$")
 IMPORT_MAPPING_PATTERN = re.compile(r"^\s*[A-Za-z_]\w*:\s*(['\"]?)([^'\"]+?)\1\s*$")
 _EMBEDDED_SCALAR_DIRECT_VALUE = re.compile(r"-?[\d,]+(?:\.\d+)?")
@@ -1240,7 +1244,7 @@ def extract_numbers_from_text(text: str) -> set[float]:
         numbers.add(value)
         occupied_spans.append(span)
 
-    for match in re.finditer(r"(?:^|(?<=[\s$£€(\[,]))(-?[\d,]+(?:\.\d+)?)\b", text):
+    for match in SOURCE_TEXT_NUMBER_PATTERN.finditer(text):
         if _span_overlaps(match.span(1), occupied_spans):
             continue
         raw = match.group(1).replace(",", "")
@@ -1556,19 +1560,25 @@ def find_ungrounded_numeric_issues(
     source_text: str | None = None,
 ) -> list[str]:
     """Return issues for generated numeric literals absent from source text."""
+    grounding_values = extract_grounding_values(content)
+    if not grounding_values:
+        return []
+
     if source_text is not None:
         source = source_text.strip()
     else:
-        source = (
-            _extract_source_verification_text(content)
-            or extract_embedded_source_text(content)
-        ).strip()
+        source = (extract_numeric_grounding_source_text(content) or "").strip()
     if not source:
-        return []
+        return [
+            "Numeric source required: RuleSpec defines policy numeric literals "
+            "but does not provide source-verification text or fetchable official "
+            "`source_url` text. `module.summary` is not accepted as source text "
+            "for numeric grounding."
+        ]
 
     source_numbers = extract_numbers_from_text(source)
     issues: list[str] = []
-    for _, raw, value in extract_grounding_values(content):
+    for _, raw, value in grounding_values:
         if numeric_value_is_grounded(value, source_numbers):
             continue
         display = raw if raw == f"{value:g}" else f"{raw} ({value:g})"
@@ -1577,6 +1587,18 @@ def find_ungrounded_numeric_issues(
             f"{display} does not appear as a substantive numeric value in the source text."
         )
     return issues
+
+
+def extract_numeric_grounding_source_text(content: str) -> str | None:
+    """Return authoritative source text usable for numeric grounding.
+
+    Numeric grounding must use official source-verification text or declared
+    source URLs. The human-readable module summary is intentionally excluded.
+    """
+    source_text = _extract_source_verification_text(content)
+    if source_text:
+        return source_text
+    return _extract_rule_source_url_text(content)
 
 
 def find_structured_scale_parameter_issues(content: str) -> list[str]:
@@ -1997,8 +2019,7 @@ _UPSTREAM_PLACEMENT_CONTRACTS: tuple[UpstreamPlacementContract, ...] = (
                 "#additional_standard_deduction_per_condition_amount"
             ),
             "dependent_minimum": (
-                "us:policies/irs/rev-proc-2025-32/standard-deduction"
-                "#dependent_minimum"
+                "us:policies/irs/rev-proc-2025-32/standard-deduction#dependent_minimum"
             ),
             "dependent_earned_income_addition": (
                 "us:policies/irs/rev-proc-2025-32/standard-deduction"
@@ -2575,6 +2596,47 @@ def _extract_source_verification_text(content: str) -> str | None:
     )
 
 
+def _extract_rule_source_url_text(content: str) -> str | None:
+    try:
+        payload = yaml.safe_load(content)
+    except (yaml.YAMLError, ValueError):
+        return None
+    if not isinstance(payload, dict) or payload.get("format") != "rulespec/v1":
+        return None
+
+    source_urls: list[str] = []
+    seen: set[str] = set()
+
+    def add_source_url(value: Any) -> None:
+        if not isinstance(value, str):
+            return
+        source_url = value.strip().strip("'\"")
+        if not source_url or source_url in seen:
+            return
+        seen.add(source_url)
+        source_urls.append(source_url)
+
+    module = payload.get("module")
+    if isinstance(module, dict):
+        add_source_url(module.get("source_url"))
+
+    rules = payload.get("rules")
+    if isinstance(rules, list):
+        for rule in rules:
+            if not isinstance(rule, dict):
+                continue
+            add_source_url(rule.get("source_url"))
+
+    source_texts = [
+        source_text
+        for source_url in source_urls
+        if (source_text := _fetch_source_url_text(source_url))
+    ]
+    if not source_texts:
+        return None
+    return "\n\n".join(source_texts)
+
+
 def _compare_source_verification_expected_value(
     *,
     value_name: str,
@@ -2660,6 +2722,7 @@ def _find_source_text_value_issues(
     ]
 
 
+@functools.lru_cache(maxsize=512)
 def _fetch_corpus_source_text(citation_path: str) -> str | None:
     """Fetch a corpus.provisions body by exact citation path from Supabase."""
     supabase_url = os.environ.get(
@@ -2701,6 +2764,7 @@ def _fetch_corpus_source_text(citation_path: str) -> str | None:
     return str(body) if body is not None else None
 
 
+@functools.lru_cache(maxsize=512)
 def _fetch_source_url_text(source_url: str) -> str | None:
     """Fetch source text from an official source URL for source verification."""
     if not source_url:
@@ -2715,7 +2779,7 @@ def _fetch_source_url_text(source_url: str) -> str | None:
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
             content_type = response.headers.get("content-type", "")
-            body = response.read(2_000_000)
+            body = response.read(15_000_000)
     except (TimeoutError, urllib.error.HTTPError, urllib.error.URLError):
         return None
     if "text/html" in content_type or source_url.endswith((".html", "_IRB")):
@@ -2724,9 +2788,26 @@ def _fetch_source_url_text(source_url: str) -> str | None:
         text = re.sub(r"(?is)<style[^>]*>.*?</style>", " ", text)
         text = re.sub(r"(?s)<[^>]+>", " ", text)
         return html.unescape(text)
+    if "application/pdf" in content_type or source_url.lower().endswith(".pdf"):
+        return _extract_pdf_source_url_text(body)
     if "text/plain" in content_type:
         return body.decode("utf-8", errors="ignore")
     return None
+
+
+def _extract_pdf_source_url_text(body: bytes) -> str | None:
+    try:
+        from pypdf import PdfReader
+    except ImportError:
+        return None
+
+    try:
+        reader = PdfReader(io.BytesIO(body))
+        pages = [page.extract_text() or "" for page in reader.pages]
+    except Exception:
+        return None
+    text = "\n".join(page for page in pages if page.strip())
+    return text or None
 
 
 def _normalize_source_verification_text(text: str) -> str:

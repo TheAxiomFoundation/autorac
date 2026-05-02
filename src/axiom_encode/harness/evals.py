@@ -55,6 +55,7 @@ from .validator_pipeline import (
     extract_grounding_values,
     extract_named_scalar_occurrences,
     extract_numbers_from_text,
+    extract_numeric_grounding_source_text,
     extract_numeric_occurrences_from_text,
     find_ungrounded_numeric_issues,
     numeric_value_is_grounded,
@@ -1658,9 +1659,12 @@ def evaluate_artifact(
 
     content = rulespec_file.read_text()
     embedded_source = extract_embedded_source_text(content)
-    source_numbers = extract_numbers_from_text(embedded_source or source_text)
+    numeric_source_text = extract_numeric_grounding_source_text(content)
+    if not numeric_source_text and source_text and source_text != embedded_source:
+        numeric_source_text = source_text
+    source_numbers = extract_numbers_from_text(numeric_source_text or "")
     source_numeric_occurrences = Counter(
-        extract_numeric_occurrences_from_text(embedded_source or source_text)
+        extract_numeric_occurrences_from_text(numeric_source_text or "")
     )
     named_scalar_occurrences = Counter(
         item.value for item in extract_named_scalar_occurrences(content)
@@ -1696,7 +1700,7 @@ def evaluate_artifact(
 
     ungrounded_numeric_issues = find_ungrounded_numeric_issues(
         content,
-        embedded_source or source_text,
+        numeric_source_text,
     )
     ci_issues = []
     seen_ci_issues: set[str] = set()

@@ -28,9 +28,21 @@ AXIOM_RULES_PATH = Path("/Users/maxghenis/TheAxiomFoundation/axiom-rules")
 AXIOM_RULES_BINARY = AXIOM_RULES_PATH / "target" / "debug" / "axiom-rules"
 
 
-def test_rulespec_compile_ci_and_grounding(tmp_path):
+def _mock_source_url_text(monkeypatch, text: str) -> None:
+    monkeypatch.setattr(
+        "axiom_encode.harness.validator_pipeline._fetch_source_url_text",
+        lambda _source_url: text,
+    )
+
+
+def test_rulespec_compile_ci_and_grounding(tmp_path, monkeypatch):
     if not AXIOM_RULES_BINARY.exists():
         pytest.skip("local axiom-rules binary is not built")
+
+    _mock_source_url_text(
+        monkeypatch,
+        "The official source states the standard utility allowance is $451.",
+    )
 
     rules_file = tmp_path / "rules.yaml"
     rules_file.write_text(
@@ -43,6 +55,7 @@ rules:
     kind: parameter
     dtype: Money
     unit: USD
+    source_url: https://example.gov/sua
     versions:
       - effective_from: '2024-01-01'
         formula: |-
@@ -591,7 +604,81 @@ rules:
         formula: '0.029'
 """
 
+    assert (
+        find_ungrounded_numeric_issues(
+            content,
+            source_text="The tax is 2.9 percent of self-employment income.",
+        )
+        == []
+    )
+
+
+def test_rulespec_grounding_does_not_trust_module_summary():
+    content = """format: rulespec/v1
+module:
+  summary: The standard deduction is 16100.
+rules:
+  - name: standard_deduction_single
+    kind: parameter
+    dtype: Money
+    unit: USD
+    versions:
+      - effective_from: '2026-01-01'
+        formula: '16100'
+"""
+
+    issues = find_ungrounded_numeric_issues(content)
+
+    assert len(issues) == 1
+    assert "Numeric source required" in issues[0]
+    assert "`module.summary` is not accepted" in issues[0]
+
+
+def test_rulespec_grounding_uses_declared_source_url_text(monkeypatch):
+    content = """format: rulespec/v1
+module:
+  summary: A human summary is not numeric source text.
+rules:
+  - name: standard_deduction_single
+    kind: parameter
+    dtype: Money
+    unit: USD
+    source_url: https://example.gov/source
+    versions:
+      - effective_from: '2026-01-01'
+        formula: '16100'
+"""
+
+    def fake_fetch(source_url: str) -> str | None:
+        assert source_url == "https://example.gov/source"
+        return "The official source states $16,100 for this amount."
+
+    monkeypatch.setattr(
+        "axiom_encode.harness.validator_pipeline._fetch_source_url_text",
+        fake_fetch,
+    )
+
     assert find_ungrounded_numeric_issues(content) == []
+
+
+def test_rulespec_grounding_accepts_source_leading_decimal():
+    content = """format: rulespec/v1
+rules:
+  - name: annual_income_conversion_factor
+    kind: parameter
+    dtype: Rate
+    versions:
+      - effective_from: '2025-10-01'
+        formula: '0.083'
+"""
+
+    assert (
+        find_ungrounded_numeric_issues(
+            content,
+            source_text="Annual income: multiply average by .083.",
+        )
+        == []
+    )
 
 
 def test_rulespec_grounding_treats_household_size_match_keys_as_structural():
@@ -614,7 +701,13 @@ rules:
               6 => 299
 """
 
-    assert find_ungrounded_numeric_issues(content) == []
+    assert (
+        find_ungrounded_numeric_issues(
+            content,
+            source_text="The deduction amounts are 209, 223, 261, and 299.",
+        )
+        == []
+    )
 
 
 def test_upstream_placement_flags_snap_elderly_disabled_definition_in_cola():
@@ -899,6 +992,7 @@ rules:
         )
         == []
     )
+
 
 def test_upstream_placement_flags_state_manual_snap_earned_income_deduction():
     content = """format: rulespec/v1
@@ -1647,9 +1741,13 @@ rules:
     assert pipeline._run_ci(rules_file).passed is True
 
 
-def test_rulespec_ci_compares_parameter_only_outputs(tmp_path):
+def test_rulespec_ci_compares_parameter_only_outputs(tmp_path, monkeypatch):
     if not AXIOM_RULES_BINARY.exists():
         pytest.skip("local axiom-rules binary is not built")
+
+    _mock_source_url_text(
+        monkeypatch, "The official source states the policy rate is 0.2."
+    )
 
     rules_file = tmp_path / "rules.yaml"
     rules_file.write_text(
@@ -1660,6 +1758,7 @@ rules:
   - name: policy_rate
     kind: parameter
     dtype: Rate
+    source_url: https://example.gov/rate
     versions:
       - effective_from: '2024-01-01'
         formula: '0.2'
@@ -1686,9 +1785,14 @@ rules:
     assert pipeline._run_ci(rules_file).passed is True
 
 
-def test_rulespec_ci_executes_indexed_parameter_table_lookup(tmp_path):
+def test_rulespec_ci_executes_indexed_parameter_table_lookup(tmp_path, monkeypatch):
     if not AXIOM_RULES_BINARY.exists():
         pytest.skip("local axiom-rules binary is not built")
+
+    _mock_source_url_text(
+        monkeypatch,
+        "The official source lists $298 and $546 for sizes 1 and 2, plus $218.",
+    )
 
     rules_file = tmp_path / "rules.yaml"
     rules_file.write_text(
@@ -1703,6 +1807,7 @@ rules:
     dtype: Money
     unit: USD
     indexed_by: household_size
+    source_url: https://example.gov/allotments
     versions:
       - effective_from: '2025-10-01'
         values:
@@ -1712,6 +1817,7 @@ rules:
     kind: parameter
     dtype: Money
     unit: USD
+    source_url: https://example.gov/allotments
     versions:
       - effective_from: '2025-10-01'
         formula: '218'
@@ -2352,9 +2458,16 @@ rules:
     assert any("bare year periods are ambiguous" in issue for issue in result.issues)
 
 
-def test_rulespec_ci_rejects_ungrounded_generated_numeric_literal(tmp_path):
+def test_rulespec_ci_rejects_ungrounded_generated_numeric_literal(
+    tmp_path, monkeypatch
+):
     if not AXIOM_RULES_BINARY.exists():
         pytest.skip("local axiom-rules binary is not built")
+
+    _mock_source_url_text(
+        monkeypatch,
+        "The official source states the standard utility allowance is $451.",
+    )
 
     rules_file = tmp_path / "rules.yaml"
     rules_file.write_text(
@@ -2367,6 +2480,7 @@ rules:
     kind: parameter
     dtype: Money
     unit: USD
+    source_url: https://example.gov/sua
     versions:
       - effective_from: '2024-01-01'
         formula: |-
