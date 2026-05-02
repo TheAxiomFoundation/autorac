@@ -7,7 +7,10 @@ from axiom_encode.harness.validator_pipeline import (
     ValidatorPipeline,
     _extract_json_object,
     _infer_us_state_code_from_rulespec_path,
+    _normalize_us_tax_filing_status,
+    _policyengine_period_string,
     _policyengine_us_snap_input_aliases,
+    _tax_unit_member_aged_flags,
     extract_embedded_source_text,
     extract_grounding_values,
     extract_named_scalar_occurrences,
@@ -233,6 +236,27 @@ def test_policyengine_registry_is_legal_id_keyed():
         ).mapping_type
         == "direct_variable"
     )
+    assert (
+        registry.mapping_for_legal_id(
+            "us:statutes/26/3101/a#oasdi_wage_tax",
+            country="us",
+        ).policyengine_variable
+        == "employee_social_security_tax"
+    )
+    assert (
+        registry.mapping_for_legal_id(
+            "us:statutes/26/63/c#standard_deduction",
+            country="us",
+        ).policyengine_variable
+        == "standard_deduction"
+    )
+    assert (
+        registry.mapping_for_legal_id(
+            "us:statutes/26/1401#self_employment_tax",
+            country="us",
+        ).mapping_type
+        == "not_comparable"
+    )
 
 
 def test_policyengine_oracle_tracks_not_comparable_without_issue_noise(tmp_path):
@@ -441,6 +465,82 @@ def test_policyengine_snap_net_income_annualizes_housing_cost(tmp_path):
 
     assert "'housing_cost': {'2026': 6000}" in script
     assert "'housing_cost': {'2026-01':" not in script
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (0, "SINGLE"),
+        (1, "JOINT"),
+        (2, "SEPARATE"),
+        (3, "HEAD_OF_HOUSEHOLD"),
+        ("married_filing_jointly", "JOINT"),
+        ("HOH", "HEAD_OF_HOUSEHOLD"),
+    ],
+)
+def test_policyengine_tax_filing_status_normalization(value, expected):
+    assert _normalize_us_tax_filing_status(value) == expected
+
+
+def test_policyengine_period_string_normalizes_rulespec_period_dicts():
+    assert (
+        _policyengine_period_string(
+            {
+                "period_kind": "tax_year",
+                "start": "2026-01-01",
+                "end": "2026-12-31",
+            }
+        )
+        == "2026"
+    )
+    assert (
+        _policyengine_period_string(
+            {
+                "period_kind": "month",
+                "start": "2026-01-01",
+                "end": "2026-01-31",
+            }
+        )
+        == "2026-01"
+    )
+
+
+def test_policyengine_tax_unit_member_aged_flags_accept_bool_shapes():
+    assert _tax_unit_member_aged_flags({"member_of_tax_unit": False}) == [False]
+    assert _tax_unit_member_aged_flags({"member_of_tax_unit": [True, False]}) == [
+        True,
+        False,
+    ]
+    assert _tax_unit_member_aged_flags(
+        {
+            "member_of_tax_unit": [
+                {"is_aged_65_or_over": True},
+                {"is_aged_65_or_over": False},
+            ]
+        }
+    ) == [True, False]
+
+
+def test_policyengine_tax_scenario_uses_tax_unit_status_and_aged_flags(tmp_path):
+    pipeline = ValidatorPipeline(
+        policy_repo_path=tmp_path,
+        axiom_rules_path=AXIOM_RULES_PATH,
+        enable_oracles=False,
+    )
+
+    script = pipeline._build_pe_us_scenario_script(
+        "standard_deduction",
+        {
+            "period": "2026",
+            "filing_status": 1,
+            "member_of_tax_unit": [True, False],
+        },
+        "2026",
+    )
+
+    assert "'filing_status': {'2026': 'JOINT'}" in script
+    assert "'adult': {'age': {'2026': 65}}" in script
+    assert "'spouse': {'age': {'2026': 30}}" in script
 
 
 def test_reviewer_score_below_threshold_fails_even_if_declared_passed(

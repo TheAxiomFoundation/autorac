@@ -177,151 +177,186 @@ mappings:
     country: us
     program: tax
     mapping_type: not_comparable
-    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+    rationale: Axiom's current 1401 slice tests the section-level self-employment tax base directly; PE combines 1401 with 1402 taxable self-employment income and cap rules.
 
   - legal_id: us:statutes/26/1401#additional_medicare_self_employment_tax_base
     country: us
     program: tax
     mapping_type: not_comparable
-    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+    rationale: PolicyEngine exposes additional_medicare_tax, but not this Axiom statutory intermediate as a separate output.
 
   - legal_id: us:statutes/26/1401#additional_medicare_self_employment_threshold
     country: us
     program: tax
     mapping_type: not_comparable
-    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+    rationale: PolicyEngine stores the threshold as parameter data rather than exposing this statutory intermediate as a variable.
 
   - legal_id: us:statutes/26/1401#reduced_additional_medicare_self_employment_threshold
     country: us
     program: tax
     mapping_type: not_comparable
-    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+    rationale: PolicyEngine does not expose this wage-offset self-employment threshold intermediate as a separate variable.
 
   - legal_id: us:statutes/26/1401#self_employment_hospital_insurance_tax
     country: us
     program: tax
     mapping_type: not_comparable
-    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+    rationale: Axiom's current 1401 slice tests the section-level self-employment tax base directly; PE combines 1401 with 1402 taxable self-employment income rules.
 
   - legal_id: us:statutes/26/1401#self_employment_oasdi_tax
     country: us
     program: tax
     mapping_type: not_comparable
-    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+    rationale: Axiom's current 1401 slice tests the section-level self-employment tax base directly; PE combines 1401 with 1402 taxable self-employment income and cap rules.
 
   - legal_id: us:statutes/26/1401#self_employment_tax
     country: us
     program: tax
     mapping_type: not_comparable
-    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+    rationale: Axiom's current 1401 slice includes self-employment tax components at the section boundary; PE's self_employment_tax excludes additional_medicare_tax and applies 1402 taxable-income rules.
 
   - legal_id: us:statutes/26/3101/a#oasdi_wage_tax
     country: us
     program: tax
-    mapping_type: not_comparable
-    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+    mapping_type: direct_variable
+    policyengine_variable: employee_social_security_tax
+    entity: person
+    period: year
+    unit: USD
+    comparison: money
+    rationale: Same employee-side OASDI payroll tax on wages.
 
   - legal_id: us:statutes/26/3101/b/1#hospital_insurance_wage_tax
     country: us
     program: tax
-    mapping_type: not_comparable
-    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+    mapping_type: direct_variable
+    policyengine_variable: employee_medicare_tax
+    entity: person
+    period: year
+    unit: USD
+    comparison: money
+    rationale: Same employee-side Medicare payroll tax on wages.
 
   - legal_id: us:statutes/26/3101/b/2#additional_medicare_excess_wages
     country: us
     program: tax
     mapping_type: not_comparable
-    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+    rationale: PolicyEngine exposes additional_medicare_tax, but not this excess-wages intermediate as a separate output.
 
   - legal_id: us:statutes/26/3101/b/2#additional_medicare_tax
     country: us
     program: tax
-    mapping_type: not_comparable
-    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+    mapping_type: direct_variable
+    policyengine_variable: additional_medicare_tax
+    entity: tax_unit
+    period: year
+    unit: USD
+    comparison: money
+    rationale: Same additional Medicare tax on wages for these wage-only test cases.
 
   - legal_id: us:statutes/26/3101/b/2#additional_medicare_wage_tax_threshold
     country: us
     program: tax
     mapping_type: not_comparable
-    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+    rationale: PolicyEngine stores the threshold as parameter data rather than exposing this statutory intermediate as a variable.
 
   - legal_id: us:statutes/26/3111/a#employer_oasdi_excise_tax
     country: us
     program: tax
-    mapping_type: not_comparable
-    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+    mapping_type: direct_variable
+    policyengine_variable: employer_social_security_tax
+    entity: person
+    period: year
+    unit: USD
+    comparison: money
+    rationale: Same employer-side OASDI payroll tax on wages.
 
   - legal_id: us:statutes/26/3111/b#hospital_insurance_employer_tax
     country: us
     program: tax
     mapping_type: not_comparable
-    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+    rationale: PolicyEngine exposes the adjacent employer_medicare_tax variable, but its employer Medicare rate parameter is unavailable for the current 1986 RuleSpec tests.
 
   - legal_id: us:statutes/26/3111/c#employer_wages_exempt_under_section_3111_c
     country: us
     program: tax
     mapping_type: not_comparable
-    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+    rationale: PolicyEngine does not expose the section 3111(c) foreign-social-security agreement wage exemption as a separate variable.
 
   - legal_id: us:statutes/26/45A/a#base_year_1993_indian_employment_costs
     country: us
     program: tax
     mapping_type: not_comparable
-    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+    rationale: PolicyEngine does not currently expose the section 45A Indian employment credit cost intermediates.
 
   - legal_id: us:statutes/26/45A/a#current_year_indian_employment_costs
     country: us
     program: tax
     mapping_type: not_comparable
-    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+    rationale: PolicyEngine does not currently expose the section 45A Indian employment credit cost intermediates.
 
   - legal_id: us:statutes/26/45A/a#indian_employment_credit
     country: us
     program: tax
     mapping_type: not_comparable
-    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+    rationale: PolicyEngine does not currently expose the section 45A Indian employment credit.
 
   - legal_id: us:statutes/26/45A/a#indian_employment_credit_excess_costs
     country: us
     program: tax
     mapping_type: not_comparable
-    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+    rationale: PolicyEngine does not currently expose the section 45A Indian employment credit cost intermediates.
 
   - legal_id: us:statutes/26/63/c#additional_standard_deduction_per_condition_amount
     country: us
     program: tax
     mapping_type: not_comparable
-    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+    rationale: PolicyEngine stores the per-condition additional standard deduction amount as parameter data rather than exposing it as a variable.
 
   - legal_id: us:statutes/26/63/c#additional_std_ded_amount
     country: us
     program: tax
-    mapping_type: not_comparable
-    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+    mapping_type: direct_variable
+    policyengine_variable: additional_standard_deduction
+    entity: tax_unit
+    period: year
+    unit: USD
+    comparison: money
+    rationale: Same additional standard deduction output for aged/blind conditions in these aged-only tests.
 
   - legal_id: us:statutes/26/63/c#basic_standard_deduction_amount
     country: us
     program: tax
-    mapping_type: not_comparable
-    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+    mapping_type: direct_variable
+    policyengine_variable: basic_standard_deduction
+    entity: tax_unit
+    period: year
+    unit: USD
+    comparison: money
+    rationale: Same basic standard deduction output.
 
   - legal_id: us:statutes/26/63/c#num_aged_members
     country: us
     program: tax
     mapping_type: not_comparable
-    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+    rationale: PolicyEngine exposes aged_blind_count, which is adjacent but broader than Axiom's aged-only member count.
 
   - legal_id: us:statutes/26/63/c#standard_deduction
     country: us
     program: tax
-    mapping_type: not_comparable
-    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+    mapping_type: direct_variable
+    policyengine_variable: standard_deduction
+    entity: tax_unit
+    period: year
+    unit: USD
+    comparison: money
+    rationale: Same standard deduction output.
 
   - legal_id: us:statutes/26/63/c/5#dependent_standard_deduction
     country: us
     program: tax
     mapping_type: not_comparable
-    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+    rationale: PolicyEngine implements dependent standard deduction inside basic_standard_deduction when dependency status is supplied; it is not exposed as a separate variable.
 
 prefixes:
   - legal_id_prefix: us-co:regulations/10-ccr-2506-1/

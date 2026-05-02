@@ -952,6 +952,69 @@ def _policyengine_us_snap_input_aliases(inputs: dict[str, Any]) -> dict[str, Any
     return {key: value for key, value in aliases.items() if key not in inputs}
 
 
+def _normalize_us_tax_filing_status(value: Any) -> str:
+    """Normalize Axiom/RuleSpec filing-status test inputs to PE-US enum keys."""
+    numeric_statuses = {
+        0: "SINGLE",
+        1: "JOINT",
+        2: "SEPARATE",
+        3: "HEAD_OF_HOUSEHOLD",
+        4: "SURVIVING_SPOUSE",
+    }
+    if isinstance(value, int) and not isinstance(value, bool):
+        return numeric_statuses.get(value, "SINGLE")
+    value_text = str(value or "SINGLE").strip().upper()
+    if value_text.isdigit():
+        return numeric_statuses.get(int(value_text), "SINGLE")
+    aliases = {
+        "MARRIED_FILING_JOINTLY": "JOINT",
+        "MARRIED JOINT": "JOINT",
+        "MARRIED_FILING_SEPARATELY": "SEPARATE",
+        "MARRIED SEPARATE": "SEPARATE",
+        "HEAD OF HOUSEHOLD": "HEAD_OF_HOUSEHOLD",
+        "HOH": "HEAD_OF_HOUSEHOLD",
+        "QUALIFYING_SURVIVING_SPOUSE": "SURVIVING_SPOUSE",
+    }
+    return aliases.get(value_text, value_text if value_text else "SINGLE")
+
+
+def _tax_unit_member_aged_flags(inputs: dict[str, Any]) -> list[bool]:
+    """Return explicit aged flags from a RuleSpec member_of_tax_unit input."""
+    members = inputs.get("member_of_tax_unit")
+    if isinstance(members, bool):
+        return [members]
+    if not isinstance(members, list):
+        return []
+    aged_flags: list[bool] = []
+    for member in members:
+        if isinstance(member, bool):
+            aged_flags.append(member)
+            continue
+        if not isinstance(member, dict):
+            continue
+        aged_flags.append(bool(member.get("is_aged_65_or_over")))
+    return aged_flags
+
+
+def _policyengine_period_string(value: Any, fallback: str = "2024-01") -> str:
+    """Normalize RuleSpec test period values to a PE scenario period string."""
+    if isinstance(value, dict):
+        start = value.get("start") or value.get("date")
+        if start:
+            start_text = str(start)
+            if value.get("period_kind") == "month" and len(start_text) >= 7:
+                return start_text[:7]
+            if len(start_text) >= 4:
+                return start_text[:4]
+        return fallback
+    if value is None:
+        return fallback
+    value_text = str(value)
+    if not value_text:
+        return fallback
+    return value_text
+
+
 def extract_grounding_values(content: str) -> list[tuple[int, str, float]]:
     """Extract grounded numeric values from RuleSpec definitions."""
     with contextlib.suppress(yaml.YAMLError, TypeError, ValueError):
@@ -5298,7 +5361,7 @@ Output ONLY valid JSON:
                 or (inputs.get("date") if isinstance(inputs, dict) else None)
                 or "2024-01"
             )
-            period_str = str(period)
+            period_str = _policyengine_period_string(period)
             year = period_str.split("-")[0] if "-" in period_str else period_str
             if isinstance(inputs, dict):
                 inputs.pop("period", None)
@@ -6836,9 +6899,12 @@ print("BENCHMARK:" + json.dumps(result))
             return value
 
         # Determine household composition from inputs
-        filing_status = inputs.get("filing_status", "SINGLE")
-        joint_filing = filing_status.upper() in ("JOINT", "MARRIED_FILING_JOINTLY")
+        filing_status = _normalize_us_tax_filing_status(
+            inputs.get("filing_status", "SINGLE")
+        )
+        joint_filing = filing_status == "JOINT"
         num_adults = 2 if joint_filing else 1
+        aged_flags = _tax_unit_member_aged_flags(inputs)
 
         household_size = inputs.get("household_size")
         explicit_child_count = None
@@ -6892,7 +6958,8 @@ print("BENCHMARK:" + json.dumps(result))
 
         adapter = self._get_pe_us_var_adapter(pe_var)
 
-        adult_attrs = [f"'age': {{'{year}': 30}}"]
+        adult_age = 65 if aged_flags[:1] == [True] else 30
+        adult_attrs = [f"'age': {{'{year}': {adult_age}}}"]
         members = ["'adult'"]
 
         # Check for employment income / earned income
@@ -6968,7 +7035,8 @@ print("BENCHMARK:" + json.dumps(result))
 
         # Add spouse if joint
         if joint_filing:
-            people_parts.append(f"'spouse': {{'age': {{'{year}': 30}}}}")
+            spouse_age = 65 if len(aged_flags) > 1 and aged_flags[1] else 30
+            people_parts.append(f"'spouse': {{'age': {{'{year}': {spouse_age}}}}}")
             members.append("'spouse'")
 
         # Add children based on explicit qualifying-child counts or household size.
@@ -7147,7 +7215,7 @@ from policyengine_us import Simulation
 
 situation = {{
     'people': {people_str},
-    'tax_units': {{'tu': {{'members': {members_str}}}}},
+    'tax_units': {{'tu': {{'members': {members_str}, 'filing_status': {{'{year}': {repr(filing_status)}}}}}}},
     'spm_units': {{'spm': {{'members': {members_str}{spm_extra}}}}},
     'households': {{'hh': {{'members': {members_str}, {household_extra}}}}},
     'families': {{'fam': {{'members': {members_str}}}}},
