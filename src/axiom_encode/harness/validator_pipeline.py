@@ -3323,6 +3323,15 @@ class PipelineResult:
         return self.results.get("ci", ValidationResult("", False)).passed
 
 
+def _rulespec_public_item_key(item: Any) -> str:
+    if not isinstance(item, dict):
+        return ""
+    item_id = str(item.get("id") or "").strip()
+    if item_id:
+        return item_id
+    return str(item.get("name") or "").strip()
+
+
 class ValidatorPipeline:
     """Runs validators in 3 tiers with session event logging."""
 
@@ -3877,7 +3886,7 @@ class ValidatorPipeline:
     def _rulespec_program_maps(
         self, compiled_payload: dict[str, Any]
     ) -> tuple[dict[str, Any], dict[str, Any]]:
-        """Return compiled derived-output and scalar-parameter maps by name."""
+        """Return compiled derived-output and scalar-parameter maps by public key."""
         program = (
             compiled_payload.get("program")
             if isinstance(compiled_payload, dict)
@@ -3886,14 +3895,14 @@ class ValidatorPipeline:
         if not isinstance(program, dict):
             program = {}
         derived = {
-            str(item.get("name")): item
+            _rulespec_public_item_key(item): item
             for item in program.get("derived", [])
-            if isinstance(item, dict) and item.get("name")
+            if _rulespec_public_item_key(item)
         }
         parameters = {
-            str(item.get("name")): item
+            _rulespec_public_item_key(item): item
             for item in program.get("parameters", [])
-            if isinstance(item, dict) and item.get("name")
+            if _rulespec_public_item_key(item)
         }
         return derived, parameters
 
@@ -4015,10 +4024,10 @@ class ValidatorPipeline:
         case_index: int,
         period: dict[str, Any],
         output_names: list[str],
-        derived_by_name: dict[str, Any],
+        derived_by_key: dict[str, Any],
     ) -> tuple[dict[str, Any] | None, list[str]]:
         """Execute one compact RuleSpec test case through `run-compiled`."""
-        query_entity = str(derived_by_name[output_names[0]].get("entity") or "Case")
+        query_entity = str(derived_by_key[output_names[0]].get("entity") or "Case")
         query_entity_id = self._rulespec_case_query_entity_id(
             case, query_entity, case_index
         )
@@ -4067,17 +4076,31 @@ class ValidatorPipeline:
         return self._rulespec_outputs_by_reference(outputs), []
 
     def _rulespec_outputs_by_reference(self, outputs: dict[str, Any]) -> dict[str, Any]:
-        """Index runtime outputs by response key, durable id, and friendly name."""
+        """Index runtime outputs by response key and durable id only."""
         outputs_by_reference: dict[str, Any] = {}
         for output_key, output in outputs.items():
             outputs_by_reference[str(output_key)] = output
             if not isinstance(output, dict):
                 continue
-            for reference_key in ("id", "name"):
-                reference = str(output.get(reference_key) or "").strip()
-                if reference:
-                    outputs_by_reference[reference] = output
+            reference = str(output.get("id") or "").strip()
+            if reference:
+                outputs_by_reference[reference] = output
         return outputs_by_reference
+
+    def _rulespec_output_satisfies_policyengine_hint(
+        self,
+        output_name: str,
+        *,
+        derived_by_key: dict[str, Any],
+        parameter_by_key: dict[str, Any],
+    ) -> bool:
+        if output_name == self.policyengine_rule_hint:
+            return True
+        item = derived_by_key.get(output_name) or parameter_by_key.get(output_name)
+        return (
+            isinstance(item, dict)
+            and str(item.get("name") or "") == self.policyengine_rule_hint
+        )
 
     def _run_rulespec_test_cases(
         self,
@@ -4090,9 +4113,7 @@ class ValidatorPipeline:
         """Run compact RuleSpec `.test.yaml` cases against the compiled artifact."""
         issues: list[str] = []
         binary = self._axiom_rules_binary()
-        derived_by_name, parameter_by_name = self._rulespec_program_maps(
-            compiled_payload
-        )
+        derived_by_key, parameter_by_key = self._rulespec_program_maps(compiled_payload)
 
         for index, case in enumerate(cases, 1):
             if not isinstance(case, dict):
@@ -4117,9 +4138,13 @@ class ValidatorPipeline:
             if not isinstance(output_map, dict) or not output_map:
                 issues.append(f"Test case `{case_name}` output must be a mapping.")
                 continue
-            if (
-                self.policyengine_rule_hint
-                and self.policyengine_rule_hint not in output_map
+            if self.policyengine_rule_hint and not any(
+                self._rulespec_output_satisfies_policyengine_hint(
+                    str(output_name),
+                    derived_by_key=derived_by_key,
+                    parameter_by_key=parameter_by_key,
+                )
+                for output_name in output_map
             ):
                 issues.append(
                     f"Test case #{index} output must assert "
@@ -4130,9 +4155,9 @@ class ValidatorPipeline:
             parameter_outputs: list[str] = []
             for output_name in output_map:
                 output_key = str(output_name)
-                if output_key in derived_by_name:
+                if output_key in derived_by_key:
                     derived_outputs.append(output_key)
-                elif output_key in parameter_by_name:
+                elif output_key in parameter_by_key:
                     parameter_outputs.append(output_key)
                 else:
                     issues.append(
@@ -4151,7 +4176,7 @@ class ValidatorPipeline:
                         case_index=index,
                         period=period,
                         output_names=derived_outputs,
-                        derived_by_name=derived_by_name,
+                        derived_by_key=derived_by_key,
                     )
                 )
                 issues.extend(execution_issues)
@@ -4161,7 +4186,7 @@ class ValidatorPipeline:
             for output_name in parameter_outputs:
                 try:
                     parameter_value = self._rulespec_compiled_parameter_value(
-                        parameter_by_name[output_name], period
+                        parameter_by_key[output_name], period
                     )
                 except ValueError as exc:
                     issues.append(f"Test case `{case_name}` parameter failed: {exc}")

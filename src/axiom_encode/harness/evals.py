@@ -2061,8 +2061,11 @@ Import and context rules:
         oracle_rule = ""
         if policyengine_rule_hint:
             oracle_rule = (
-                f"- Every non-empty test `output:` mapping must assert "
-                f"`{policyengine_rule_hint}` directly.\n"
+                "- Every non-empty test `output:` mapping must assert the "
+                f"canonical RuleSpec output whose local name is "
+                f"`{policyengine_rule_hint}`; use its full "
+                "`jurisdiction:path#rule` id when the artifact has a legal "
+                "pointer.\n"
             )
         output_rules = f"""
 Return exactly this two-file bundle and nothing else:
@@ -2096,9 +2099,10 @@ Return ONLY raw RuleSpec YAML for `{target_file_name}`. Do not include fences or
 Preferred principal output:
 - Name the main derived rule `{policyengine_rule_hint}` unless the source clearly defines a different canonical concept.
 - Keep oracle-comparable tests at that named semantic level; do not assert only helper parameters or documentary scalars.
-- Keep `.test.yaml` inputs oracle-comparable: prefer the oracle's direct component facts over inverted household proxy inputs, preserve direct component surfaces when available, and assert `{policyengine_rule_hint}` directly in every non-empty `output:` mapping.
+- Keep `.test.yaml` inputs oracle-comparable: prefer the oracle's direct component facts over inverted household proxy inputs, preserve direct component surfaces when available, and assert the canonical RuleSpec output whose local name is `{policyengine_rule_hint}` in every non-empty `output:` mapping.
 - Prefer a contemporary monthly `.test.yaml` period like `2022-01` or `2024-01` when the source is current-effective and lacks a better effective date; avoid pre-2015 historical periods that PolicyEngine US cannot evaluate.
-- If a copied downstream output named by the oracle hint is available, assert that copied downstream output named by the oracle hint rather than replacing it with a helper-only local test.
+- If that output has a durable `jurisdiction:path#rule` id, key the test by that id rather than the friendly local name.
+- If a copied downstream output with the oracle hint's local name is available, assert that canonical copied output rather than replacing it with a helper-only local test.
 """
 
     guidance_parts = [render_uk_legislation_guidance()]
@@ -3609,18 +3613,77 @@ def _extract_simple_rulespec_constant(
     return None
 
 
+def _rulespec_declares_rule(
+    rulespec_content: str | None,
+    var_name: str | None,
+) -> bool:
+    if not rulespec_content or not var_name:
+        return False
+    with contextlib.suppress(yaml.YAMLError, TypeError):
+        payload = yaml.safe_load(rulespec_content)
+        if isinstance(payload, dict) and isinstance(payload.get("rules"), list):
+            return any(
+                isinstance(rule, dict) and rule.get("name") == var_name
+                for rule in payload["rules"]
+            )
+    return False
+
+
+def _canonical_rulespec_target_for_path(rulespec_path: Path | None) -> str | None:
+    if rulespec_path is None:
+        return None
+    components = [
+        str(component)
+        for component in rulespec_path.expanduser().resolve(strict=False).parts
+    ]
+    repo_index = next(
+        (
+            index
+            for index in range(len(components) - 1, -1, -1)
+            if components[index].startswith("rules-")
+        ),
+        None,
+    )
+    if repo_index is None or repo_index + 1 >= len(components):
+        return None
+    prefix = components[repo_index].removeprefix("rules-")
+    if not prefix:
+        return None
+    relative = Path(*components[repo_index + 1 :])
+    if relative.suffix in {".yaml", ".yml"}:
+        relative = relative.with_suffix("")
+    return f"{prefix}:{relative.as_posix()}"
+
+
+def _policyengine_hint_test_output_key(
+    rulespec_content: str | None,
+    policyengine_rule_hint: str | None,
+    rulespec_path: Path | None,
+) -> str | None:
+    if not _rulespec_declares_rule(rulespec_content, policyengine_rule_hint):
+        return None
+    canonical_target = _canonical_rulespec_target_for_path(rulespec_path)
+    if canonical_target and policyengine_rule_hint:
+        return f"{canonical_target}#{policyengine_rule_hint}"
+    return policyengine_rule_hint
+
+
 def _complete_oracle_hint_test_outputs(
     content: str,
     rulespec_content: str | None,
     policyengine_rule_hint: str | None,
+    rulespec_path: Path | None = None,
 ) -> str:
     if not policyengine_rule_hint:
+        return content
+    output_key = _policyengine_hint_test_output_key(
+        rulespec_content, policyengine_rule_hint, rulespec_path
+    )
+    if not output_key:
         return content
     hint_value = _extract_simple_rulespec_constant(
         rulespec_content, policyengine_rule_hint
     )
-    if hint_value is None:
-        return content
     try:
         payload = yaml.safe_load(content)
     except yaml.YAMLError:
@@ -3635,12 +3698,20 @@ def _complete_oracle_hint_test_outputs(
             normalized_cases.append(case)
             continue
         output = case.get("output")
-        if not isinstance(output, dict) or policyengine_rule_hint in output:
+        if not isinstance(output, dict) or output_key in output:
             normalized_cases.append(case)
             continue
         normalized_case = dict(case)
         normalized_output = dict(output)
-        normalized_output[policyengine_rule_hint] = hint_value
+        if output_key != policyengine_rule_hint and policyengine_rule_hint in output:
+            normalized_output[output_key] = normalized_output.pop(
+                policyengine_rule_hint
+            )
+        elif hint_value is None:
+            normalized_cases.append(case)
+            continue
+        else:
+            normalized_output[output_key] = hint_value
         normalized_case["output"] = normalized_output
         normalized_cases.append(normalized_case)
         changed = True
@@ -3720,6 +3791,7 @@ def _materialize_eval_artifact(
                             expected_path.name
                         ),
                         policyengine_rule_hint=policyengine_rule_hint,
+                        rulespec_path=expected_path,
                     )
             target_path.parent.mkdir(parents=True, exist_ok=True)
             target_path.write_text(content)
@@ -3790,6 +3862,7 @@ def _materialize_workspace_artifacts(
                 test_content,
                 rulespec_content=main_content,
                 policyengine_rule_hint=policyengine_rule_hint,
+                rulespec_path=expected_path,
             )
         expected_test_path.write_text(test_content)
 

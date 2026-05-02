@@ -1680,6 +1680,48 @@ rules:
             is True
         )
 
+    def test_materialize_eval_artifact_uses_canonical_oracle_hint_output_key(
+        self, tmp_path
+    ):
+        output_file = (
+            tmp_path / "rules-us" / "policies" / "usda" / "snap" / "homeless.yaml"
+        )
+        response = """=== FILE: homeless.yaml ===
+format: rulespec/v1
+module:
+  summary: Homeless Shelter Deduction availability.
+rules:
+  - name: snap_homeless_shelter_deduction_available
+    kind: parameter
+    dtype: Boolean
+    versions:
+      - effective_from: '2025-10-01'
+        formula: true
+=== FILE: homeless.test.yaml ===
+- name: base
+  period: 2025-10
+  output:
+    snap_homeless_shelter_deduction_available: true
+"""
+
+        wrote = _materialize_eval_artifact(
+            response,
+            output_file,
+            policyengine_rule_hint="snap_homeless_shelter_deduction_available",
+        )
+
+        assert wrote is True
+        output = yaml.safe_load(output_file.with_suffix(".test.yaml").read_text())[0][
+            "output"
+        ]
+        assert "snap_homeless_shelter_deduction_available" not in output
+        assert (
+            output[
+                "us:policies/usda/snap/homeless#snap_homeless_shelter_deduction_available"
+            ]
+            is True
+        )
+
     def test_can_include_policyengine_metrics_for_uk_artifact(self, tmp_path):
         rules_file = tmp_path / "source" / "uksi-2006-965-regulation-2.yaml"
         rules_file.parent.mkdir(parents=True)
@@ -6271,14 +6313,15 @@ class TestSourceEval:
             in prompt
         )
         assert (
-            "assert `uc_standard_allowance_single_claimant_aged_under_25` directly in every non-empty `output:` mapping"
+            "canonical RuleSpec output whose local name is `uc_standard_allowance_single_claimant_aged_under_25`"
             in prompt
         )
         assert (
             "prefer the oracle's direct component facts over inverted household proxy inputs"
             in prompt
         )
-        assert "assert that copied downstream output named by the oracle hint" in prompt
+        assert "assert that canonical copied output" in prompt
+        assert "key the test by that id rather than the friendly local name" in prompt
         assert (
             "avoid pre-2015 historical periods that PolicyEngine US cannot evaluate"
             in prompt

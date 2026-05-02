@@ -118,10 +118,10 @@ rules-us-co:regulations/10-ccr-2506-1/4.403.2#snap_countable_earned_income
 
 Formula authors should still be able to reference local and imported symbols by
 bare name where the compiler can resolve them unambiguously. External surfaces
-should expose the canonical id alongside the friendly name. That includes API
+must key values by the canonical id whenever one exists. That includes API
 execution results, notebook demos, traces, registry rows, and verification
 artifacts. A notebook can display `snap_regular_month_allotment`, but the
-machine-readable output should also carry
+machine-readable output must carry
 `rules-us:statutes/7/2017/a#snap_regular_month_allotment` so calculated values
 are keyed to the provision that defines them.
 

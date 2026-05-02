@@ -1028,7 +1028,7 @@ rules:
     )
 
 
-def test_rulespec_output_lookup_accepts_durable_ids(tmp_path):
+def test_rulespec_output_lookup_rejects_friendly_name_aliases(tmp_path):
     pipeline = ValidatorPipeline(
         policy_repo_path=tmp_path,
         axiom_rules_path=AXIOM_RULES_PATH,
@@ -1045,10 +1045,7 @@ def test_rulespec_output_lookup_accepts_durable_ids(tmp_path):
 
     outputs = pipeline._rulespec_outputs_by_reference(runtime_output)
 
-    assert (
-        outputs["snap_regular_month_allotment"]
-        is runtime_output["us:statutes/7/2017/a#snap_regular_month_allotment"]
-    )
+    assert "snap_regular_month_allotment" not in outputs
     assert (
         outputs["us:statutes/7/2017/a#snap_regular_month_allotment"]
         is runtime_output["us:statutes/7/2017/a#snap_regular_month_allotment"]
