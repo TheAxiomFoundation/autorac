@@ -55,3 +55,9 @@ visible so a green score cannot hide weak oracle coverage.
 Known non-comparable legal IDs should be registry entries with
 `mapping_type: not_comparable` and a short rationale. Truly new legal IDs should
 remain `unmapped` until someone classifies them.
+
+For large legal namespaces where most outputs are source-specific intermediates,
+the registry may use `prefixes` entries. Prefix entries only classify
+`not_comparable` outputs. Exact legal-ID mappings always override prefixes, so a
+specific output can still become PolicyEngine-comparable later without changing
+the RuleSpec file.

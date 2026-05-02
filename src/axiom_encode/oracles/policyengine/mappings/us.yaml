@@ -79,13 +79,8 @@ mappings:
   - legal_id: us-co:regulations/10-ccr-2506-1/4.407.31#snap_individual_utility_allowance
     country: us
     program: snap
-    mapping_type: direct_variable
-    policyengine_variable: snap_individual_utility_allowance
-    entity: spm_unit
-    period: month
-    unit: USD
-    comparison: money
-    rationale: Colorado individual utility allowance, with state defaults supplied by the adapter.
+    mapping_type: not_comparable
+    rationale: Colorado individual/telephone utility allowance is a manual-specific output; PolicyEngine's snap_individual_utility_allowance is an adjacent utility-type amount with different semantics.
 
   - legal_id: us-co:regulations/10-ccr-2506-1/4.403#snap_countable_earned_income
     country: us
@@ -177,3 +172,196 @@ mappings:
     program: snap
     mapping_type: not_comparable
     rationale: Colorado initial-month proration output; PolicyEngine SNAP does not expose Colorado initial-month proration.
+
+  - legal_id: us:statutes/26/1401#additional_medicare_self_employment_tax
+    country: us
+    program: tax
+    mapping_type: not_comparable
+    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+
+  - legal_id: us:statutes/26/1401#additional_medicare_self_employment_tax_base
+    country: us
+    program: tax
+    mapping_type: not_comparable
+    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+
+  - legal_id: us:statutes/26/1401#additional_medicare_self_employment_threshold
+    country: us
+    program: tax
+    mapping_type: not_comparable
+    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+
+  - legal_id: us:statutes/26/1401#reduced_additional_medicare_self_employment_threshold
+    country: us
+    program: tax
+    mapping_type: not_comparable
+    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+
+  - legal_id: us:statutes/26/1401#self_employment_hospital_insurance_tax
+    country: us
+    program: tax
+    mapping_type: not_comparable
+    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+
+  - legal_id: us:statutes/26/1401#self_employment_oasdi_tax
+    country: us
+    program: tax
+    mapping_type: not_comparable
+    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+
+  - legal_id: us:statutes/26/1401#self_employment_tax
+    country: us
+    program: tax
+    mapping_type: not_comparable
+    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+
+  - legal_id: us:statutes/26/3101/a#oasdi_wage_tax
+    country: us
+    program: tax
+    mapping_type: not_comparable
+    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+
+  - legal_id: us:statutes/26/3101/b/1#hospital_insurance_wage_tax
+    country: us
+    program: tax
+    mapping_type: not_comparable
+    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+
+  - legal_id: us:statutes/26/3101/b/2#additional_medicare_excess_wages
+    country: us
+    program: tax
+    mapping_type: not_comparable
+    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+
+  - legal_id: us:statutes/26/3101/b/2#additional_medicare_tax
+    country: us
+    program: tax
+    mapping_type: not_comparable
+    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+
+  - legal_id: us:statutes/26/3101/b/2#additional_medicare_wage_tax_threshold
+    country: us
+    program: tax
+    mapping_type: not_comparable
+    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+
+  - legal_id: us:statutes/26/3111/a#employer_oasdi_excise_tax
+    country: us
+    program: tax
+    mapping_type: not_comparable
+    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+
+  - legal_id: us:statutes/26/3111/b#hospital_insurance_employer_tax
+    country: us
+    program: tax
+    mapping_type: not_comparable
+    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+
+  - legal_id: us:statutes/26/3111/c#employer_wages_exempt_under_section_3111_c
+    country: us
+    program: tax
+    mapping_type: not_comparable
+    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+
+  - legal_id: us:statutes/26/45A/a#base_year_1993_indian_employment_costs
+    country: us
+    program: tax
+    mapping_type: not_comparable
+    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+
+  - legal_id: us:statutes/26/45A/a#current_year_indian_employment_costs
+    country: us
+    program: tax
+    mapping_type: not_comparable
+    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+
+  - legal_id: us:statutes/26/45A/a#indian_employment_credit
+    country: us
+    program: tax
+    mapping_type: not_comparable
+    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+
+  - legal_id: us:statutes/26/45A/a#indian_employment_credit_excess_costs
+    country: us
+    program: tax
+    mapping_type: not_comparable
+    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+
+  - legal_id: us:statutes/26/63/c#additional_standard_deduction_per_condition_amount
+    country: us
+    program: tax
+    mapping_type: not_comparable
+    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+
+  - legal_id: us:statutes/26/63/c#additional_std_ded_amount
+    country: us
+    program: tax
+    mapping_type: not_comparable
+    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+
+  - legal_id: us:statutes/26/63/c#basic_standard_deduction_amount
+    country: us
+    program: tax
+    mapping_type: not_comparable
+    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+
+  - legal_id: us:statutes/26/63/c#num_aged_members
+    country: us
+    program: tax
+    mapping_type: not_comparable
+    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+
+  - legal_id: us:statutes/26/63/c#standard_deduction
+    country: us
+    program: tax
+    mapping_type: not_comparable
+    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+
+  - legal_id: us:statutes/26/63/c/5#dependent_standard_deduction
+    country: us
+    program: tax
+    mapping_type: not_comparable
+    rationale: Tax output reserved for a dedicated tax oracle registry rather than the PolicyEngine SNAP oracle lane.
+
+prefixes:
+  - legal_id_prefix: us-co:regulations/10-ccr-2506-1/
+    country: us
+    program: snap
+    mapping_type: not_comparable
+    rationale: Colorado manual outputs are source-specific legal computations unless an exact PolicyEngine mapping overrides this prefix.
+
+  - legal_id_prefix: us-co:policies/cdhs/snap/
+    country: us
+    program: snap
+    mapping_type: not_comparable
+    rationale: Colorado SNAP composition outputs are Axiom assembly points across upstream rules unless an exact PolicyEngine mapping overrides this prefix.
+
+  - legal_id_prefix: us:policies/usda/snap/fy-2026-cola/
+    country: us
+    program: snap
+    mapping_type: not_comparable
+    rationale: USDA COLA table and parameter outputs require parameter-aware oracle adapters unless an exact PolicyEngine mapping overrides this prefix.
+
+  - legal_id_prefix: us:statutes/7/2012/j#
+    country: us
+    program: snap
+    mapping_type: not_comparable
+    rationale: SNAP elderly-or-disabled household predicates are statutory Axiom outputs and require predicate-specific oracle adapters unless exactly mapped.
+
+  - legal_id_prefix: us:statutes/7/2014/e/2#
+    country: us
+    program: snap
+    mapping_type: not_comparable
+    rationale: SNAP earned-income statutory intermediates are not one-to-one PolicyEngine outputs unless exactly mapped.
+
+  - legal_id_prefix: us:statutes/7/2014/e/6/A#
+    country: us
+    program: snap
+    mapping_type: not_comparable
+    rationale: SNAP net-income statutory intermediates are not one-to-one PolicyEngine outputs unless exactly mapped.
+
+  - legal_id_prefix: us:statutes/7/2017/a#
+    country: us
+    program: snap
+    mapping_type: not_comparable
+    rationale: SNAP allotment statutory intermediates are not one-to-one PolicyEngine outputs unless exactly mapped.

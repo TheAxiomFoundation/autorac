@@ -15,6 +15,7 @@ SUPPORTED_MAPPING_TYPES = {
     "one_to_many",
     "not_comparable",
 }
+SUPPORTED_MATCH_TYPES = {"exact", "prefix"}
 
 
 @dataclass(frozen=True)
@@ -24,6 +25,7 @@ class PolicyEngineMapping:
     legal_id: str
     country: str
     mapping_type: str
+    match_type: str = "exact"
     policyengine_variable: str | None = None
     program: str | None = None
     entity: str | None = None
@@ -74,18 +76,23 @@ class PolicyEngineOracleRegistry:
     """Resolved PolicyEngine mapping registry."""
 
     mappings_by_legal_id: dict[str, PolicyEngineMapping] = field(default_factory=dict)
+    prefix_mappings: tuple[PolicyEngineMapping, ...] = ()
 
     def mapping_for_legal_id(
         self, legal_id: str | None, *, country: str | None = None
     ) -> PolicyEngineMapping | None:
         if not legal_id:
             return None
-        mapping = self.mappings_by_legal_id.get(str(legal_id))
-        if mapping is None:
-            return None
-        if country and mapping.country != country:
-            return None
-        return mapping
+        legal_id_text = str(legal_id)
+        mapping = self.mappings_by_legal_id.get(legal_id_text)
+        if mapping is not None and (country is None or mapping.country == country):
+            return mapping
+        for prefix_mapping in self.prefix_mappings:
+            if country and prefix_mapping.country != country:
+                continue
+            if legal_id_text.startswith(prefix_mapping.legal_id):
+                return prefix_mapping
+        return None
 
     def legal_ids_for_policyengine_variable(
         self, policyengine_variable: str, *, country: str | None = None
@@ -100,14 +107,35 @@ class PolicyEngineOracleRegistry:
     def validate(self) -> list[str]:
         issues: list[str] = []
         seen: set[str] = set()
-        for legal_id, mapping in self.mappings_by_legal_id.items():
+        for legal_id, mapping in [
+            *self.mappings_by_legal_id.items(),
+            *((mapping.legal_id, mapping) for mapping in self.prefix_mappings),
+        ]:
             if legal_id in seen:
                 issues.append(f"Duplicate PolicyEngine mapping legal_id: {legal_id}")
             seen.add(legal_id)
-            if "#" not in legal_id or ":" not in legal_id:
+            if mapping.match_type not in SUPPORTED_MATCH_TYPES:
+                issues.append(
+                    f"Unsupported PolicyEngine match_type for {legal_id}: "
+                    f"{mapping.match_type}"
+                )
+            if mapping.match_type == "exact" and (
+                "#" not in legal_id or ":" not in legal_id
+            ):
                 issues.append(
                     f"PolicyEngine mapping key must be a canonical legal ID: {legal_id}"
                 )
+            if mapping.match_type == "prefix":
+                if ":" not in legal_id:
+                    issues.append(
+                        "PolicyEngine prefix mapping key must be a canonical "
+                        f"legal ID prefix: {legal_id}"
+                    )
+                if mapping.mapping_type != "not_comparable":
+                    issues.append(
+                        "PolicyEngine prefix mappings may only classify "
+                        f"not_comparable outputs: {legal_id}"
+                    )
             if mapping.mapping_type not in SUPPORTED_MAPPING_TYPES:
                 issues.append(
                     f"Unsupported PolicyEngine mapping_type for {legal_id}: "
@@ -129,6 +157,7 @@ class PolicyEngineOracleRegistry:
 def load_policyengine_registry() -> PolicyEngineOracleRegistry:
     """Load packaged PolicyEngine mappings."""
     mappings: dict[str, PolicyEngineMapping] = {}
+    prefix_mappings: list[PolicyEngineMapping] = []
     mapping_dir = Path(__file__).with_name("mappings")
     for mapping_path in sorted(mapping_dir.glob("*.yaml")):
         payload = yaml.safe_load(mapping_path.read_text()) or {}
@@ -144,7 +173,24 @@ def load_policyengine_registry() -> PolicyEngineOracleRegistry:
                     f"Duplicate PolicyEngine mapping legal_id: {mapping.legal_id}"
                 )
             mappings[mapping.legal_id] = mapping
-    registry = PolicyEngineOracleRegistry(mappings)
+        raw_prefixes = payload.get("prefixes", [])
+        if not isinstance(raw_prefixes, list):
+            raise ValueError(f"{mapping_path} prefixes must be a list")
+        for raw_prefix in raw_prefixes:
+            if not isinstance(raw_prefix, dict):
+                raise ValueError(f"{mapping_path} contains a non-object prefix")
+            prefix_payload = {**raw_prefix, "match_type": "prefix"}
+            prefix_mappings.append(_mapping_from_payload(prefix_payload))
+    registry = PolicyEngineOracleRegistry(
+        mappings,
+        tuple(
+            sorted(
+                prefix_mappings,
+                key=lambda mapping: len(mapping.legal_id),
+                reverse=True,
+            )
+        ),
+    )
     issues = registry.validate()
     if issues:
         raise ValueError("Invalid PolicyEngine registry: " + "; ".join(issues))
@@ -157,10 +203,14 @@ def _mapping_from_payload(payload: dict[str, Any]) -> PolicyEngineMapping:
         aliases = ()
     if isinstance(aliases, str):
         aliases = (aliases,)
+    legal_id = payload.get("legal_id", payload.get("legal_id_prefix"))
+    if legal_id is None:
+        raise ValueError("PolicyEngine mapping missing legal_id")
     return PolicyEngineMapping(
-        legal_id=str(payload["legal_id"]),
+        legal_id=str(legal_id),
         country=str(payload.get("country", "us")),
         mapping_type=str(payload.get("mapping_type", "direct_variable")),
+        match_type=str(payload.get("match_type", "exact")),
         policyengine_variable=payload.get("policyengine_variable"),
         program=payload.get("program"),
         entity=payload.get("entity"),

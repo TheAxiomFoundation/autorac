@@ -219,6 +219,20 @@ def test_policyengine_registry_is_legal_id_keyed():
         ).mapping_type
         == "not_comparable"
     )
+    assert (
+        registry.mapping_for_legal_id(
+            "us-co:regulations/10-ccr-2506-1/4.403.1#manual_specific_output",
+            country="us",
+        ).match_type
+        == "prefix"
+    )
+    assert (
+        registry.mapping_for_legal_id(
+            "us-co:regulations/10-ccr-2506-1/4.407.31#snap_standard_utility_allowance",
+            country="us",
+        ).mapping_type
+        == "direct_variable"
+    )
 
 
 def test_policyengine_oracle_tracks_not_comparable_without_issue_noise(tmp_path):
@@ -273,6 +287,47 @@ def test_policyengine_oracle_tracks_not_comparable_without_issue_noise(tmp_path)
     assert result.details["coverage"]["unmapped"] == 0
 
 
+def test_policyengine_oracle_has_no_issue_noise_for_unsupported_only(tmp_path):
+    rules_file = tmp_path / "rules.yaml"
+    rules_file.write_text("format: rulespec/v1\n")
+    rules_file.with_name("rules.test.yaml").write_text(
+        """- name: classified_unsupported
+  period: 2026-01
+  input: {}
+  output:
+    us:test/fake#classified_unsupported: 99
+"""
+    )
+    pipeline = ValidatorPipeline(
+        policy_repo_path=tmp_path,
+        axiom_rules_path=AXIOM_RULES_PATH,
+        enable_oracles=True,
+        oracle_validators=("policyengine",),
+    )
+    pipeline.policyengine_registry = PolicyEngineOracleRegistry(
+        prefix_mappings=(
+            PolicyEngineMapping(
+                legal_id="us:test/fake#",
+                country="us",
+                mapping_type="not_comparable",
+                match_type="prefix",
+                rationale="synthetic unsupported oracle prefix",
+            ),
+        )
+    )
+    pipeline._detect_policyengine_country = lambda *_args, **_kwargs: "us"
+    pipeline._find_pe_python = lambda _country: Path("python")
+    pipeline._should_compare_pe_test_output = lambda *_args, **_kwargs: True
+
+    result = pipeline._run_policyengine(rules_file)
+
+    assert result.score is None
+    assert result.passed is True
+    assert result.issues == []
+    assert result.details["coverage"]["unsupported"] == 1
+    assert result.details["coverage"]["unmapped"] == 0
+
+
 def test_policyengine_resolver_rejects_friendly_us_names(tmp_path):
     pipeline = ValidatorPipeline(
         policy_repo_path=tmp_path,
@@ -320,6 +375,51 @@ def test_policyengine_snap_input_aliases_derive_standard_pe_inputs():
         "housing_cost": 500.0,
         "snap_utility_allowance_type": "SUA",
     }
+
+
+def test_policyengine_snap_input_aliases_derive_upstream_legal_inputs():
+    aliases = _policyengine_us_snap_input_aliases(
+        {
+            "snap_countable_earned_income": 1000,
+            "work_supplementation_earned_income": 250,
+            "snap_monthly_household_income": 1200,
+            "dependent_care_deduction": 50,
+            "child_support_deduction": 25,
+            "medical_deduction": 10,
+            "excess_shelter_deduction": 100,
+        }
+    )
+
+    assert aliases == {
+        "snap_earned_income": 750.0,
+        "snap_gross_income": 1200.0,
+        "snap_dependent_care_deduction": 50.0,
+        "snap_child_support_deduction": 25.0,
+        "snap_excess_medical_expense_deduction": 10.0,
+        "snap_excess_shelter_expense_deduction": 100.0,
+    }
+
+
+def test_policyengine_snap_input_aliases_derive_utility_allowance_type():
+    aliases = _policyengine_us_snap_input_aliases(
+        {
+            "household_incurred_or_anticipated_heating_or_cooling_costs_separate_from_rent_or_mortgage": False,
+            "household_pays_electricity_utility_cost": True,
+            "household_pays_water_utility_cost": True,
+            "household_pays_telephone_service_cost": False,
+        }
+    )
+
+    assert aliases["snap_utility_allowance_type"] == "LUA"
+    aliases = _policyengine_us_snap_input_aliases(
+        {
+            "household_incurred_or_anticipated_heating_or_cooling_costs_separate_from_rent_or_mortgage": False,
+            "household_pays_electricity_utility_cost": False,
+            "household_pays_water_utility_cost": False,
+            "household_pays_telephone_service_cost": True,
+        }
+    )
+    assert aliases["snap_utility_allowance_type"] == "NONE"
 
 
 def test_policyengine_snap_net_income_annualizes_housing_cost(tmp_path):

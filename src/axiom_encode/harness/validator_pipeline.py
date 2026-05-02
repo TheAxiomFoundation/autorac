@@ -899,14 +899,55 @@ def _policyengine_us_snap_input_aliases(inputs: dict[str, Any]) -> dict[str, Any
         aliases.setdefault("snap_earned_income", earned)
         aliases.setdefault("snap_gross_income", earned)
 
+    countable_earned = numeric_value("snap_countable_earned_income")
+    work_supplementation = numeric_value("work_supplementation_earned_income")
+    if countable_earned is not None:
+        aliases.setdefault(
+            "snap_earned_income",
+            max(0.0, countable_earned - (work_supplementation or 0.0)),
+        )
+
+    monthly_household_income = numeric_value("snap_monthly_household_income")
+    if monthly_household_income is not None:
+        aliases.setdefault("snap_gross_income", monthly_household_income)
+
     shelter_cost = numeric_value("household_shelter_costs_incurred")
     if shelter_cost is not None:
         aliases.setdefault("housing_cost", shelter_cost)
 
-    if inputs.get(
-        "household_incurred_or_anticipated_heating_or_cooling_costs_separate_from_rent_or_mortgage"
-    ):
+    deduction_aliases = {
+        "dependent_care_deduction": "snap_dependent_care_deduction",
+        "child_support_deduction": "snap_child_support_deduction",
+        "medical_deduction": "snap_excess_medical_expense_deduction",
+        "excess_shelter_deduction": "snap_excess_shelter_expense_deduction",
+    }
+    for source_key, alias_key in deduction_aliases.items():
+        deduction_value = numeric_value(source_key)
+        if deduction_value is not None:
+            aliases.setdefault(alias_key, deduction_value)
+
+    heating_or_cooling = bool(
+        inputs.get(
+            "household_incurred_or_anticipated_heating_or_cooling_costs_separate_from_rent_or_mortgage"
+        )
+    )
+    if heating_or_cooling:
         aliases.setdefault("snap_utility_allowance_type", "SUA")
+    elif any(str(key).startswith("household_pays_") for key in inputs):
+        non_heating_cooling_utility_keys = (
+            "household_pays_electricity_utility_cost",
+            "household_pays_water_utility_cost",
+            "household_pays_sewer_utility_cost",
+            "household_pays_trash_utility_cost",
+            "household_pays_cooking_fuel_utility_cost",
+        )
+        non_heating_cooling_count = sum(
+            1 for key in non_heating_cooling_utility_keys if inputs.get(key)
+        )
+        aliases.setdefault(
+            "snap_utility_allowance_type",
+            "LUA" if non_heating_cooling_count >= 2 else "NONE",
+        )
 
     return {key: value for key, value in aliases.items() if key not in inputs}
 
@@ -5289,6 +5330,10 @@ Output ONLY valid JSON:
 
             # Build and run PE scenario — include period in inputs for monthly detection
             inputs_with_period = {**inputs, "period": str(period)}
+            inputs_with_period = {
+                **_policyengine_us_snap_input_aliases(inputs_with_period),
+                **inputs_with_period,
+            }
             source_jurisdiction = None
             if country == "us":
                 source_jurisdiction = _source_metadata_jurisdiction(
@@ -5391,15 +5436,17 @@ Output ONLY valid JSON:
 
         if total == 0:
             duration = int((time.time() - start) * 1000)
-            if coverage.unsupported or coverage.unmapped:
+            if coverage.unmapped:
                 issues.append(
-                    "PolicyEngine could not evaluate any oracle-comparable tests"
+                    "PolicyEngine could not evaluate unclassified legal outputs"
                 )
+            if not issues and not coverage.unsupported:
+                issues.append("No PolicyEngine-comparable tests found")
             return ValidationResult(
                 validator_name="policyengine",
                 passed=True,
                 score=None,
-                issues=issues or ["No PolicyEngine-comparable tests found"],
+                issues=issues,
                 duration_ms=duration,
                 details={"coverage": coverage.as_dict()},
             )

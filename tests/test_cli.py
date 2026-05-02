@@ -1243,6 +1243,99 @@ class TestCmdValidate:
                 "policyengine",
             )
 
+    def test_validate_with_oracle_classification_required_fails_unmapped(
+        self, capsys, tmp_path
+    ):
+        rulespec_file = tmp_path / "test.yaml"
+        rulespec_file.write_text("# test")
+        args = MagicMock()
+        args.file = rulespec_file
+        args.json = True
+        args.skip_reviewers = True
+        args.oracle = "policyengine"
+        args.min_match = 0.95
+        args.require_oracle_classification = True
+
+        mock_result = MagicMock()
+        mock_result.all_passed = True
+        mock_result.ci_pass = True
+        mock_result.results = {
+            "policyengine": MagicMock(
+                score=1.0,
+                error=None,
+                details={
+                    "coverage": {
+                        "comparable": 1,
+                        "passed": 1,
+                        "failed": 0,
+                        "unmapped": 2,
+                        "unsupported": 0,
+                    }
+                },
+            ),
+        }
+        mock_result.to_review_results.return_value = ReviewResults(
+            reviews=[],
+            policyengine_match=1.0,
+            taxsim_match=None,
+        )
+        mock_result.total_duration_ms = 100
+
+        with patch("axiom_encode.cli.ValidatorPipeline") as mock_pipeline_cls:
+            mock_pipeline_cls.return_value.validate.return_value = mock_result
+            with pytest.raises(SystemExit) as exc_info:
+                cmd_validate(args)
+            assert exc_info.value.code == 1
+
+        output = json.loads(capsys.readouterr().out)
+        assert output["oracle_passed"] is False
+        assert "policyengine: 2 unclassified oracle output(s)" in output["errors"]
+
+    def test_validate_with_oracle_classification_required_allows_classified(
+        self, capsys, tmp_path
+    ):
+        rulespec_file = tmp_path / "test.yaml"
+        rulespec_file.write_text("# test")
+        args = MagicMock()
+        args.file = rulespec_file
+        args.json = False
+        args.skip_reviewers = True
+        args.oracle = "policyengine"
+        args.min_match = 0.95
+        args.require_oracle_classification = True
+
+        mock_result = MagicMock()
+        mock_result.all_passed = True
+        mock_result.ci_pass = True
+        mock_result.results = {
+            "policyengine": MagicMock(
+                score=1.0,
+                error=None,
+                details={
+                    "coverage": {
+                        "comparable": 1,
+                        "passed": 1,
+                        "failed": 0,
+                        "unmapped": 0,
+                        "unsupported": 2,
+                    }
+                },
+            ),
+        }
+        mock_result.to_review_results.return_value = ReviewResults(
+            reviews=[],
+            policyengine_match=1.0,
+            taxsim_match=None,
+        )
+
+        with patch("axiom_encode.cli.ValidatorPipeline") as mock_pipeline_cls:
+            mock_pipeline_cls.return_value.validate.return_value = mock_result
+            with pytest.raises(SystemExit) as exc_info:
+                cmd_validate(args)
+            assert exc_info.value.code == 0
+
+        assert "unmapped=0 unsupported=2" in capsys.readouterr().out
+
     def test_validate_with_oracle_taxsim_fail(self, capsys, tmp_path):
         rulespec_file = tmp_path / "test.yaml"
         rulespec_file.write_text("# test")

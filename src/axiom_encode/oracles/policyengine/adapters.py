@@ -102,7 +102,19 @@ PE_US_VAR_ADAPTERS = (
         monthly=True,
         spm=True,
         direct_spm_overrides=(
+            ("snap_gross_income", "snap_gross_income"),
             ("snap_earned_income", "snap_earned_income"),
+            ("snap_standard_deduction", "snap_standard_deduction"),
+            ("snap_earned_income_deduction", "snap_earned_income_deduction"),
+            ("snap_child_support_deduction", "snap_child_support_deduction"),
+            (
+                "snap_excess_medical_expense_deduction",
+                "snap_excess_medical_expense_deduction",
+            ),
+            (
+                "snap_excess_shelter_expense_deduction",
+                "snap_excess_shelter_expense_deduction",
+            ),
             ("snap_utility_allowance_type", "snap_utility_allowance_type"),
         ),
         derived_spm_overrides=(

@@ -194,6 +194,11 @@ def main():
         default=0.95,
         help="Minimum match rate for oracle validation (default: 0.95)",
     )
+    validate_parser.add_argument(
+        "--require-oracle-classification",
+        action="store_true",
+        help="Fail oracle validation when oracle coverage reports unclassified legal IDs",
+    )
 
     # log command
     log_parser = subparsers.add_parser("log", help="Log an encoding run to encoding DB")
@@ -814,6 +819,20 @@ def cmd_validate(args):
                     errors.append(
                         f"TAXSIM: {ts_result.score:.1%} < {min_match:.0%} required"
                     )
+        if getattr(args, "require_oracle_classification", False) is True:
+            if not oracle_coverage:
+                oracle_passed = False
+                errors.append(
+                    "Oracle classification required but no oracle coverage was reported"
+                )
+            else:
+                for name, coverage in oracle_coverage.items():
+                    unmapped = int(coverage.get("unmapped", 0) or 0)
+                    if unmapped:
+                        oracle_passed = False
+                        errors.append(
+                            f"{name}: {unmapped} unclassified oracle output(s)"
+                        )
 
     # Overall pass requires regular checks AND oracle checks (if enabled)
     all_passed = result.all_passed and oracle_passed
