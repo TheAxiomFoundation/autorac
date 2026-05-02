@@ -307,11 +307,76 @@ mappings:
     mapping_type: not_comparable
     rationale: PolicyEngine does not currently expose the section 45A Indian employment credit cost intermediates.
 
-  - legal_id: us:statutes/26/63/c#additional_standard_deduction_per_condition_amount
+  - legal_id: us:policies/irs/rev-proc-2025-32/standard-deduction#standard_deduction_single
+    country: us
+    program: tax
+    mapping_type: not_comparable
+    rationale: PolicyEngine stores filing-status-specific standard deduction amounts as parameter data rather than exposing each cell as a variable.
+
+  - legal_id: us:policies/irs/rev-proc-2025-32/standard-deduction#standard_deduction_joint
+    country: us
+    program: tax
+    mapping_type: not_comparable
+    rationale: PolicyEngine stores filing-status-specific standard deduction amounts as parameter data rather than exposing each cell as a variable.
+
+  - legal_id: us:policies/irs/rev-proc-2025-32/standard-deduction#standard_deduction_separate
+    country: us
+    program: tax
+    mapping_type: not_comparable
+    rationale: PolicyEngine stores filing-status-specific standard deduction amounts as parameter data rather than exposing each cell as a variable.
+
+  - legal_id: us:policies/irs/rev-proc-2025-32/standard-deduction#standard_deduction_head_of_household
+    country: us
+    program: tax
+    mapping_type: not_comparable
+    rationale: PolicyEngine stores filing-status-specific standard deduction amounts as parameter data rather than exposing each cell as a variable.
+
+  - legal_id: us:policies/irs/rev-proc-2025-32/standard-deduction#basic_standard_deduction_amount
+    country: us
+    program: tax
+    mapping_type: direct_variable
+    policyengine_variable: basic_standard_deduction
+    entity: tax_unit
+    period: year
+    unit: USD
+    comparison: money
+    rationale: Same tax-year 2026 basic standard deduction output after filing-status selection.
+
+  - legal_id: us:policies/irs/rev-proc-2025-32/standard-deduction#additional_standard_deduction_married_or_surviving_spouse
     country: us
     program: tax
     mapping_type: not_comparable
     rationale: PolicyEngine stores the per-condition additional standard deduction amount as parameter data rather than exposing it as a variable.
+
+  - legal_id: us:policies/irs/rev-proc-2025-32/standard-deduction#additional_standard_deduction_unmarried_not_surviving_spouse
+    country: us
+    program: tax
+    mapping_type: not_comparable
+    rationale: PolicyEngine stores the per-condition additional standard deduction amount as parameter data rather than exposing it as a variable.
+
+  - legal_id: us:policies/irs/rev-proc-2025-32/standard-deduction#additional_standard_deduction_per_condition_amount
+    country: us
+    program: tax
+    mapping_type: not_comparable
+    rationale: PolicyEngine stores the per-condition additional standard deduction amount as parameter data rather than exposing it as a variable.
+
+  - legal_id: us:policies/irs/rev-proc-2025-32/standard-deduction#dependent_minimum
+    country: us
+    program: tax
+    mapping_type: not_comparable
+    rationale: PolicyEngine implements the dependent standard deduction formula without exposing this tax-year parameter as a separate variable.
+
+  - legal_id: us:policies/irs/rev-proc-2025-32/standard-deduction#dependent_earned_income_addition
+    country: us
+    program: tax
+    mapping_type: not_comparable
+    rationale: PolicyEngine implements the dependent standard deduction formula without exposing this tax-year parameter as a separate variable.
+
+  - legal_id: us:policies/irs/rev-proc-2025-32/standard-deduction#single_basic_standard_deduction
+    country: us
+    program: tax
+    mapping_type: not_comparable
+    rationale: PolicyEngine stores the single-filer standard deduction amount as parameter data rather than exposing this cell as a separate variable.
 
   - legal_id: us:statutes/26/63/c#additional_std_ded_amount
     country: us
@@ -323,17 +388,6 @@ mappings:
     unit: USD
     comparison: money
     rationale: Same additional standard deduction output for aged/blind conditions in these aged-only tests.
-
-  - legal_id: us:statutes/26/63/c#basic_standard_deduction_amount
-    country: us
-    program: tax
-    mapping_type: direct_variable
-    policyengine_variable: basic_standard_deduction
-    entity: tax_unit
-    period: year
-    unit: USD
-    comparison: money
-    rationale: Same basic standard deduction output.
 
   - legal_id: us:statutes/26/63/c#num_aged_members
     country: us

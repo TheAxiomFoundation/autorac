@@ -245,6 +245,13 @@ def test_policyengine_registry_is_legal_id_keyed():
     )
     assert (
         registry.mapping_for_legal_id(
+            "us:policies/irs/rev-proc-2025-32/standard-deduction#basic_standard_deduction_amount",
+            country="us",
+        ).policyengine_variable
+        == "basic_standard_deduction"
+    )
+    assert (
+        registry.mapping_for_legal_id(
             "us:statutes/26/63/c#standard_deduction",
             country="us",
         ).policyengine_variable
@@ -818,8 +825,60 @@ rules:
     assert any("standard_deduction" in issue for issue in issues)
 
 
-def test_upstream_placement_does_not_flag_tax_standard_deduction():
+def test_upstream_placement_flags_tax_standard_deduction_amounts_in_statute():
     content = """format: rulespec/v1
+rules:
+  - name: basic_standard_deduction_amount
+    kind: parameter
+    entity: TaxUnit
+    dtype: Money
+    period: Year
+    unit: USD
+    source: 26 USC 63(c)
+    versions:
+      - effective_from: '2026-01-01'
+        formula: '16100'
+"""
+
+    issues = find_upstream_placement_issues(
+        content,
+        rules_file=Path("statutes/26/63/c.yaml"),
+    )
+
+    assert len(issues) == 1
+    assert "IRS annual tax-year inflation-adjustment source" in issues[0]
+    assert "basic_standard_deduction_amount" in issues[0]
+
+
+def test_upstream_placement_requires_tax_standard_deduction_import():
+    content = """format: rulespec/v1
+rules:
+  - name: standard_deduction
+    kind: derived
+    entity: TaxUnit
+    dtype: Money
+    period: Year
+    unit: USD
+    source: 26 USC 63(c)
+    versions:
+      - effective_from: '2026-01-01'
+        formula: basic_standard_deduction_amount + additional_std_ded_amount
+"""
+
+    issues = find_upstream_placement_issues(
+        content,
+        rules_file=Path("statutes/26/63/c.yaml"),
+    )
+
+    assert len(issues) == 1
+    assert "Upstream import required" in issues[0]
+    assert "us:policies/irs/rev-proc-2025-32/standard-deduction" in issues[0]
+
+
+def test_upstream_placement_allows_tax_standard_deduction_import():
+    content = """format: rulespec/v1
+imports:
+  - us:policies/irs/rev-proc-2025-32/standard-deduction
 rules:
   - name: standard_deduction
     kind: derived
@@ -840,7 +899,6 @@ rules:
         )
         == []
     )
-
 
 def test_upstream_placement_flags_state_manual_snap_earned_income_deduction():
     content = """format: rulespec/v1
@@ -1813,6 +1871,36 @@ rules:
             "us/guidance/usda/fns/snap-fy2026-cola/page-1": (
                 "Household Size 48 States & District of Columbia "
                 "1 $298 2 $546 Each Additional Member $218"
+            )
+        },
+    )
+
+    assert issues == []
+
+
+def test_source_verification_accepts_values_in_official_source_url_text():
+    content = """format: rulespec/v1
+module:
+  source_verification:
+    source_url: https://www.irs.gov/irb/2025-45_IRB
+    values:
+      standard_deduction_single: 16100
+rules:
+  - name: standard_deduction_single
+    kind: parameter
+    dtype: Money
+    unit: USD
+    versions:
+      - effective_from: '2026-01-01'
+        formula: '16100'
+"""
+
+    issues = find_source_verification_issues(
+        content,
+        source_texts={
+            "https://www.irs.gov/irb/2025-45_IRB": (
+                "For taxable years beginning in 2026, the standard deduction "
+                "for unmarried individuals is $16,100."
             )
         },
     )

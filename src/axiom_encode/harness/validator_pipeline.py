@@ -16,6 +16,7 @@ Uses Claude Code CLI (subprocess) for reviewer agents - cheaper than direct API.
 
 import contextlib
 import hashlib
+import html
 import json
 import logging
 import math
@@ -1555,11 +1556,13 @@ def find_ungrounded_numeric_issues(
     source_text: str | None = None,
 ) -> list[str]:
     """Return issues for generated numeric literals absent from source text."""
-    source = (
-        source_text
-        if source_text is not None
-        else extract_embedded_source_text(content)
-    ).strip()
+    if source_text is not None:
+        source = source_text.strip()
+    else:
+        source = (
+            _extract_source_verification_text(content)
+            or extract_embedded_source_text(content)
+        ).strip()
     if not source:
         return []
 
@@ -1962,8 +1965,61 @@ _SNAP_CONTEXT_SOURCE_TERMS = (
     "snap",
     "supplemental nutrition assistance",
 )
+_TAX_STANDARD_DEDUCTION_CONTEXT_PATH_PATTERNS = (r"(?:^|/)statutes/26/63/",)
+_TAX_STANDARD_DEDUCTION_CONTEXT_RULE_NAME_PATTERNS = (
+    r"standard_deduction",
+    r"dependent_minimum",
+    r"dependent_earned_income_addition",
+)
+_TAX_STANDARD_DEDUCTION_CONTEXT_SOURCE_TERMS = ("standard deduction",)
 
 _UPSTREAM_PLACEMENT_CONTRACTS: tuple[UpstreamPlacementContract, ...] = (
+    UpstreamPlacementContract(
+        authority_label="IRS annual tax-year inflation-adjustment source",
+        placement_noun="an annual federal tax standard-deduction value",
+        allowed_path_patterns=(r"(?:^|/)policies/irs/rev-proc-\d{4}-\d+/",),
+        canonical_import="us:policies/irs/rev-proc-2025-32/standard-deduction",
+        exact_targets={
+            "basic_standard_deduction_table": (
+                "us:policies/irs/rev-proc-2025-32/standard-deduction"
+                "#basic_standard_deduction_amount"
+            ),
+            "basic_standard_deduction_amount": (
+                "us:policies/irs/rev-proc-2025-32/standard-deduction"
+                "#basic_standard_deduction_amount"
+            ),
+            "additional_standard_deduction_per_condition_table": (
+                "us:policies/irs/rev-proc-2025-32/standard-deduction"
+                "#additional_standard_deduction_per_condition_amount"
+            ),
+            "additional_standard_deduction_per_condition_amount": (
+                "us:policies/irs/rev-proc-2025-32/standard-deduction"
+                "#additional_standard_deduction_per_condition_amount"
+            ),
+            "dependent_minimum": (
+                "us:policies/irs/rev-proc-2025-32/standard-deduction"
+                "#dependent_minimum"
+            ),
+            "dependent_earned_income_addition": (
+                "us:policies/irs/rev-proc-2025-32/standard-deduction"
+                "#dependent_earned_income_addition"
+            ),
+            "single_basic_standard_deduction": (
+                "us:policies/irs/rev-proc-2025-32/standard-deduction"
+                "#single_basic_standard_deduction"
+            ),
+        },
+        reference_symbols=(
+            "basic_standard_deduction_amount",
+            "additional_standard_deduction_per_condition_amount",
+            "dependent_minimum",
+            "dependent_earned_income_addition",
+            "single_basic_standard_deduction",
+        ),
+        context_path_patterns=_TAX_STANDARD_DEDUCTION_CONTEXT_PATH_PATTERNS,
+        context_rule_name_patterns=_TAX_STANDARD_DEDUCTION_CONTEXT_RULE_NAME_PATTERNS,
+        context_source_terms=_TAX_STANDARD_DEDUCTION_CONTEXT_SOURCE_TERMS,
+    ),
     UpstreamPlacementContract(
         authority_label="7 USC 2012(j)",
         placement_noun="the SNAP elderly-or-disabled member category",
@@ -2393,11 +2449,14 @@ def find_source_verification_issues(
     if source_verification is None:
         return []
 
-    citation_path = str(source_verification.get("corpus_citation_path") or "").strip()
+    citation_path, source_url, source_label = _source_verification_source_fields(
+        source_verification
+    )
     expected_values = source_verification.get("values")
-    if not citation_path:
+    if not citation_path and not source_url:
         return [
-            "Source verification corpus path required: missing `corpus_citation_path`."
+            "Source verification source required: missing `corpus_citation_path` "
+            "or `source_url`."
         ]
     if not isinstance(expected_values, dict) or not expected_values:
         return [
@@ -2427,15 +2486,20 @@ def find_source_verification_issues(
             )
         )
 
-    source_text = (
-        source_texts.get(citation_path)
-        if source_texts is not None
-        else _fetch_corpus_source_text(citation_path)
+    source_text = _source_verification_text(
+        citation_path=citation_path,
+        source_url=source_url,
+        source_label=source_label,
+        source_texts=source_texts,
     )
     if source_text is None:
         issues.append(
-            "Source verification corpus source missing: "
-            f"`{citation_path}` was not found in corpus.provisions."
+            "Source verification source missing: "
+            + (
+                f"`{citation_path}` was not found in corpus.provisions."
+                if citation_path
+                else f"`{source_url}` could not be fetched."
+            )
         )
         return issues
 
@@ -2443,7 +2507,7 @@ def find_source_verification_issues(
         value_key = str(value_name)
         issues.extend(
             _find_source_text_value_issues(
-                citation_path=citation_path,
+                source_label=source_label,
                 source_text=source_text,
                 value_name=value_key,
                 expected_value=expected_value,
@@ -2461,6 +2525,54 @@ def _source_verification_block(payload: dict[str, Any]) -> dict[str, Any] | None
     if isinstance(source_verification, dict):
         return source_verification
     return None
+
+
+def _source_verification_source_fields(
+    source_verification: dict[str, Any],
+) -> tuple[str, str, str]:
+    citation_path = str(source_verification.get("corpus_citation_path") or "").strip()
+    source_url = str(source_verification.get("source_url") or "").strip()
+    return citation_path, source_url, citation_path or source_url
+
+
+def _source_verification_text(
+    *,
+    citation_path: str,
+    source_url: str,
+    source_label: str,
+    source_texts: dict[str, str] | None = None,
+) -> str | None:
+    if source_texts is not None:
+        source_text = source_texts.get(source_label)
+        if source_text is not None:
+            return source_text
+    return (
+        _fetch_corpus_source_text(citation_path)
+        if citation_path
+        else _fetch_source_url_text(source_url)
+    )
+
+
+def _extract_source_verification_text(content: str) -> str | None:
+    try:
+        payload = yaml.safe_load(content)
+    except (yaml.YAMLError, ValueError):
+        return None
+    if not isinstance(payload, dict) or payload.get("format") != "rulespec/v1":
+        return None
+    source_verification = _source_verification_block(payload)
+    if source_verification is None:
+        return None
+    citation_path, source_url, source_label = _source_verification_source_fields(
+        source_verification
+    )
+    if not source_label:
+        return None
+    return _source_verification_text(
+        citation_path=citation_path,
+        source_url=source_url,
+        source_label=source_label,
+    )
 
 
 def _compare_source_verification_expected_value(
@@ -2511,7 +2623,7 @@ def _compare_source_verification_expected_value(
 
 def _find_source_text_value_issues(
     *,
-    citation_path: str,
+    source_label: str,
     source_text: str,
     value_name: str,
     expected_value: Any,
@@ -2529,7 +2641,7 @@ def _find_source_text_value_issues(
             ):
                 issues.append(
                     "Source verification value missing: "
-                    f"`{citation_path}` does not contain `{value_name}[{cell_key}]` = "
+                    f"`{source_label}` does not contain `{value_name}[{cell_key}]` = "
                     f"{_format_reiteration_value(expected_cell)}."
                 )
         if issues and _source_text_contains_table_value_multiset(
@@ -2543,7 +2655,7 @@ def _find_source_text_value_issues(
         return []
     return [
         "Source verification value missing: "
-        f"`{citation_path}` does not contain `{value_name}` = "
+        f"`{source_label}` does not contain `{value_name}` = "
         f"{_format_reiteration_value(expected_value)}."
     ]
 
@@ -2587,6 +2699,34 @@ def _fetch_corpus_source_text(citation_path: str) -> str | None:
         return None
     body = data[0].get("body") if isinstance(data[0], dict) else None
     return str(body) if body is not None else None
+
+
+def _fetch_source_url_text(source_url: str) -> str | None:
+    """Fetch source text from an official source URL for source verification."""
+    if not source_url:
+        return None
+    parsed = urllib.parse.urlparse(source_url)
+    if parsed.scheme != "https":
+        return None
+    request = urllib.request.Request(
+        source_url,
+        headers={"User-Agent": "axiom-encode source-verification"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            content_type = response.headers.get("content-type", "")
+            body = response.read(2_000_000)
+    except (TimeoutError, urllib.error.HTTPError, urllib.error.URLError):
+        return None
+    if "text/html" in content_type or source_url.endswith((".html", "_IRB")):
+        text = body.decode("utf-8", errors="ignore")
+        text = re.sub(r"(?is)<script[^>]*>.*?</script>", " ", text)
+        text = re.sub(r"(?is)<style[^>]*>.*?</style>", " ", text)
+        text = re.sub(r"(?s)<[^>]+>", " ", text)
+        return html.unescape(text)
+    if "text/plain" in content_type:
+        return body.decode("utf-8", errors="ignore")
+    return None
 
 
 def _normalize_source_verification_text(text: str) -> str:
