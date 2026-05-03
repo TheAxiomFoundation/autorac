@@ -58,18 +58,19 @@ metadata:
 - `authority_level`: comparable rank for default ordering.
 - `effective_start` and `effective_end` where available.
 - `source_url` and source storage pointer.
-- `concept_id`: stable concept key when known.
-- `relations`: structured links to source spans, citation paths, concept ids, or
-  RuleSpec targets.
+- `canonical_target`: stable absolute corpus, statute, regulation, policy, or
+  RuleSpec path when known.
+- `relations`: structured links to source spans, citation paths, and absolute
+  corpus or RuleSpec targets.
 
 The graph is two-stage:
 
 1. **Source graph:** ingestion stores source-source and citation-level relations
    before any RuleSpec exists.
 2. **RuleSpec registry:** after validation, RuleSpec artifacts register symbols,
-   relation metadata, concept ids, and targets. Provisional targets are then
-   reconciled to concrete RuleSpec symbols by citation, source span, concept id,
-   and symbol.
+   relation metadata, and absolute targets. Provisional targets are then
+   reconciled to concrete RuleSpec symbols by citation, source span, target
+   path, and symbol.
 
 Core relation types:
 
@@ -90,20 +91,20 @@ produce multiple RuleSpec records: one reiteration, one delegated setting, and
 one downstream implementation rule, each tied to the source span that justifies
 it.
 
-## Concept Keys
+## Target Keys
 
 Duplicate detection must not compare only RuleSpec symbol names. Every canonical
-target should have a `concept_id` derived from:
+target should be identified by an absolute path:
 
-- source citation path,
-- source span id,
-- legal topic or slot,
-- jurisdiction where relevant,
-- effective-period scope where relevant.
+- corpus citation path for source text or spans,
+- statute/regulation/policy path for legal provisions,
+- RuleSpec path plus `#rule_name` for executable outputs,
+- RuleSpec path plus a slot suffix for imported inputs or delegated settings.
 
 Rule names are still useful for humans and imports, but duplicate detection
-should compare concept ids and declared relation targets. This is what prevents
-the harness from falling back into variable-name heuristics.
+should compare absolute targets and declared relation targets. This is what
+prevents the harness from falling back into variable-name heuristics or
+model-generated friendly labels.
 
 ## Rule Identity and Outputs
 
@@ -157,9 +158,8 @@ rules:
     kind: parameter
     dtype: Money
     unit: USD
-    metadata:
+metadata:
       source_relation: sets
-      concept_id: us.snap.standard_utility_allowance.co
       source_span_id: corpus.provisions:co/snap/manual/utility-allowance#table-1
       sets:
         - target: us:regulation/7-cfr/273/9/d/6/iii#snap_standard_utility_allowance_slot
@@ -173,9 +173,8 @@ Recommended metadata fields:
 
 - `source_relation`: one of `defines`, `delegates`, `implements`, `sets`,
   `amends`, or `reiterates`.
-- `concept_id`: stable concept key.
 - `source_span_id`: source span that justifies the rule.
-- `defines`: list of target/concept objects when a rule is canonical.
+- `defines`: list of absolute target objects when a rule is canonical.
 - `delegates`: list of downstream slot targets created by this rule.
 - `implements`: list of upstream targets implemented by this rule.
 - `sets`: list of delegated targets set by this rule.
@@ -196,7 +195,7 @@ rules:
 The registry should index all RuleSpec relations so a downstream run can ask:
 
 - What upstream source spans and RuleSpec targets exist for this citation/topic?
-- What concept ids are already defined?
+- What absolute targets are already defined?
 - Which downstream sources set or amend this target?
 - Which sources merely reiterate this target?
 
@@ -215,7 +214,7 @@ Required deterministic checks:
   must declare `metadata.source_relation: amends` and `metadata.amends`.
 - If source metadata says `implements` a target, the corresponding RuleSpec rule
   must declare `metadata.source_relation: implements` and `metadata.implements`.
-- If a rule defines a concept id already defined upstream and does not declare
+- If a rule defines an absolute target already defined upstream and does not declare
   `implements`, `sets`, `amends`, or a reiteration, flag it as downstream
   duplication.
 - If a downstream source cites an upstream provision and the graph resolves a
@@ -243,7 +242,7 @@ For each graph-resolved upstream target before model invocation:
 
 Planned stubs must include:
 
-- target citation or concept id,
+- target citation or absolute target,
 - relation type,
 - source URL or source span id,
 - missing reason,
@@ -298,7 +297,7 @@ Every generated non-canonical executable rule should persist a trace:
 - selected relation,
 - rejected alternatives and reason,
 - imports or stubs materialized,
-- concept id,
+- absolute target,
 - effective period,
 - validation checks that depended on the relation.
 
@@ -344,8 +343,8 @@ earned-income deductions, or statutory elderly/disabled definitions.
   documents.
 - Populate `corpus.provisions.relations` from source-side metadata and citation
   extraction.
-- Add concept ids and source span ids.
-- Add graph queries for upstream candidates by citation, concept id, topic,
+- Add canonical targets and source span ids.
+- Add graph queries for upstream candidates by citation, absolute target, topic,
   jurisdiction, authority rank, and effective period.
 
 ### Phase 3: Encoder Context Retrieval
@@ -354,7 +353,7 @@ earned-income deductions, or statutory elderly/disabled definitions.
   invocation.
 - Materialize upstream candidates into the workspace or create planned stubs.
 - Include upstream candidates in prompt context with their import targets,
-  concept ids, source spans, effective periods, and relation hints.
+  absolute targets, source spans, effective periods, and relation hints.
 - Require the model to emit rule-level relation metadata for each rule.
 - Fail validation when relation metadata is absent for source metadata that
   requires it.
@@ -410,9 +409,9 @@ earned-income deductions, or statutory elderly/disabled definitions.
   structure `amends`.
 - Missing upstream encodings should block promotion or create explicit planned
   stubs, not silently allow downstream duplication.
-- Concept ids must be stable enough to survive renames. If concept ids are too
-  model-generated or too name-like, duplicate detection will drift back toward
-  heuristics.
+- Absolute targets must be stable enough to survive human-facing renames. If
+  targets are model-generated or name-like, duplicate detection will drift back
+  toward heuristics.
 
 ## Independent Review Incorporated
 
@@ -423,7 +422,7 @@ reflected here:
 - source graph relations and RuleSpec target relations need a two-stage
   reconciliation model;
 - rule metadata needs a concrete per-rule schema;
-- duplicate detection needs concept ids, not only symbol names;
+- duplicate detection needs absolute targets, not only symbol names;
 - upstream imports need a materialization contract;
 - planned stubs need lifecycle rules;
 - upstream lookup must be effective-period aware;

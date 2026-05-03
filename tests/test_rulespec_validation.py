@@ -792,7 +792,12 @@ def test_rulespec_accepts_accepted_source_claim_reference(tmp_path, monkeypatch)
             "id": "claims:us/guidance/example/page-1#sets-maximum-allotment",
             "kind": "sets",
             "status": "accepted",
-            "subject": {"type": "concept", "id": "snap.maximum_allotment"},
+            "subject": {
+                "type": "statutory_rule_slot",
+                "id": "us:statutes/7/2017/a#snap_allotment_before_minimum.input.snap_maximum_allotment",
+                "statutory_reference": "7 USC 2017(a)",
+                "corpus_citation_path": "us/statute/7/2017",
+            },
             "object": {
                 "type": "parameter_table",
                 "unit": "USD",
@@ -833,7 +838,12 @@ def test_rulespec_rejects_executable_or_unaccepted_source_claim(tmp_path, monkey
             "id": "claims:us/guidance/example/page-1#sets-maximum-allotment",
             "kind": "sets",
             "status": "proposed",
-            "subject": {"type": "concept", "id": "snap.maximum_allotment"},
+            "subject": {
+                "type": "statutory_rule_slot",
+                "id": "us:statutes/7/2017/a#snap_allotment_before_minimum.input.snap_maximum_allotment",
+                "statutory_reference": "7 USC 2017(a)",
+                "corpus_citation_path": "us/statute/7/2017",
+            },
             "formula": "if household_size == 1: 298 else: 0",
             "evidence": [
                 {"corpus_citation_path": "us/guidance/example/page-1"},
@@ -1867,7 +1877,7 @@ rules:
     )
 
 
-def test_upstream_placement_requires_concept_for_defines_relation():
+def test_upstream_placement_requires_target_for_defines_relation():
     content = """format: rulespec/v1
 rules:
   - name: canonical_income_rule
@@ -1888,7 +1898,30 @@ rules:
     assert len(issues) == 1
     assert "metadata.source_relation: defines" in issues[0]
     assert "metadata.defines" in issues[0]
+
+
+def test_upstream_placement_rejects_concept_id_placeholder():
+    content = """format: rulespec/v1
+rules:
+  - name: canonical_income_rule
+    kind: derived
+    entity: Household
+    dtype: Money
+    period: Month
+    unit: USD
+    metadata:
+      source_relation: defines
+      concept_id: snap.income
+    versions:
+      - effective_from: '2026-01-01'
+        formula: household_income
+"""
+
+    issues = find_upstream_placement_issues(content)
+
+    assert len(issues) == 1
     assert "metadata.concept_id" in issues[0]
+    assert "absolute RuleSpec or corpus target" in issues[0]
 
 
 def test_extract_json_object_accepts_literal_newline_in_reviewer_string():

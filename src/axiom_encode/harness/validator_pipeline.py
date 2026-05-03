@@ -2153,6 +2153,16 @@ def _find_rule_metadata_schema_issues(rules: list[Any]) -> list[str]:
             )
             continue
 
+        if str(metadata.get("concept_id") or "").strip():
+            issues.append(
+                f"RuleSpec relation metadata has placeholder target: rule "
+                f"`{rule_name}` declares `metadata.concept_id`; use an absolute "
+                "RuleSpec or corpus target in `metadata.defines`, "
+                "`metadata.delegates`, `metadata.implements`, `metadata.sets`, "
+                "or `metadata.amends` instead."
+            )
+            continue
+
         if source_relation == "reiterates":
             if str(rule.get("kind") or "").strip().lower() != "reiteration":
                 issues.append(
@@ -2164,12 +2174,12 @@ def _find_rule_metadata_schema_issues(rules: list[Any]) -> list[str]:
 
         if source_relation == "defines":
             has_target = any(_iter_relation_target_values(metadata.get("defines")))
-            has_concept_id = bool(str(metadata.get("concept_id") or "").strip())
-            if not has_target and not has_concept_id:
+            if not has_target:
                 issues.append(
                     f"RuleSpec relation metadata is incomplete: rule `{rule_name}` "
                     "declares `metadata.source_relation: defines` and must also "
-                    "declare `metadata.defines` or `metadata.concept_id`."
+                    "declare `metadata.defines` with an absolute RuleSpec or "
+                    "corpus target."
                 )
             continue
 
