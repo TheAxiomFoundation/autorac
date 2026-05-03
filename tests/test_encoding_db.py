@@ -472,7 +472,7 @@ class TestRowToRun:
         assert run.review_results.policyengine_match == 0.95
         assert run.lessons == "Some lessons"
         assert run.rulespec_content == "content"
-        assert run.statute_text == "source text"
+        assert run.source_text == "source text"
         assert run.axiom_encode_version == "0.2.0"
 
 

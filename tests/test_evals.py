@@ -33,6 +33,7 @@ from axiom_encode.harness.evals import (
     load_eval_suite_manifest,
     parse_runner_spec,
     prepare_eval_workspace,
+    resolve_corpus_source_unit,
     run_eval_suite,
     run_source_eval,
     select_context_files,
@@ -72,6 +73,134 @@ class TestParseRunnerSpec:
         assert runner.name == "openai-gpt-5.4"
         assert runner.backend == "openai"
         assert runner.model == "gpt-5.4"
+
+
+class TestCorpusSourceResolution:
+    def test_resolves_usc_child_citation_to_available_section_provision(self, tmp_path):
+        corpus_path = tmp_path / "axiom-corpus"
+        provisions_dir = (
+            corpus_path / "data" / "corpus" / "provisions" / "us" / "statute"
+        )
+        provisions_dir.mkdir(parents=True)
+        (provisions_dir / "2026-01-01.jsonl").write_text(
+            json.dumps(
+                {
+                    "citation_path": "us/statute/26/3101",
+                    "body": "Section text states 6.2 percent.",
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        source = resolve_corpus_source_unit("26 USC 3101(a)", corpus_path)
+
+        assert source.citation_path == "us/statute/26/3101"
+        assert source.body == "Section text states 6.2 percent."
+        assert source.source == "local"
+
+    def test_build_prompt_requires_resolved_corpus_locator(self, tmp_path):
+        workspace = prepare_eval_workspace(
+            citation="26 USC 3101(a)",
+            runner=parse_runner_spec("codex:gpt-5.4"),
+            output_root=tmp_path / "out",
+            source_text="Section text states 6.2 percent.",
+            axiom_rules_path=tmp_path / "rules-us",
+            mode="cold",
+            source_metadata_payload={
+                "corpus_citation_path": "us/statute/26/3101",
+            },
+            extra_context_paths=[],
+        )
+
+        prompt = _build_eval_prompt(
+            "26 USC 3101(a)",
+            "cold",
+            workspace,
+            [],
+            target_file_name="a.yaml",
+            include_tests=True,
+            runner_backend="codex",
+        )
+
+        assert "read from `corpus.provisions` at `us/statute/26/3101`" in prompt
+        assert (
+            "module.source_verification.corpus_citation_path: us/statute/26/3101"
+            in prompt
+        )
+        assert "Do not emit `source_url`" in prompt
+
+    def test_workspace_merges_source_metadata_sidecar_with_corpus_payload(
+        self, tmp_path
+    ):
+        metadata_file = tmp_path / "source.yaml"
+        metadata_file.write_text("source_name: Federal Insurance Contributions Act\n")
+
+        workspace = prepare_eval_workspace(
+            citation="26 USC 3101(a)",
+            runner=parse_runner_spec("codex:gpt-5.4"),
+            output_root=tmp_path / "out",
+            source_text="Section text states 6.2 percent.",
+            axiom_rules_path=tmp_path / "rules-us",
+            mode="cold",
+            source_metadata_path=metadata_file,
+            source_metadata_payload={
+                "corpus_citation_path": "us/statute/26/3101",
+            },
+            extra_context_paths=[],
+        )
+
+        assert workspace.source_metadata == {
+            "source_name": "Federal Insurance Contributions Act",
+            "corpus_citation_path": "us/statute/26/3101",
+        }
+
+    def test_generation_result_fails_when_post_encode_ci_fails(self, tmp_path):
+        response = Mock()
+        response.text = (
+            "=== FILE: sample.yaml ===\n"
+            "format: rulespec/v1\n"
+            "module:\n"
+            "  summary: source\n"
+            "rules: []\n"
+            "=== FILE: sample.test.yaml ===\n"
+            "[]\n"
+        )
+        response.duration_ms = 1
+        response.tokens = None
+        response.estimated_cost_usd = None
+        response.actual_cost_usd = None
+        response.trace = {}
+        response.unexpected_accesses = []
+        response.error = None
+
+        with (
+            patch("axiom_encode.harness.evals._run_prompt_eval", return_value=response),
+            patch(
+                "axiom_encode.harness.evals.evaluate_artifact",
+                return_value=EvalArtifactMetrics(
+                    compile_pass=True,
+                    compile_issues=[],
+                    ci_pass=False,
+                    ci_issues=["missing corpus source verification"],
+                    embedded_source_present=True,
+                    grounded_numeric_count=0,
+                    ungrounded_numeric_count=0,
+                    grounding=[],
+                ),
+            ),
+        ):
+            [result] = run_source_eval(
+                source_id="sample",
+                source_text="source",
+                runner_specs=["codex:gpt-5.4"],
+                output_root=tmp_path / "out",
+                policy_path=tmp_path / "rules-us",
+                mode="cold",
+            )
+
+        assert result.success is False
+        assert result.error == "Generated RuleSpec failed CI validation"
 
 
 class TestCodexPromptEval:

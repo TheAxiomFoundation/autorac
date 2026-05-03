@@ -79,7 +79,7 @@ def sample_encoding_run(sample_review_results):
         agent_type="axiom_encode:encoder",
         agent_model="claude-opus-4-6",
         rulespec_content="# EITC\nEarnedIncome:\n  dtype: Money\n",
-        statute_text="Sample statute text for EITC",
+        source_text="Sample statute text for EITC",
         review_results=sample_review_results,
     )
     run.total_duration_ms = 4500

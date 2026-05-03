@@ -279,10 +279,14 @@ def main():
 
     # encode command - run the current RuleSpec generation path
     encode_parser = subparsers.add_parser(
-        "encode", help="Encode a USC citation as Axiom RuleSpec"
+        "encode", help="Encode a corpus-backed citation as Axiom RuleSpec"
     )
     encode_parser.add_argument(
-        "citation", help="Statute citation (e.g., '26 USC 1(j)(2)')"
+        "citation",
+        help=(
+            "USC citation or corpus citation path "
+            "(e.g., '26 USC 1(j)(2)' or 'us/statute/26/1')"
+        ),
     )
     encode_parser.add_argument(
         "--output",
@@ -1480,7 +1484,7 @@ def _extract_subsections_from_xml(xml_path: Path, section: str) -> list[dict]:
 
 
 def cmd_encode(args):
-    """Encode a USC citation through the current RuleSpec eval pipeline."""
+    """Encode a corpus-backed source unit through the RuleSpec eval pipeline."""
     model = args.model or DEFAULT_OPENAI_MODEL
     runner = f"{args.backend}:{model}"
     corpus_path = args.corpus_path or _resolve_repo_checkout("axiom-corpus")

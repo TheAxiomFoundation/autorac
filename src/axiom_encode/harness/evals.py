@@ -27,8 +27,8 @@ from axiom_encode.constants import DEFAULT_OPENAI_MODEL
 from axiom_encode.repo_routing import find_policy_repo_root
 from axiom_encode.statute import (
     CitationParts,
+    citation_to_citation_path,
     citation_to_relative_rulespec_path,
-    find_citation_text,
     parse_usc_citation,
 )
 
@@ -51,6 +51,9 @@ from .pricing import estimate_usage_cost_usd
 from .validator_pipeline import (
     ValidationResult,
     ValidatorPipeline,
+    _candidate_local_corpus_provision_files,
+    _fetch_supabase_corpus_source_text,
+    _read_local_corpus_provision_file,
     extract_embedded_source_text,
     extract_grounding_values,
     extract_named_scalar_occurrences,
@@ -179,6 +182,16 @@ class EvalWorkspace:
     context_files: list[EvalContextFile] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class CorpusSourceUnit:
+    """A normalized source unit resolved from corpus.provisions."""
+
+    requested: str
+    citation_path: str
+    body: str
+    source: Literal["local", "supabase"]
+
+
 @dataclass
 class EvalPromptResponse:
     """Raw model output and trace from a prompt-only eval run."""
@@ -252,6 +265,7 @@ class EvalSuiteCase:
     citation: str | None = None
     source_id: str | None = None
     source_file: Path | None = None
+    corpus_citation_path: str | None = None
     metadata_file: Path | None = None
     policyengine_rule_hint: str | None = None
     oracle: EvalOracleMode = "none"
@@ -336,7 +350,6 @@ def run_model_eval(
     include_tests: bool = False,
 ) -> list[EvalResult]:
     """Run a deterministic comparison over one or more citations."""
-    xml_root = corpus_path / "data" / "uscode"
     results: list[EvalResult] = []
 
     for runner in [parse_runner_spec(spec) for spec in runner_specs]:
@@ -348,7 +361,7 @@ def run_model_eval(
                     output_root=output_root,
                     policy_path=policy_path,
                     runtime_axiom_rules_path=runtime_axiom_rules_path,
-                    xml_root=xml_root,
+                    corpus_path=corpus_path,
                     mode=mode,
                     extra_context_paths=extra_context_paths or [],
                     include_tests=include_tests,
@@ -473,6 +486,11 @@ def load_eval_suite_manifest(path: Path) -> EvalSuiteManifest:
             source_file=(
                 _resolve_manifest_path(base_dir, item["source_file"])
                 if item.get("source_file")
+                else None
+            ),
+            corpus_citation_path=(
+                str(item.get("corpus_citation_path")).strip()
+                if item.get("corpus_citation_path") is not None
                 else None
             ),
             metadata_file=(
@@ -603,15 +621,36 @@ def run_eval_suite(
                             if case.source_file is not None
                             else None
                         ) or axiom_rules_path
+                        source_metadata_payload = None
+                        if case.corpus_citation_path:
+                            if corpus_path is None:
+                                raise ValueError(
+                                    "corpus_path is required for corpus-backed "
+                                    "source eval suite cases"
+                                )
+                            source_unit = resolve_corpus_source_unit(
+                                case.corpus_citation_path,
+                                corpus_path,
+                            )
+                            source_text = source_unit.body
+                            source_metadata_payload = {
+                                "corpus_citation_path": source_unit.citation_path,
+                                "corpus_source": source_unit.source,
+                                "requested_source": source_unit.requested,
+                            }
+                        else:
+                            source_text = load_source_text_for_eval(
+                                case.source_file or Path()
+                            )
                         case_results = run_source_eval(
                             source_id=case.source_id or case.name,
-                            source_text=load_source_text_for_eval(
-                                case.source_file or Path()
-                            ),
+                            source_text=source_text,
                             runner_specs=resolved_runners,
                             output_root=case_output_root,
                             policy_path=policy_repo_root,
                             source_path=case.source_file,
+                            source_metadata_path=case.metadata_file,
+                            source_metadata_payload=source_metadata_payload,
                             runtime_axiom_rules_path=axiom_rules_path,
                             mode=case.mode,
                             extra_context_paths=extra_context,
@@ -1205,8 +1244,10 @@ def _validate_eval_suite_case(case: EvalSuiteCase, index: int) -> None:
     if case.kind == "source":
         if not case.source_id:
             raise ValueError(f"Eval suite case #{index} is missing 'source_id'")
-        if case.source_file is None:
-            raise ValueError(f"Eval suite case #{index} is missing 'source_file'")
+        if case.source_file is None and not case.corpus_citation_path:
+            raise ValueError(
+                f"Eval suite case #{index} is missing 'corpus_citation_path'"
+            )
 
 
 def _fraction(numerator: int, denominator: int) -> float:
@@ -1327,9 +1368,7 @@ def prepare_eval_workspace(
     source_file = workspace_root / "source.txt"
     source_file.write_text(source_text.strip() + "\n")
     source_metadata: dict[str, object] | None = None
-    if source_metadata_payload is not None:
-        source_metadata = dict(source_metadata_payload)
-    elif source_metadata_path is not None:
+    if source_metadata_path is not None:
         payload = yaml.safe_load(source_metadata_path.read_text())
         if payload is not None and not isinstance(payload, dict):
             raise ValueError(
@@ -1337,10 +1376,15 @@ def prepare_eval_workspace(
                 f"{source_metadata_path}"
             )
         source_metadata = payload
-    else:
+    elif source_metadata_payload is None:
         source_metadata_path, source_metadata = _load_source_metadata_for_path(
             source_path
         )
+    if source_metadata_payload is not None:
+        source_metadata = {
+            **(source_metadata or {}),
+            **source_metadata_payload,
+        }
     source_metadata_file: Path | None = None
     if source_metadata is not None:
         source_metadata_file = workspace_root / "source-metadata.json"
@@ -1466,6 +1510,128 @@ def _load_source_metadata_for_path(
 def load_source_text_for_eval(source_path: Path) -> str:
     """Load authoritative eval text directly from a source file."""
     return Path(source_path).read_text()
+
+
+def resolve_corpus_source_unit(
+    identifier: str,
+    corpus_path: Path,
+) -> CorpusSourceUnit:
+    """Resolve an encode target to normalized corpus.provisions text.
+
+    The identifier may already be a corpus citation path, or it may be a USC
+    citation that can be normalized to one. For USC child fragments, the
+    resolver falls back to the nearest available section-level corpus provision
+    because current USC corpus artifacts are section-granular.
+    """
+    for citation_path in _candidate_corpus_citation_paths(identifier):
+        local_text = _fetch_local_corpus_source_text_from_repo(
+            citation_path,
+            corpus_path,
+        )
+        if local_text is not None:
+            return CorpusSourceUnit(
+                requested=identifier,
+                citation_path=citation_path,
+                body=local_text,
+                source="local",
+            )
+        supabase_text = _fetch_supabase_corpus_source_text(citation_path)
+        if supabase_text is not None:
+            return CorpusSourceUnit(
+                requested=identifier,
+                citation_path=citation_path,
+                body=supabase_text,
+                source="supabase",
+            )
+
+    candidates = ", ".join(_candidate_corpus_citation_paths(identifier)[:4])
+    raise ValueError(
+        "No corpus.provisions source text found for "
+        f"{identifier!r}. Tried: {candidates}"
+    )
+
+
+def _candidate_corpus_citation_paths(identifier: str) -> tuple[str, ...]:
+    """Return exact and nearest-parent corpus citation path candidates."""
+    normalized = identifier.strip().strip("/")
+    if not normalized:
+        return ()
+
+    try:
+        primary = (
+            normalized
+            if _looks_like_corpus_citation_path(normalized)
+            else citation_to_citation_path(normalized)
+        )
+    except ValueError:
+        primary = normalized
+
+    candidates: list[str] = []
+
+    def add(candidate: str) -> None:
+        cleaned = candidate.strip().strip("/")
+        if cleaned and cleaned not in candidates:
+            candidates.append(cleaned)
+
+    add(primary)
+    parts = primary.split("/")
+    if len(parts) >= 5 and parts[:2] in (["us", "statute"], ["us", "statutes"]):
+        # Current USC corpus artifacts are section-level for these sources.
+        add("/".join(["us", "statute", parts[2], parts[3]]))
+    return tuple(candidates)
+
+
+def _looks_like_corpus_citation_path(identifier: str) -> bool:
+    parts = identifier.split("/")
+    return len(parts) >= 3 and parts[1] in {
+        "guidance",
+        "policy",
+        "regulation",
+        "statute",
+        "statutes",
+    }
+
+
+def _fetch_local_corpus_source_text_from_repo(
+    citation_path: str,
+    corpus_path: Path,
+) -> str | None:
+    normalized_path = citation_path.strip().strip("/")
+    if not normalized_path:
+        return None
+    provisions_root = _corpus_provisions_root(corpus_path)
+    if provisions_root is None:
+        return None
+    for provision_file in _candidate_local_corpus_provision_files(
+        provisions_root,
+        normalized_path,
+    ):
+        source_text = _read_local_corpus_provision_file(
+            provision_file,
+            normalized_path,
+        )
+        if source_text is not None:
+            return source_text
+    return None
+
+
+def _corpus_provisions_root(corpus_path: Path) -> Path | None:
+    root = Path(corpus_path).expanduser()
+    candidates = (
+        root,
+        root / "provisions",
+        root / "data" / "corpus",
+        root / "data" / "corpus" / "provisions",
+    )
+    for candidate in candidates:
+        provisions_root = (
+            candidate if candidate.name == "provisions" else candidate / "provisions"
+        )
+        with contextlib.suppress(OSError):
+            resolved = provisions_root.resolve()
+            if resolved.is_dir():
+                return resolved
+    return None
 
 
 def _materialize_resolved_definition_stub(
@@ -1757,14 +1923,13 @@ def _run_single_eval(
     output_root: Path,
     policy_path: Path,
     runtime_axiom_rules_path: Path,
-    xml_root: Path,
+    corpus_path: Path,
     mode: EvalMode,
     extra_context_paths: list[Path],
     include_tests: bool = False,
 ) -> EvalResult:
-    source_text = find_citation_text(citation, xml_root)
-    if not source_text:
-        raise ValueError(f"No statute text found for {citation}")
+    source_unit = resolve_corpus_source_unit(citation, corpus_path)
+    source_text = source_unit.body
 
     workspace = prepare_eval_workspace(
         citation=citation,
@@ -1773,6 +1938,11 @@ def _run_single_eval(
         source_text=source_text,
         axiom_rules_path=policy_path,
         mode=mode,
+        source_metadata_payload={
+            "corpus_citation_path": source_unit.citation_path,
+            "corpus_source": source_unit.source,
+            "requested_source": source_unit.requested,
+        },
         extra_context_paths=extra_context_paths,
     )
 
@@ -1814,6 +1984,7 @@ def _run_single_eval(
             axiom_rules_path=runtime_axiom_rules_path,
             source_text=source_text,
         )
+    validation_error = _eval_artifact_validation_error(metrics)
 
     tokens = response.tokens
     result = EvalResult(
@@ -1826,9 +1997,10 @@ def _run_single_eval(
         trace_file=str(trace_file),
         context_manifest_file=str(workspace.manifest_file),
         duration_ms=response.duration_ms,
-        success=wrote_artifact and response.error is None,
+        success=wrote_artifact and response.error is None and validation_error is None,
         error=response.error
-        or (None if wrote_artifact else "No RuleSpec content returned"),
+        or (None if wrote_artifact else "No RuleSpec content returned")
+        or validation_error,
         generation_prompt_sha256=generation_prompt_sha256,
         input_tokens=tokens.input_tokens if tokens else 0,
         output_tokens=tokens.output_tokens if tokens else 0,
@@ -1843,6 +2015,16 @@ def _run_single_eval(
     )
     emit_eval_result(result, response.trace)
     return result
+
+
+def _eval_artifact_validation_error(metrics: EvalArtifactMetrics | None) -> str | None:
+    if metrics is None:
+        return None
+    if not metrics.compile_pass:
+        return "Generated RuleSpec failed compile validation"
+    if not metrics.ci_pass:
+        return "Generated RuleSpec failed CI validation"
+    return None
 
 
 def _run_single_source_eval(
@@ -1918,6 +2100,7 @@ def _run_single_source_eval(
             policyengine_country=policyengine_country,
             policyengine_rule_hint=policyengine_rule_hint,
         )
+    validation_error = _eval_artifact_validation_error(metrics)
 
     tokens = response.tokens
     result = EvalResult(
@@ -1930,9 +2113,10 @@ def _run_single_source_eval(
         trace_file=str(trace_file),
         context_manifest_file=str(workspace.manifest_file),
         duration_ms=response.duration_ms,
-        success=wrote_artifact and response.error is None,
+        success=wrote_artifact and response.error is None and validation_error is None,
         error=response.error
-        or (None if wrote_artifact else "No RuleSpec content returned"),
+        or (None if wrote_artifact else "No RuleSpec content returned")
+        or validation_error,
         generation_prompt_sha256=generation_prompt_sha256,
         input_tokens=tokens.input_tokens if tokens else 0,
         output_tokens=tokens.output_tokens if tokens else 0,
@@ -1971,6 +2155,7 @@ def _build_rulespec_eval_prompt(
 ) -> str:
     """Build the RuleSpec authoring prompt used by current evals."""
     source_text = workspace.source_file.read_text().strip()
+    corpus_citation_path = _workspace_corpus_citation_path(workspace)
     backend_section = ""
     if runner_backend == "openai":
         backend_section = (
@@ -2123,6 +2308,15 @@ Preferred principal output:
 {source_text}
 === END SOURCE.TXT ===
 """
+    corpus_source_section = ""
+    corpus_rulespec_requirement = ""
+    if corpus_citation_path:
+        corpus_source_section = f"""
+- This source text was read from `corpus.provisions` at `{corpus_citation_path}`.
+"""
+        corpus_rulespec_requirement = f"""
+- Include `module.source_verification.corpus_citation_path: {corpus_citation_path}` exactly.
+"""
 
     return f"""You are participating in an encoding eval for {citation}.
 
@@ -2131,6 +2325,7 @@ Author the output in Axiom RuleSpec YAML.
 Primary legal authority:
 - `./source.txt` contains the complete source text for this target source unit.
 - Treat that source text as the only source of legal truth for this artifact.
+{corpus_source_section.rstrip()}
 {inline_source}
 {source_metadata_section}{context_section}
 {backend_section}
@@ -2138,6 +2333,8 @@ Primary legal authority:
 RuleSpec requirements:
 - The RuleSpec file must begin with `format: rulespec/v1`.
 - Include `module.summary: |-` containing the exact operative source text or an exact compact excerpt sufficient to audit all encoded rules.
+- Do not emit `source_url`; RuleSpec source verification reads `corpus.provisions`, not raw PDFs or web pages.
+{corpus_rulespec_requirement.rstrip()}
 - Use `rules:` as a list of rule objects. The filepath is the ID; do not add an `id:` field.
 - Do not invent schema keys like `namespace:`, `parameter`, `variable`, or `rule:`.
 - Rule kinds are `parameter`, `derived`, or `relation`. Use `parameter` for named source scalars and `derived` for entity-scoped outputs.
@@ -2176,6 +2373,8 @@ Minimal RuleSpec shape:
 ```yaml
 format: rulespec/v1
 module:
+  source_verification:
+    corpus_citation_path: <corpus citation path from this prompt>
   summary: |-
     <exact source text>
 rules:
@@ -2202,6 +2401,17 @@ rules:
 {output_rules}
 Do not respond with summaries, markdown prose, or file-write confirmations.
 """
+
+
+def _workspace_corpus_citation_path(workspace: EvalWorkspace) -> str | None:
+    source_metadata = workspace.source_metadata
+    if not isinstance(source_metadata, dict):
+        return None
+    raw_value = source_metadata.get("corpus_citation_path")
+    if not isinstance(raw_value, str):
+        return None
+    citation_path = raw_value.strip()
+    return citation_path or None
 
 
 def _build_eval_prompt(

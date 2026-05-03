@@ -77,12 +77,24 @@ rules:
 """
 
 
-def get_encoder_prompt(citation: str, output_path: str) -> str:
+def get_encoder_prompt(
+    citation: str,
+    output_path: str,
+    corpus_citation_path: str | None = None,
+) -> str:
     """Return a complete RuleSpec task prompt for a source unit."""
+    corpus_section = ""
+    if corpus_citation_path:
+        corpus_section = f"""
+Corpus source path: {corpus_citation_path}
+Include `module.source_verification.corpus_citation_path: {corpus_citation_path}` exactly.
+"""
+
     return f"""{ENCODER_PROMPT}
 
 Target citation/source id: {citation}
 Expected output path: {output_path}
+{corpus_section}
 
 Return only raw RuleSpec YAML for that path.
 """

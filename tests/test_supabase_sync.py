@@ -107,6 +107,7 @@ class TestSyncRunToSupabase:
             mock_run.timestamp = datetime.now()
             mock_run.citation = "26 USC 1"
             mock_run.file_path = "test.yaml"
+            mock_run.source_text = "source text"
             mock_run.rulespec_content = ""
             mock_run.review_results = None
 
@@ -124,6 +125,7 @@ class TestSyncRunToSupabase:
         mock_run.timestamp = datetime.now()
         mock_run.citation = "26 USC 1"
         mock_run.file_path = "test.yaml"
+        mock_run.source_text = "source text"
         mock_run.rulespec_content = "format: rulespec/v1"
         mock_run.review_results = MagicMock(
             reviews=[
@@ -157,6 +159,7 @@ class TestSyncRunToSupabase:
             mock_client.schema.return_value.table.return_value.upsert.call_args.args[0]
         )
         assert upsert_payload["rulespec_content"] == "format: rulespec/v1"
+        assert upsert_payload["source_text"] == "source text"
         assert upsert_payload["scores"]["rulespec"] == 8.0
         assert upsert_payload["scores"]["formula"] == 7.0
 
@@ -166,6 +169,7 @@ class TestSyncRunToSupabase:
         mock_run.timestamp = datetime.now()
         mock_run.citation = "26 USC 1"
         mock_run.file_path = "test.yaml"
+        mock_run.source_text = "source text"
         mock_run.rulespec_content = ""
         mock_run.review_results = None
 
@@ -183,6 +187,7 @@ class TestSyncRunToSupabase:
         mock_run.timestamp = datetime.now()
         mock_run.citation = "26 USC 1"
         mock_run.file_path = "test.yaml"
+        mock_run.source_text = "source text"
         mock_run.rulespec_content = ""
         mock_run.review_results = None
 
@@ -200,6 +205,7 @@ class TestSyncRunToSupabase:
         mock_run.timestamp = datetime.now()
         mock_run.citation = "26 USC 1"
         mock_run.file_path = "test.yaml"
+        mock_run.source_text = "source text"
         mock_run.rulespec_content = ""
         mock_run.review_results = None
 

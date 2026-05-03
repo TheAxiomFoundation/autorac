@@ -33,8 +33,9 @@ class EncoderRequest:
     """Input for an encoding operation."""
 
     citation: str
-    statute_text: str
+    source_text: str
     output_path: Path
+    corpus_citation_path: str | None = None
     model: str = DEFAULT_CLI_MODEL
     timeout: int = 300
 
@@ -75,7 +76,7 @@ class EncoderBackend(ABC):
         pass  # pragma: no cover
 
     @abstractmethod
-    def predict(self, citation: str, statute_text: str) -> PredictionScores:
+    def predict(self, citation: str, source_text: str) -> PredictionScores:
         """Predict quality scores before encoding."""
         pass  # pragma: no cover
 
@@ -153,8 +154,12 @@ class ClaudeCodeBackend(EncoderBackend):
 
         request.output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        prompt = get_encoder_prompt(request.citation, str(request.output_path))
-        prompt += f"\n\nStatute Text:\n{request.statute_text}\n"
+        prompt = get_encoder_prompt(
+            request.citation,
+            str(request.output_path),
+            corpus_citation_path=request.corpus_citation_path,
+        )
+        prompt += f"\n\nSource Text:\n{request.source_text}\n"
 
         output, returncode = self._run_claude_code(
             prompt=prompt,
@@ -202,14 +207,14 @@ class ClaudeCodeBackend(EncoderBackend):
             trace=trace,
         )
 
-    def predict(self, citation: str, statute_text: str) -> PredictionScores:
+    def predict(self, citation: str, source_text: str) -> PredictionScores:
         """Predict scores using Claude Code CLI."""
         prompt = f"""Predict quality scores for encoding the following source text into RuleSpec.
 
 Citation: {citation}
 
-Statute Text:
-{statute_text[:2000]}{"..." if len(statute_text) > 2000 else ""}
+Source Text:
+{source_text[:2000]}{"..." if len(source_text) > 2000 else ""}
 
 Score each dimension from 1-10. Output ONLY valid JSON:
 {{
@@ -328,8 +333,12 @@ class CodexCLIBackend(EncoderBackend):
         start = time.time()
         request.output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        prompt = get_encoder_prompt(request.citation, str(request.output_path))
-        prompt += f"\n\nStatute Text:\n{request.statute_text}\n"
+        prompt = get_encoder_prompt(
+            request.citation,
+            str(request.output_path),
+            corpus_citation_path=request.corpus_citation_path,
+        )
+        prompt += f"\n\nSource Text:\n{request.source_text}\n"
 
         output, returncode = self._run_codex_exec(
             prompt=prompt,
@@ -378,7 +387,7 @@ class CodexCLIBackend(EncoderBackend):
             trace=trace,
         )
 
-    def predict(self, citation: str, statute_text: str) -> PredictionScores:
+    def predict(self, citation: str, source_text: str) -> PredictionScores:
         """Predict scores using Codex CLI."""
         return PredictionScores(confidence=0.5)
 
@@ -516,8 +525,12 @@ class AgentSDKBackend(EncoderBackend):
 
             client = anthropic.AsyncAnthropic(api_key=self.api_key)
 
-            prompt = get_encoder_prompt(request.citation, str(request.output_path))
-            prompt += f"\n\nStatute Text:\n{request.statute_text}\n"
+            prompt = get_encoder_prompt(
+                request.citation,
+                str(request.output_path),
+                corpus_citation_path=request.corpus_citation_path,
+            )
+            prompt += f"\n\nSource Text:\n{request.source_text}\n"
 
             response = await client.messages.create(
                 model=self.model,
@@ -572,7 +585,7 @@ class AgentSDKBackend(EncoderBackend):
         max_concurrent: int = 5,
     ) -> List[EncoderResponse]:
         """
-        Encode multiple statutes in parallel.
+        Encode multiple source units in parallel.
 
         This is the key advantage of the API backend - parallelization.
         """
@@ -585,7 +598,7 @@ class AgentSDKBackend(EncoderBackend):
         tasks = [encode_with_limit(req) for req in requests]
         return await asyncio.gather(*tasks)
 
-    def predict(self, citation: str, statute_text: str) -> PredictionScores:
+    def predict(self, citation: str, source_text: str) -> PredictionScores:
         """Predict scores using API."""
         # For now, use defaults - prediction is less critical than encoding
         return PredictionScores(confidence=0.5)

@@ -101,6 +101,7 @@ def sync_run_to_supabase(
         "timestamp": run.timestamp.isoformat(),
         "citation": run.citation,
         "file_path": run.file_path,
+        "source_text": run.source_text,
         "complexity": {
             "cross_references": run.complexity.cross_references,
             "has_nested_structure": run.complexity.has_nested_structure,

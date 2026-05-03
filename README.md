@@ -17,6 +17,11 @@ axiom-encode encode "26 USC 32(a)(1)" \
 axiom-encode validate /tmp/axiom-encode-encodings/codex-gpt-5.5/statutes/26/32/a/1.yaml
 ```
 
+`encode` resolves the requested citation to `corpus.provisions` before model
+generation. Local `axiom-corpus/data/corpus/provisions` artifacts are used first;
+Supabase is the fallback. If no corpus provision exists, encoding stops before
+calling a model.
+
 ## Eval suites and readiness gates
 
 Use manifest-driven benchmark suites when you want an explicit readiness answer instead

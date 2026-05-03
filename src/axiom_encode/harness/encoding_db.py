@@ -21,7 +21,7 @@ RUN_COLUMNS = (
     "timestamp",
     "citation",
     "file_path",
-    "statute_text",
+    "source_text",
     "complexity_json",
     "iterations_json",
     "total_duration_ms",
@@ -223,7 +223,7 @@ class EncodingRun:
     # What we're encoding
     citation: str = ""
     file_path: str = ""
-    statute_text: Optional[str] = None
+    source_text: Optional[str] = None
 
     # Upfront analysis
     complexity: ComplexityFactors = field(default_factory=ComplexityFactors)
@@ -273,7 +273,7 @@ def create_run(
     agent_type: str,
     agent_model: str,
     rulespec_content: str,
-    statute_text: Optional[str] = None,
+    source_text: Optional[str] = None,
     parent_run_id: Optional[str] = None,
     review_results: Optional[ReviewResults] = None,
     lessons: str = "",
@@ -287,7 +287,7 @@ def create_run(
         agent_type=agent_type,
         agent_model=agent_model,
         rulespec_content=rulespec_content,
-        statute_text=statute_text,
+        source_text=source_text,
         iteration=2 if parent_run_id else 1,
         parent_run_id=parent_run_id,
         review_results=review_results,
@@ -315,7 +315,7 @@ class EncodingDB:
                 timestamp TEXT,
                 citation TEXT,
                 file_path TEXT,
-                statute_text TEXT,
+                source_text TEXT,
                 complexity_json TEXT,
                 iterations_json TEXT,
                 total_duration_ms INTEGER,
@@ -333,7 +333,7 @@ class EncodingDB:
 
         # Keep active developer databases usable when the schema grows.
         for col, col_type, default in [
-            ("statute_text", "TEXT", None),
+            ("source_text", "TEXT", None),
             ("rulespec_content", "TEXT", None),
             ("session_id", "TEXT", None),
             ("iteration", "INTEGER", "1"),
@@ -503,7 +503,7 @@ class EncodingDB:
         cursor.execute(
             """
             INSERT OR REPLACE INTO encoding_runs
-            (id, timestamp, citation, file_path, statute_text, complexity_json,
+            (id, timestamp, citation, file_path, source_text, complexity_json,
              iterations_json, total_duration_ms, agent_type, agent_model,
              rulespec_content, session_id, iteration, parent_run_id,
              review_results_json, lessons, axiom_encode_version)
@@ -514,7 +514,7 @@ class EncodingDB:
                 run.timestamp.isoformat(),
                 run.citation,
                 run.file_path,
-                run.statute_text,
+                run.source_text,
                 complexity_json,
                 iterations_json,
                 run.total_duration_ms,
@@ -671,7 +671,7 @@ class EncodingDB:
         timestamp = values["timestamp"]
         citation = values["citation"]
         file_path = values["file_path"]
-        statute_text = values["statute_text"]
+        source_text = values["source_text"]
         complexity_json = values["complexity_json"]
         iterations_json = values["iterations_json"]
         total_duration_ms = values["total_duration_ms"]
@@ -747,7 +747,7 @@ class EncodingDB:
             timestamp=datetime.fromisoformat(timestamp),
             citation=citation,
             file_path=file_path,
-            statute_text=statute_text,
+            source_text=source_text,
             complexity=complexity,
             review_results=review_results,
             lessons=lessons or "",

@@ -40,11 +40,11 @@ class TestEncoderBackendInterface:
         """EncoderRequest holds encoding inputs."""
         req = EncoderRequest(
             citation="26 USC 32",
-            statute_text="The earned income tax credit...",
+            source_text="The earned income tax credit...",
             output_path=Path("/tmp/test.yaml"),
         )
         assert req.citation == "26 USC 32"
-        assert req.statute_text.startswith("The earned")
+        assert req.source_text.startswith("The earned")
         assert req.output_path == Path("/tmp/test.yaml")
 
     def test_response_dataclass(self):
@@ -82,7 +82,7 @@ class TestClaudeCodeBackend:
             backend.encode(
                 EncoderRequest(
                     citation="26 USC 1",
-                    statute_text="Test statute",
+                    source_text="Test statute",
                     output_path=Path("/tmp/test.yaml"),
                 )
             )
@@ -106,7 +106,7 @@ class TestClaudeCodeBackend:
             backend.encode(
                 EncoderRequest(
                     citation="26 USC 1",
-                    statute_text="Test",
+                    source_text="Test",
                     output_path=Path("/tmp/test.yaml"),
                 )
             )
@@ -132,7 +132,7 @@ class TestClaudeCodeBackend:
 
             scores = backend.predict(
                 citation="26 USC 32",
-                statute_text="EITC rules...",
+                source_text="EITC rules...",
             )
 
             assert scores.rulespec_reviewer == 8.0
@@ -180,7 +180,7 @@ class TestAgentSDKBackend:
             resp = await backend.encode_async(
                 EncoderRequest(
                     citation="26 USC 1",
-                    statute_text="Test",
+                    source_text="Test",
                     output_path=Path("/tmp/test.yaml"),
                 )
             )
@@ -196,7 +196,7 @@ class TestAgentSDKBackend:
         requests = [
             EncoderRequest(
                 citation=f"26 USC {i}",
-                statute_text=f"Statute {i}",
+                source_text=f"Statute {i}",
                 output_path=Path(f"/tmp/test{i}.yaml"),
             )
             for i in range(5)
@@ -243,7 +243,7 @@ class TestAgentSDKBackend:
             requests = [
                 EncoderRequest(
                     citation=f"26 USC {i}",
-                    statute_text=f"Statute {i}",
+                    source_text=f"Statute {i}",
                     output_path=Path(f"/tmp/test{i}.yaml"),
                 )
                 for i in range(10)
@@ -272,7 +272,7 @@ class TestClaudeCodeBackendAdditional:
             resp = backend.encode(
                 EncoderRequest(
                     citation="26 USC 1",
-                    statute_text="Test",
+                    source_text="Test",
                     output_path=Path("/tmp/test.yaml"),
                 )
             )
@@ -298,7 +298,7 @@ class TestClaudeCodeBackendAdditional:
             resp = backend.encode(
                 EncoderRequest(
                     citation="26 USC 1",
-                    statute_text="Test",
+                    source_text="Test",
                     output_path=output_path,
                 )
             )
@@ -403,7 +403,7 @@ class TestAgentSDKBackendAdditional:
             resp = await backend.encode_async(
                 EncoderRequest(
                     citation="26 USC 1",
-                    statute_text="Test",
+                    source_text="Test",
                     output_path=Path("/tmp/nonexistent.yaml"),
                 )
             )
@@ -436,7 +436,7 @@ class TestAgentSDKBackendAdditional:
             resp = await backend.encode_async(
                 EncoderRequest(
                     citation="26 USC 1",
-                    statute_text="Test",
+                    source_text="Test",
                     output_path=output_path,
                 )
             )
@@ -462,7 +462,7 @@ class TestAgentSDKBackendAdditional:
             resp = await backend.encode_async(
                 EncoderRequest(
                     citation="26 USC 1",
-                    statute_text="Test",
+                    source_text="Test",
                     output_path=Path("/tmp/test.yaml"),
                 )
             )
@@ -487,7 +487,7 @@ class TestAgentSDKBackendAdditional:
             resp = await backend.encode_async(
                 EncoderRequest(
                     citation="26 USC 1",
-                    statute_text="Test",
+                    source_text="Test",
                     output_path=Path("/tmp/test.yaml"),
                 )
             )
@@ -522,7 +522,7 @@ class TestCodexCLIBackend:
             backend.encode(
                 EncoderRequest(
                     citation="26 USC 1",
-                    statute_text="Test statute",
+                    source_text="Test statute",
                     output_path=Path("/tmp/output/test.yaml"),
                     model="gpt-5.4",
                 )
@@ -547,7 +547,7 @@ class TestCodexCLIBackend:
             response = backend.encode(
                 EncoderRequest(
                     citation="26 USC 1",
-                    statute_text="Test statute",
+                    source_text="Test statute",
                     output_path=Path("/tmp/output/test.yaml"),
                     model="gpt-5.4",
                 )
@@ -581,7 +581,7 @@ class TestBackendContract:
             cli_resp = cli_backend.encode(
                 EncoderRequest(
                     citation="26 USC 1",
-                    statute_text="Test",
+                    source_text="Test",
                     output_path=Path("/tmp/test.yaml"),
                 )
             )
@@ -604,7 +604,7 @@ class TestBackendContract:
             resp = backend.encode(
                 EncoderRequest(
                     citation="26 USC 1",
-                    statute_text="Test",
+                    source_text="Test",
                     output_path=Path("/tmp/test.yaml"),
                 )
             )
