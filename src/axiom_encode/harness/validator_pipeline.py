@@ -1962,7 +1962,9 @@ def _local_corpus_claims_roots() -> tuple[Path, ...]:
             root / "data" / "corpus",
             root / "data" / "corpus" / "claims",
         ):
-            claims_root = candidate if candidate.name == "claims" else candidate / "claims"
+            claims_root = (
+                candidate if candidate.name == "claims" else candidate / "claims"
+            )
             with contextlib.suppress(OSError):
                 resolved = claims_root.resolve()
                 if resolved.is_dir() and resolved not in seen:
