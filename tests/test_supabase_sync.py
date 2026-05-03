@@ -160,6 +160,7 @@ class TestSyncRunToSupabase:
         )
         assert upsert_payload["rulespec_content"] == "format: rulespec/v1"
         assert upsert_payload["source_text"] == "source text"
+        assert upsert_payload["encoder_version"] is None
         assert upsert_payload["scores"]["rulespec"] == 8.0
         assert upsert_payload["scores"]["formula"] == 7.0
 
@@ -580,7 +581,9 @@ class TestSyncAgentSessionsToSupabase:
         )
 
         with patch("axiom_encode.supabase_sync.ENCODINGS_DB", db_path):
-            result = sync_agent_sessions_to_supabase(client=mock_client)
+            result = sync_agent_sessions_to_supabase(
+                client=mock_client, include_all=True
+            )
             assert result["synced"] == 1
             assert result["total"] == 1
             mock_client.schema.assert_any_call(TELEMETRY_SCHEMA)
@@ -674,8 +677,66 @@ class TestSyncAgentSessionsToSupabase:
         )
 
         with patch("axiom_encode.supabase_sync.ENCODINGS_DB", db_path):
-            result = sync_agent_sessions_to_supabase(client=mock_client)
+            result = sync_agent_sessions_to_supabase(
+                client=mock_client, include_all=True
+            )
             assert result["failed"] == 1
+
+    def test_sync_default_filters_to_axiom_encode_sessions(self, tmp_path):
+        db_path = tmp_path / "encodings.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.execute("""
+            CREATE TABLE sessions (
+                id TEXT PRIMARY KEY,
+                run_id TEXT,
+                started_at TEXT,
+                ended_at TEXT,
+                model TEXT,
+                cwd TEXT,
+                event_count INTEGER DEFAULT 0,
+                input_tokens INTEGER DEFAULT 0,
+                output_tokens INTEGER DEFAULT 0,
+                cache_read_tokens INTEGER DEFAULT 0,
+                estimated_cost_usd REAL DEFAULT 0,
+                axiom_encode_version TEXT DEFAULT ''
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE session_events (
+                id TEXT PRIMARY KEY,
+                session_id TEXT,
+                sequence INTEGER,
+                timestamp TEXT,
+                event_type TEXT,
+                tool_name TEXT,
+                content TEXT,
+                metadata_json TEXT
+            )
+        """)
+        conn.execute(
+            "INSERT INTO sessions VALUES ('general-1', '', '2024-01-01', '2024-01-01', 'opus', '/Users/maxghenis', 0, 0, 0, 0, 0, '')"
+        )
+        conn.execute(
+            "INSERT INTO sessions VALUES ('axiom-1', '', '2024-01-02', '2024-01-02', 'opus', '/Users/maxghenis/TheAxiomFoundation/axiom-encode', 0, 0, 0, 0, 0, '0.4.2')"
+        )
+        conn.commit()
+        conn.close()
+
+        mock_client = MagicMock()
+        mock_client.schema.return_value.table.return_value.upsert.return_value.execute.return_value = MagicMock(
+            data=[{"id": "test"}]
+        )
+
+        with patch("axiom_encode.supabase_sync.ENCODINGS_DB", db_path):
+            result = sync_agent_sessions_to_supabase(client=mock_client)
+
+        assert result["total"] == 1
+        session_payload = (
+            mock_client.schema.return_value.table.return_value.upsert.call_args_list[0]
+            .args[0]
+        )
+        assert session_payload["id"] == "axiom-1"
+        assert session_payload["encoder_version"] == "0.4.2"
 
     def test_creates_client_if_not_provided(self, tmp_path):
         db_path = tmp_path / "encodings.db"

@@ -96,6 +96,10 @@ def sync_run_to_supabase(
         client = get_supabase_client()
 
     # Convert to Supabase format
+    encoder_version = getattr(run, "axiom_encode_version", "") or ""
+    if not isinstance(encoder_version, str):
+        encoder_version = ""
+
     data = {
         "id": run.id,
         "timestamp": run.timestamp.isoformat(),
@@ -132,6 +136,7 @@ def sync_run_to_supabase(
         "agent_model": run.agent_model,
         "rulespec_content": run.rulespec_content,
         "session_id": run.session_id,
+        "encoder_version": encoder_version or None,
         "synced_at": datetime.now().isoformat(),
         "data_source": data_source,
     }
@@ -317,6 +322,7 @@ ENCODINGS_DB = Path.home() / "TheAxiomFoundation" / "axiom-encode" / "encodings.
 def sync_agent_sessions_to_supabase(
     session_id: Optional[str] = None,
     client: Optional[Client] = None,
+    include_all: bool = False,
 ) -> dict:
     """
     Sync agent sessions from encodings.db to Supabase.
@@ -324,6 +330,9 @@ def sync_agent_sessions_to_supabase(
     Args:
         session_id: Optional filter by session ID
         client: Optional Supabase client
+        include_all: Sync every local session. By default only sessions that look
+            tied to Axiom Encode are synced, to avoid uploading unrelated global
+            agent transcript history.
 
     Returns:
         Dict with sync stats
@@ -339,12 +348,26 @@ def sync_agent_sessions_to_supabase(
     conn = sqlite3.connect(str(ENCODINGS_DB))
     conn.row_factory = sqlite3.Row
 
-    # Get sessions created by agent-backed runs.
-    query = "SELECT * FROM sessions WHERE id LIKE 'agent-%'"
+    session_columns = _sqlite_columns(conn, "sessions")
+
+    # Get sessions tied to Axiom Encode. Older hook databases may include broad
+    # global agent activity, so the default deliberately avoids syncing every row.
+    query = "SELECT * FROM sessions"
     params = []
     if session_id:
         query = "SELECT * FROM sessions WHERE id = ?"
         params.append(session_id)
+    elif not include_all:
+        filters = []
+        if "run_id" in session_columns:
+            filters.append("COALESCE(run_id, '') != ''")
+        if "axiom_encode_version" in session_columns:
+            filters.append("COALESCE(axiom_encode_version, '') != ''")
+        if "autorac_version" in session_columns:
+            filters.append("COALESCE(autorac_version, '') != ''")
+        if "cwd" in session_columns:
+            filters.append("cwd LIKE '%/axiom-encode%'")
+        query += f" WHERE {' OR '.join(filters) if filters else '0 = 1'}"
 
     sessions = conn.execute(query, params).fetchall()
 
@@ -371,6 +394,10 @@ def sync_agent_sessions_to_supabase(
                 "output_tokens": session["output_tokens"],
                 "cache_read_tokens": session["cache_read_tokens"],
                 "estimated_cost_usd": float(session["estimated_cost_usd"] or 0),
+                "encoder_version": _row_value(
+                    session, "axiom_encode_version", "autorac_version"
+                )
+                or None,
             }
 
             # Build events data
@@ -418,6 +445,20 @@ def sync_agent_sessions_to_supabase(
         "synced": synced,
         "failed": failed,
     }
+
+
+def _sqlite_columns(conn, table_name: str) -> set[str]:
+    return {row[1] for row in conn.execute(f"PRAGMA table_info({table_name})")}
+
+
+def _row_value(row, *keys: str):
+    available = set(row.keys())
+    for key in keys:
+        if key in available:
+            value = row[key]
+            if value not in (None, ""):
+                return value
+    return None
 
 
 def get_local_transcript_stats() -> dict:

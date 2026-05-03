@@ -2290,14 +2290,28 @@ class TestTranscriptSyncCommands:
     def test_sync_agent_sessions_success(self, capsys):
         args = MagicMock()
         args.session = None
+        args.all = False
 
         with patch(
             "axiom_encode.supabase_sync.sync_agent_sessions_to_supabase",
             return_value={"total": 2, "synced": 2, "failed": 0},
-        ):
+        ) as mock_sync:
             cmd_sync_agent_sessions(args)
+        mock_sync.assert_called_once_with(session_id=None, include_all=False)
         captured = capsys.readouterr()
         assert "2 synced" in captured.out
+
+    def test_sync_agent_sessions_include_all(self, capsys):
+        args = SimpleNamespace(session=None, all=True)
+
+        with patch(
+            "axiom_encode.supabase_sync.sync_agent_sessions_to_supabase",
+            return_value={"total": 3, "synced": 3, "failed": 0},
+        ) as mock_sync:
+            cmd_sync_agent_sessions(args)
+        mock_sync.assert_called_once_with(session_id=None, include_all=True)
+        captured = capsys.readouterr()
+        assert "3 synced" in captured.out
 
     def test_sync_agent_sessions_error(self, capsys):
         args = MagicMock()

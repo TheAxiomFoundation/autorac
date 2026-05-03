@@ -714,6 +714,11 @@ def main():
     sync_agent_parser.add_argument(
         "--session", default=None, help="Only sync specific session"
     )
+    sync_agent_parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Sync every local session, including broad agent history",
+    )
 
     args = parser.parse_args()
 
@@ -2702,7 +2707,10 @@ def cmd_sync_agent_sessions(args):
     print(f"Syncing agent sessions{f' for {args.session}' if args.session else ''}...")
 
     try:
-        stats = sync_agent_sessions_to_supabase(session_id=args.session)
+        stats = sync_agent_sessions_to_supabase(
+            session_id=args.session,
+            include_all=getattr(args, "all", False) is True,
+        )
         print(
             f"Done! {stats['synced']} synced, {stats['failed']} failed of {stats['total']} total"
         )
