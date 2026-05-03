@@ -14,9 +14,9 @@ cases:
   - kind: source
     name: meets_snap_asset_test
     source_id: 7 USC 2014(g)(1)
-    source_file: ../../rules-us/sources/slices/7-USC/2014/g/1.txt
+    corpus_citation_path: us/statute/7/2014/g/1
     allow_context:
-      - ../../rules-us/usda/snap/fy-2026-cola/2.yaml
+      - ../../rules-us/policies/usda/snap/fy-2026-cola/deductions.yaml
     oracle: policyengine
     policyengine_country: auto
     policyengine_rule_hint: meets_snap_asset_test

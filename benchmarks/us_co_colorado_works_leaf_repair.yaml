@@ -14,29 +14,20 @@ cases:
   - kind: source
     name: co-3-606-1-g
     source_id: 9 CCR 2503-6 3.606.1(G)
-    source_file: ../../rules-us-co/sources/slices/9-CCR-2503-6/3.606.1/G.txt
+    corpus_citation_path: us-co/regulation/9-ccr-2503-6/3.606.1/G
   - kind: source
     name: co-3-606-1-h
     source_id: 9 CCR 2503-6 3.606.1(H)
-    source_file: ../../rules-us-co/sources/slices/9-CCR-2503-6/3.606.1/H.txt
-    allow_context:
-      - ../../rules-us-co/regulation/9-CCR-2503-6/3.606.1/F.yaml
+    corpus_citation_path: us-co/regulation/9-ccr-2503-6/3.606.1/H
   - kind: source
     name: co-3-606-1-i
     source_id: 9 CCR 2503-6 3.606.1(I)
-    source_file: ../../rules-us-co/sources/slices/9-CCR-2503-6/3.606.1/I.txt
-    allow_context:
-      - ../../rules-us-co/regulation/9-CCR-2503-6/3.606.1/F.yaml
+    corpus_citation_path: us-co/regulation/9-ccr-2503-6/3.606.1/I
   - kind: source
     name: co-3-606-1-j
     source_id: 9 CCR 2503-6 3.606.1(J)
-    source_file: ../../rules-us-co/sources/slices/9-CCR-2503-6/3.606.1/J.txt
-    allow_context:
-      - ../../rules-us-co/regulation/9-CCR-2503-6/3.606.1/F.yaml
+    corpus_citation_path: us-co/regulation/9-ccr-2503-6/3.606.1/J
   - kind: source
     name: co-3-606-1-k
     source_id: 9 CCR 2503-6 3.606.1(K)
-    source_file: ../../rules-us-co/sources/slices/9-CCR-2503-6/3.606.1/K.txt
-    allow_context:
-      - ../../rules-us-co/regulation/9-CCR-2503-6/3.606.1/F.yaml
-      - ../../rules-us-co/regulation/9-CCR-2503-6/3.606.1/I.yaml
+    corpus_citation_path: us-co/regulation/9-ccr-2503-6/3.606.1/K

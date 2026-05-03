@@ -38,14 +38,14 @@ from .harness.evals import (
     _eval_result_from_payload,
     evaluate_artifact,
     load_eval_suite_manifest,
-    load_source_text_for_eval,
+    resolve_corpus_source_unit,
     run_eval_suite,
     run_model_eval,
     run_source_eval,
     summarize_readiness,
 )
 from .harness.validator_pipeline import ValidatorPipeline
-from .repo_routing import find_policy_repo_root, is_policy_repo_root
+from .repo_routing import find_policy_repo_root
 
 # Default DB path - can be overridden with --db
 DEFAULT_DB = Path.home() / "TheAxiomFoundation" / "axiom-encode" / "encodings.db"
@@ -74,6 +74,17 @@ def _resolve_runtime_axiom_rules_checkout(
         if sibling.exists():
             return sibling.resolve()
     return _resolve_repo_checkout("axiom-rules")
+
+
+def _resolve_policy_repo_for_corpus_source(
+    corpus_citation_path: str,
+    override: Path | None = None,
+) -> Path:
+    if override is not None:
+        return override
+    jurisdiction = corpus_citation_path.strip().split("/", 1)[0] or "us"
+    repo_name = "rules-us" if jurisdiction == "us" else f"rules-{jurisdiction}"
+    return _resolve_repo_checkout(repo_name)
 
 
 def _resolve_validation_repo_roots(rulespec_file: Path) -> tuple[Path, Path]:
@@ -235,20 +246,6 @@ def main():
     calibration_parser.add_argument("--db", type=Path, default=DEFAULT_DB)
     calibration_parser.add_argument("--limit", type=int, default=50)
 
-    # statute command - extract from local USC XML
-    statute_parser = subparsers.add_parser(
-        "statute", help="Extract statute text from local USC XML (e.g., '26 USC 25B')"
-    )
-    statute_parser.add_argument(
-        "citation", help="Citation like '26 USC 25B' or '26/25B'"
-    )
-    statute_parser.add_argument(
-        "--xml-path",
-        type=Path,
-        default=Path.home() / "TheAxiomFoundation" / "axiom-corpus" / "data" / "uscode",
-        help="Path to USC XML files",
-    )
-
     # runs command
     runs_parser = subparsers.add_parser("runs", help="List recent encoding runs")
     runs_parser.add_argument("--db", type=Path, default=DEFAULT_DB)
@@ -400,15 +397,16 @@ def main():
 
     eval_source_parser = subparsers.add_parser(
         "eval-source",
-        help="Compare model runners on one arbitrary source-text slice",
+        help="Compare model runners on one corpus-backed source unit",
     )
     eval_source_parser.add_argument(
-        "source_id", help="Logical identifier for the source slice"
+        "corpus_citation_path",
+        help="Corpus citation path for the authoritative source unit",
     )
     eval_source_parser.add_argument(
-        "source_file",
-        type=Path,
-        help="Path to a text file containing the authoritative source text",
+        "--source-id",
+        default=None,
+        help="Optional logical output identifier; defaults to the corpus citation path",
     )
     eval_source_parser.add_argument(
         "--runner",
@@ -430,6 +428,18 @@ def main():
         type=Path,
         default=None,
         help="Path to axiom-rules repo (defaults to sibling checkout)",
+    )
+    eval_source_parser.add_argument(
+        "--corpus-path",
+        type=Path,
+        default=None,
+        help="Path to axiom-corpus repo (defaults to sibling repo checkout)",
+    )
+    eval_source_parser.add_argument(
+        "--policy-repo-path",
+        type=Path,
+        default=None,
+        help="Path to jurisdiction rules repo (defaults from corpus jurisdiction)",
     )
     eval_source_parser.add_argument(
         "--mode",
@@ -536,6 +546,12 @@ def main():
         type=Path,
         default=None,
         help="Path to axiom-rules repo (defaults to sibling checkout)",
+    )
+    eval_suite_revalidate_parser.add_argument(
+        "--corpus-path",
+        type=Path,
+        default=None,
+        help="Path to axiom-corpus repo (defaults to sibling repo checkout)",
     )
     eval_suite_revalidate_parser.add_argument(
         "--json",
@@ -699,8 +715,6 @@ def main():
         cmd_stats(args)
     elif args.command == "calibration":
         cmd_calibration(args)
-    elif args.command == "statute":
-        cmd_statute(args)
     elif args.command == "runs":
         cmd_runs(args)
     elif args.command == "encode":
@@ -1173,151 +1187,6 @@ def cmd_calibration(args):
         )
 
 
-def cmd_statute(args):
-    """Extract statute text from local USC XML."""
-    import html
-    import re
-
-    # Parse citation: "26 USC 25B" or "26/25B" or "26 25B"
-    citation = args.citation.upper().replace("USC", "").replace("§", "").strip()
-    parts = re.split(r"[\s/]+", citation)
-
-    if len(parts) < 2:
-        print(f"Error: Could not parse citation '{args.citation}'")
-        print("Expected format: '26 USC 25B' or '26/25B'")
-        sys.exit(1)
-
-    title = int(parts[0])
-    section = parts[1]
-
-    xml_file = args.xml_path / f"usc{title}.xml"
-
-    if not xml_file.exists():
-        print(f"Error: USC Title {title} XML not found at {xml_file}")
-        print(
-            f"Available titles: {sorted([f.stem.replace('usc', '') for f in args.xml_path.glob('usc*.xml')])}"
-        )
-        sys.exit(1)
-
-    content = xml_file.read_text()
-
-    # Find the section
-    identifier = f"/us/usc/t{title}/s{section}"
-    start_pattern = rf'<section[^>]*identifier="{re.escape(identifier)}"[^>]*>'
-    start_match = re.search(start_pattern, content)
-
-    if not start_match:
-        print(f"Error: Section {identifier} not found in {xml_file.name}")
-        sys.exit(1)
-
-    # Find matching closing tag (handle nesting)
-    start_pos = start_match.start()
-    depth = 0
-    end_pos = start_pos
-    i = start_pos
-
-    while i < len(content):
-        if content[i : i + 8] == "<section":
-            depth += 1
-        elif content[i : i + 10] == "</section>":
-            depth -= 1
-            if depth == 0:
-                end_pos = i + 10
-                break
-        i += 1
-
-    xml_section = content[start_pos:end_pos]
-
-    # Simple text extraction: strip all tags, preserve structure via identifiers
-    def clean(text):
-        text = re.sub(r"<[^>]+>", "", text)
-        text = html.unescape(text)
-        return " ".join(text.split()).strip()
-
-    # Extract heading
-    sec_head = re.search(r"<heading[^>]*>(.*?)</heading>", xml_section, re.DOTALL)
-
-    print(f"=== {title} USC § {section} ===")
-    if sec_head:
-        print(f"{clean(sec_head.group(1))}")
-    print()
-
-    # Process the XML structure iteratively
-    def extract_element(xml, tag, depth=0):
-        """Extract elements of given tag type with proper nesting."""
-        results = []
-        pattern = rf'<{tag}[^>]*identifier="([^"]+)"[^>]*>'
-
-        for match in re.finditer(pattern, xml):
-            ident = match.group(1)
-
-            # Find closing tag
-            open_tag = f"<{tag}"
-            close_tag = f"</{tag}>"
-            d = 1
-            j = match.end()
-            while j < len(xml) and d > 0:
-                if xml[j : j + len(open_tag)] == open_tag:
-                    d += 1
-                elif xml[j : j + len(close_tag)] == close_tag:
-                    d -= 1
-                j += 1
-            end = j
-
-            elem_xml = xml[match.end() : end - len(close_tag)]
-            results.append((ident, elem_xml))
-
-        return results
-
-    # Extract subsections
-    for sub_id, sub_xml in extract_element(xml_section, "subsection"):
-        sub_letter = sub_id.split("/")[-1]
-        sub_head = re.search(r"<heading[^>]*>(.*?)</heading>", sub_xml, re.DOTALL)
-        sub_content = re.search(r"<content>(.*?)</content>", sub_xml, re.DOTALL)
-
-        line = f"({sub_letter})"
-        if sub_head:
-            line += f" {clean(sub_head.group(1))}"
-        print(line)
-
-        if sub_content:
-            text = clean(sub_content.group(1))
-            if text and text not in line:
-                print(f"    {text}")
-
-        # Extract paragraphs
-        for para_id, para_xml in extract_element(sub_xml, "paragraph"):
-            para_num = para_id.split("/")[-1]
-            para_head = re.search(r"<heading[^>]*>(.*?)</heading>", para_xml, re.DOTALL)
-            para_content = re.search(r"<content>(.*?)</content>", para_xml, re.DOTALL)
-
-            pline = f"  ({para_num})"
-            if para_head:
-                pline += f" {clean(para_head.group(1))}"
-            elif para_content:
-                pline += f" {clean(para_content.group(1))}"
-            print(pline)
-
-            # Extract subparagraphs
-            for subp_id, subp_xml in extract_element(para_xml, "subparagraph"):
-                subp_letter = subp_id.split("/")[-1]
-                subp_head = re.search(
-                    r"<heading[^>]*>(.*?)</heading>", subp_xml, re.DOTALL
-                )
-                subp_content = re.search(
-                    r"<content>(.*?)</content>", subp_xml, re.DOTALL
-                )
-
-                sline = f"    ({subp_letter})"
-                if subp_head:
-                    sline += f" {clean(subp_head.group(1))}"
-                elif subp_content:
-                    sline += f" {clean(subp_content.group(1))}"
-                print(sline)
-
-        print()
-
-
 def cmd_runs(args):
     """List recent runs."""
     if not args.db.exists():
@@ -1340,142 +1209,6 @@ def cmd_runs(args):
         print(
             f"{run.id:<10} {run.citation:<30} {run.iterations_needed:<5} {time_s:>6.1f}s {result}"
         )
-
-
-# =========================================================================
-# Init and Coverage Commands
-# =========================================================================
-
-SUPABASE_URL = "https://nsupqhfchdtqclomlrgs.supabase.co/rest/v1"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5zdXBxaGZjaGR0cWNsb21scmdzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY5MzExMDgsImV4cCI6MjA4MjUwNzEwOH0.BPdUadtBCdKfWZrKbfxpBQUqSGZ4hd34Dlor8kMBrVI"
-
-
-def _extract_subsections_from_xml(xml_path: Path, section: str) -> list[dict]:
-    """Extract all subsections from USC XML file.
-
-    Returns list of dicts with: citation_path, heading, body, line_count.
-    """
-    import html as html_module
-    import re
-
-    content = xml_path.read_text()
-
-    # Find the section
-    title = xml_path.stem.replace("usc", "")
-    identifier = f"/us/usc/t{title}/s{section}"
-    start_pattern = rf'<section[^>]*identifier="{re.escape(identifier)}"[^>]*>'
-    start_match = re.search(start_pattern, content)
-
-    if not start_match:
-        return []
-
-    # Find matching closing tag
-    start_pos = start_match.start()
-    depth = 0
-    end_pos = start_pos
-    i = start_pos
-
-    while i < len(content):
-        if content[i : i + 8] == "<section":
-            depth += 1
-        elif content[i : i + 10] == "</section>":
-            depth -= 1
-            if depth == 0:
-                end_pos = i + 10
-                break
-        i += 1
-
-    xml_section = content[start_pos:end_pos]
-
-    def clean(text):
-        text = re.sub(r"<[^>]+>", "", text)
-        text = html_module.unescape(text)
-        return " ".join(text.split()).strip()
-
-    def extract_elements_recursive(xml, parent_path, depth=0):
-        """Recursively extract all nested elements."""
-        results = []
-
-        # Tags to look for at each level
-        tag_order = ["subsection", "paragraph", "subparagraph", "clause", "subclause"]
-        if depth >= len(tag_order):
-            return results
-
-        tag = tag_order[depth]
-        pattern = rf'<{tag}[^>]*identifier="([^"]+)"[^>]*>'
-
-        for match in re.finditer(pattern, xml):
-            ident = match.group(1)
-
-            # Find closing tag
-            open_tag = f"<{tag}"
-            close_tag = f"</{tag}>"
-            d = 1
-            j = match.end()
-            while j < len(xml) and d > 0:
-                if xml[j : j + len(open_tag)] == open_tag:
-                    d += 1
-                elif xml[j : j + len(close_tag)] == close_tag:
-                    d -= 1
-                j += 1
-
-            elem_xml = xml[match.end() : j - len(close_tag)]
-
-            # Extract heading and content
-            heading_match = re.search(
-                r"<heading[^>]*>(.*?)</heading>", elem_xml, re.DOTALL
-            )
-            content_match = re.search(r"<content>(.*?)</content>", elem_xml, re.DOTALL)
-
-            heading = clean(heading_match.group(1)) if heading_match else ""
-            body = clean(content_match.group(1)) if content_match else ""
-
-            # Build path from source XML identifier (e.g., /us/usc/t26/s1/h/1/E -> 1/h/1/E)
-            path_parts = ident.split("/")
-            # Find section and take everything after
-            try:
-                sec_idx = next(i for i, p in enumerate(path_parts) if p.startswith("s"))
-                local_path = "/".join(
-                    [path_parts[sec_idx][1:]] + path_parts[sec_idx + 1 :]
-                )
-            except StopIteration:
-                local_path = path_parts[-1]
-
-            results.append(
-                {
-                    "citation_path": f"us/statute/{title}/{local_path}",
-                    "heading": heading,
-                    "body": body,
-                    "line_count": len(body.split("\n")) if body else 0,
-                }
-            )
-
-            # Recurse into children
-            children = extract_elements_recursive(elem_xml, local_path, depth + 1)
-            results.extend(children)
-
-        return results
-
-    # Start extraction
-    rules = extract_elements_recursive(xml_section, section, 0)
-
-    # Also add the section itself if it has content
-    sec_heading = re.search(
-        r"<heading[^>]*>(.*?)</heading>", xml_section[:500], re.DOTALL
-    )
-    sec_content = re.search(r"<chapeau>(.*?)</chapeau>", xml_section, re.DOTALL)
-    if sec_heading:
-        rules.insert(
-            0,
-            {
-                "citation_path": f"us/statute/{title}/{section}",
-                "heading": clean(sec_heading.group(1)),
-                "body": clean(sec_content.group(1)) if sec_content else "",
-                "line_count": 0,
-            },
-        )
-
-    return rules
 
 
 # =========================================================================
@@ -1631,40 +1364,45 @@ def cmd_eval(args):
 
 
 def cmd_eval_source(args):
-    """Run deterministic model comparisons on one arbitrary source slice."""
+    """Run deterministic model comparisons on one corpus-backed source unit."""
     runners = _effective_runner_specs(
         args.runner or ["claude:opus", DEFAULT_GPT_RUNNER], args
     )
-    runtime_axiom_rules_path = None
-    policy_repo_path = None
-    if args.axiom_rules_path:
-        if is_policy_repo_root(args.axiom_rules_path):
-            policy_repo_path = args.axiom_rules_path
-        else:
-            runtime_axiom_rules_path = args.axiom_rules_path
-    else:
-        policy_repo_path = find_policy_repo_root(args.source_file)
+    corpus_path = args.corpus_path or _resolve_repo_checkout("axiom-corpus")
+    if not corpus_path.exists():
+        print(f"Axiom Corpus repo not found: {corpus_path}")
+        sys.exit(1)
 
-    policy_repo_path = policy_repo_path or _resolve_repo_checkout("rules-us")
+    source_unit = resolve_corpus_source_unit(args.corpus_citation_path, corpus_path)
+    source_id = args.source_id or source_unit.citation_path
+    policy_repo_path = _resolve_policy_repo_for_corpus_source(
+        source_unit.citation_path,
+        args.policy_repo_path,
+    )
+    runtime_axiom_rules_path = args.axiom_rules_path
     runtime_axiom_rules_path = (
         runtime_axiom_rules_path
         or _resolve_runtime_axiom_rules_checkout(policy_repo_path)
     )
 
+    if not policy_repo_path.exists():
+        print(f"Policy repo not found: {policy_repo_path}")
+        sys.exit(1)
     if not runtime_axiom_rules_path.exists():
         print(f"axiom-rules repo not found: {runtime_axiom_rules_path}")
         sys.exit(1)
-    if not args.source_file.exists():
-        print(f"Source file not found: {args.source_file}")
-        sys.exit(1)
 
-    source_text = load_source_text_for_eval(args.source_file)
     results = run_source_eval(
-        source_id=args.source_id,
-        source_text=source_text,
+        source_id=source_id,
+        source_text=source_unit.body,
         runner_specs=runners,
         output_root=args.output,
         policy_path=policy_repo_path,
+        source_metadata_payload={
+            "corpus_citation_path": source_unit.citation_path,
+            "corpus_source": source_unit.source,
+            "requested_source": source_unit.requested,
+        },
         runtime_axiom_rules_path=runtime_axiom_rules_path,
         mode=args.mode,
         extra_context_paths=[Path(path) for path in args.allow_context],
@@ -1676,9 +1414,10 @@ def cmd_eval_source(args):
         return
 
     print(f"Output root: {args.output}")
+    print(f"Axiom Corpus: {corpus_path}")
     print(f"Policy repo: {policy_repo_path}")
     print(f"Axiom Rules: {runtime_axiom_rules_path}")
-    print(f"Source: {args.source_file}")
+    print(f"Corpus source: {source_unit.citation_path} ({source_unit.source})")
     if args.policyengine_rule_hint:
         print(f"PolicyEngine rule hint: {args.policyengine_rule_hint}")
     print(f"Mode: {args.mode}")
@@ -1846,8 +1585,10 @@ def cmd_eval_suite(args):
         print(f"axiom-rules repo not found: {axiom_rules_path}")
         sys.exit(1)
 
-    has_citation_case = any(case.kind == "citation" for case in manifest.cases)
-    if has_citation_case and not corpus_path.exists():
+    has_corpus_case = any(
+        case.kind in {"citation", "source"} for case in manifest.cases
+    )
+    if has_corpus_case and not corpus_path.exists():
         print(f"Axiom Corpus repo not found: {corpus_path}")
         sys.exit(1)
 
@@ -1862,7 +1603,7 @@ def cmd_eval_suite(args):
                 manifest=manifest,
                 output_root=args.output,
                 axiom_rules_path=axiom_rules_path,
-                corpus_path=corpus_path if has_citation_case else None,
+                corpus_path=corpus_path if has_corpus_case else None,
                 runner_specs=effective_runners,
                 resume_existing=resume_existing,
             )
@@ -1941,7 +1682,7 @@ def cmd_eval_suite(args):
     print(f"Output root: {args.output}")
     print(f"Runners: {', '.join(effective_runners)}")
     print(f"Axiom Rules: {axiom_rules_path}")
-    if has_citation_case:
+    if has_corpus_case:
         print(f"Axiom Corpus: {corpus_path}")
     print()
 
@@ -2019,8 +1760,12 @@ def cmd_eval_suite_revalidate(args):
 
     manifest = load_eval_suite_manifest(manifest_path)
     axiom_rules_path = args.axiom_rules_path or _resolve_repo_checkout("axiom-rules")
+    corpus_path = args.corpus_path or _resolve_repo_checkout("axiom-corpus")
     if not axiom_rules_path.exists():
         print(f"axiom-rules repo not found: {axiom_rules_path}")
+        sys.exit(1)
+    if not corpus_path.exists():
+        print(f"Axiom Corpus repo not found: {corpus_path}")
         sys.exit(1)
 
     ledger_path = source_output / "suite-results.jsonl"
@@ -2051,12 +1796,11 @@ def cmd_eval_suite_revalidate(args):
             continue
 
         source_text = ""
-        if (
-            case.kind == "source"
-            and case.source_file is not None
-            and case.source_file.exists()
-        ):
-            source_text = load_source_text_for_eval(case.source_file)
+        if case.kind == "source" and case.corpus_citation_path:
+            source_text = resolve_corpus_source_unit(
+                case.corpus_citation_path,
+                corpus_path,
+            ).body
 
         result.metrics = evaluate_artifact(
             rulespec_file=rulespec_file,

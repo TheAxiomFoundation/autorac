@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import contextlib
+import json
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -37,7 +39,7 @@ class ResolvedCanonicalConcept:
     period: str
     dtype: str
     label: str
-    source_file: Path
+    rulespec_file: Path
 
 
 _REGISTERED_DEFINED_TERM_PATTERNS: tuple[
@@ -72,7 +74,15 @@ _QUOTED_DEFINITION_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _SOURCE_ROOT_SEGMENTS = {"legislation", "statutes", "regulation"}
-_SOURCE_SLICE_EXTENSIONS = (".txt", ".xml", ".html", ".json", ".md")
+_CORPUS_PROVISION_KINDS = {
+    "guidance",
+    "legislation",
+    "policy",
+    "regulation",
+    "regulations",
+    "statute",
+    "statutes",
+}
 
 
 def resolve_defined_terms_from_text(text: str) -> list[ResolvedDefinedTerm]:
@@ -247,42 +257,168 @@ def rulespec_file_has_stub_status(rules_file: Path) -> bool:
         return False
 
 
-def has_ingested_source_for_import_target(
-    import_target: str, corpus_root: Path
+def has_corpus_provision_for_import_target(
+    import_target: str, rules_repo_root: Path
 ) -> bool:
-    """Return whether the import target's official source is present locally."""
-    return bool(find_ingested_source_artifacts(import_target, corpus_root))
+    """Return whether the import target has a local corpus.provisions row."""
+    return bool(find_corpus_provision_artifacts(import_target, rules_repo_root))
 
 
-def find_ingested_source_artifacts(import_target: str, corpus_root: Path) -> list[Path]:
-    """Locate source files proving the import target has been ingested locally."""
-    corpus_root = corpus_root.resolve()
-    sources_root = corpus_root / "sources"
-    if not sources_root.exists():
-        return []
-
-    relative = import_target_to_relative_rulespec_path(import_target).with_suffix("")
+def find_corpus_provision_artifacts(
+    import_target: str,
+    rules_repo_root: Path,
+) -> list[Path]:
+    """Locate corpus.provisions files containing the import target."""
     artifacts: list[Path] = []
     seen: set[Path] = set()
+    citation_paths = _candidate_corpus_paths_for_import_target(
+        import_target,
+        rules_repo_root,
+    )
+    if not citation_paths:
+        return []
 
-    for candidate in _iter_source_slice_candidates(sources_root, relative):
-        resolved = candidate.resolve()
-        if resolved not in seen:
-            seen.add(resolved)
-            artifacts.append(resolved)
-
-    for root in _iter_official_source_roots(sources_root, relative):
-        if not root.exists():
-            continue
-        for candidate in sorted(root.rglob("*")):
-            if not candidate.is_file():
-                continue
-            resolved = candidate.resolve()
-            if resolved not in seen:
-                seen.add(resolved)
-                artifacts.append(resolved)
+    for provisions_root in _candidate_corpus_provisions_roots(rules_repo_root):
+        for citation_path in citation_paths:
+            for candidate in _candidate_corpus_provision_files(
+                provisions_root,
+                citation_path,
+            ):
+                if not _corpus_file_contains_citation_path(candidate, citation_path):
+                    continue
+                resolved = candidate.resolve()
+                if resolved not in seen:
+                    seen.add(resolved)
+                    artifacts.append(resolved)
 
     return artifacts
+
+
+def _candidate_corpus_provisions_roots(rules_repo_root: Path) -> list[Path]:
+    candidates: list[Path] = []
+    env_root = os.environ.get("AXIOM_CORPUS_ROOT")
+    if env_root:
+        candidates.append(Path(env_root).expanduser())
+    root = Path(rules_repo_root).expanduser().resolve()
+    candidates.extend([root.parent / "axiom-corpus", root.parent / "corpus"])
+
+    provisions_roots: list[Path] = []
+    seen: set[Path] = set()
+    for candidate in candidates:
+        base = candidate.expanduser()
+        possible_roots = (
+            base,
+            base / "provisions",
+            base / "data" / "corpus",
+            base / "data" / "corpus" / "provisions",
+        )
+        for possible_root in possible_roots:
+            provisions_root = (
+                possible_root
+                if possible_root.name == "provisions"
+                else possible_root / "provisions"
+            )
+            if not provisions_root.is_dir():
+                continue
+            resolved = provisions_root.resolve()
+            if resolved not in seen:
+                seen.add(resolved)
+                provisions_roots.append(resolved)
+    return provisions_roots
+
+
+def _candidate_corpus_paths_for_import_target(
+    import_target: str,
+    rules_repo_root: Path,
+) -> tuple[str, ...]:
+    normalized = import_target.strip().strip('"').strip("'").split("#", 1)[0]
+    if normalized.endswith((".yaml", ".yml")):
+        normalized = str(Path(normalized).with_suffix(""))
+    normalized = normalized.strip("/")
+    if not normalized:
+        return ()
+
+    if _looks_like_corpus_citation_path(normalized):
+        primary = normalized
+    else:
+        jurisdiction = _jurisdiction_for_rules_repo(rules_repo_root)
+        relative = normalized
+        if ":" in normalized:
+            prefix, relative = normalized.split(":", 1)
+            if prefix.strip():
+                jurisdiction = prefix.strip()
+
+        parts = Path(relative).parts
+        if not parts:
+            return ()
+        kind, rest = _corpus_kind_and_rest(parts)
+        primary = "/".join((jurisdiction, kind, *rest))
+
+    candidates: list[str] = []
+
+    def add(candidate: str) -> None:
+        cleaned = candidate.strip().strip("/")
+        if cleaned and cleaned not in candidates:
+            candidates.append(cleaned)
+
+    add(primary)
+    parts = primary.split("/")
+    for end in range(len(parts) - 1, 2, -1):
+        add("/".join(parts[:end]))
+    return tuple(candidates)
+
+
+def _looks_like_corpus_citation_path(identifier: str) -> bool:
+    parts = identifier.split("/")
+    return len(parts) >= 3 and parts[1] in _CORPUS_PROVISION_KINDS
+
+
+def _jurisdiction_for_rules_repo(rules_repo_root: Path) -> str:
+    name = Path(rules_repo_root).resolve().name
+    if name.startswith("rules-"):
+        return name.removeprefix("rules-")
+    return "us"
+
+
+def _corpus_kind_and_rest(parts: tuple[str, ...]) -> tuple[str, tuple[str, ...]]:
+    head = parts[0]
+    if head in {"statute", "statutes"}:
+        return "statute", parts[1:]
+    if head in {"regulation", "regulations"}:
+        return "regulation", parts[1:]
+    if head in {"policy", "policies"}:
+        return "policy", parts[1:]
+    if head in {"guidance", "legislation"}:
+        return head, parts[1:]
+    return "policy", parts
+
+
+def _candidate_corpus_provision_files(
+    provisions_root: Path,
+    citation_path: str,
+) -> list[Path]:
+    parts = citation_path.split("/")
+    if len(parts) < 2:
+        return []
+    bucket = provisions_root / parts[0] / parts[1]
+    if not bucket.is_dir():
+        return []
+    return sorted(bucket.glob("*.jsonl"))
+
+
+def _corpus_file_contains_citation_path(
+    provision_file: Path,
+    citation_path: str,
+) -> bool:
+    with contextlib.suppress(OSError):
+        for line in provision_file.read_text().splitlines():
+            if not line.strip():
+                continue
+            with contextlib.suppress(json.JSONDecodeError):
+                payload = json.loads(line)
+                if payload.get("citation_path") == citation_path:
+                    return True
+    return False
 
 
 def _extract_embedded_source_text(content: str) -> str:
@@ -296,35 +432,6 @@ def _extract_embedded_source_text(content: str) -> str:
                     return summary.strip()
     match = _EMBEDDED_SOURCE_PATTERN.match(content)
     return match.group(1).strip() if match else ""
-
-
-def _iter_source_slice_candidates(sources_root: Path, relative: Path) -> list[Path]:
-    base = sources_root / "slices" / relative
-    candidates: list[Path] = []
-    if base.exists() and base.is_file():
-        candidates.append(base)
-    for extension in _SOURCE_SLICE_EXTENSIONS:
-        candidate = base.with_suffix(extension)
-        if candidate.exists():
-            candidates.append(candidate)
-    return candidates
-
-
-def _iter_official_source_roots(sources_root: Path, relative: Path) -> list[Path]:
-    parts = relative.parts
-    if not parts:
-        return []
-
-    if parts[0] == "statutes" and len(parts) >= 3:
-        return [sources_root / "official" / parts[0] / parts[1] / parts[2]]
-
-    if parts[0] == "legislation" and len(parts) >= 4:
-        return [sources_root / "official" / parts[1] / parts[2] / parts[3]]
-
-    if parts[0] == "regulation" and len(parts) >= 2:
-        return [sources_root / "official" / parts[1]]
-
-    return []
 
 
 def _extract_defined_concept_terms_from_source(source_text: str) -> list[str]:
@@ -402,7 +509,7 @@ def _build_canonical_concept_candidate(
         period=period,
         dtype=dtype,
         label="",
-        source_file=candidate_file,
+        rulespec_file=candidate_file,
     )
 
 
@@ -450,5 +557,5 @@ def _with_concept_term(
         label=(
             f"`{term}` -> import `{candidate.import_target}` ({candidate.citation})"
         ),
-        source_file=candidate.source_file,
+        rulespec_file=candidate.rulespec_file,
     )

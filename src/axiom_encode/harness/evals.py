@@ -1,4 +1,4 @@
-"""Model comparison evals for statute and source-backed policy encoding."""
+"""Model comparison evals for statute and corpus-backed policy encoding."""
 
 from __future__ import annotations
 
@@ -24,7 +24,6 @@ import yaml
 
 from axiom_encode.codex_cli import resolve_codex_cli
 from axiom_encode.constants import DEFAULT_OPENAI_MODEL
-from axiom_encode.repo_routing import find_policy_repo_root
 from axiom_encode.statute import (
     CitationParts,
     citation_to_citation_path,
@@ -175,7 +174,7 @@ class EvalWorkspace:
     """Prepared workspace bundle for an eval run."""
 
     root: Path
-    source_file: Path
+    source_text_file: Path
     manifest_file: Path
     source_metadata_file: Path | None = None
     source_metadata: dict[str, object] | None = None
@@ -264,9 +263,7 @@ class EvalSuiteCase:
     allow_context: list[Path] = field(default_factory=list)
     citation: str | None = None
     source_id: str | None = None
-    source_file: Path | None = None
     corpus_citation_path: str | None = None
-    metadata_file: Path | None = None
     policyengine_rule_hint: str | None = None
     oracle: EvalOracleMode = "none"
     policyengine_country: str = "auto"
@@ -377,8 +374,6 @@ def run_source_eval(
     runner_specs: list[str],
     output_root: Path,
     policy_path: Path,
-    source_path: Path | None = None,
-    source_metadata_path: Path | None = None,
     source_metadata_payload: dict[str, object] | None = None,
     runtime_axiom_rules_path: Path | None = None,
     mode: EvalMode = "repo-augmented",
@@ -387,7 +382,7 @@ def run_source_eval(
     policyengine_country: str = "auto",
     policyengine_rule_hint: str | None = None,
 ) -> list[EvalResult]:
-    """Run a deterministic comparison over one arbitrary source-backed text unit."""
+    """Run a deterministic comparison over one corpus-backed source unit."""
     results: list[EvalResult] = []
 
     for runner in [parse_runner_spec(spec) for spec in runner_specs]:
@@ -398,8 +393,6 @@ def run_source_eval(
                 runner=runner,
                 output_root=output_root,
                 policy_path=policy_path,
-                source_path=source_path,
-                source_metadata_path=source_metadata_path,
                 source_metadata_payload=source_metadata_payload,
                 runtime_axiom_rules_path=runtime_axiom_rules_path or policy_path,
                 mode=mode,
@@ -472,6 +465,16 @@ def load_eval_suite_manifest(path: Path) -> EvalSuiteManifest:
         name = str(item.get("name", "")).strip() or str(
             item.get("citation") or item.get("source_id") or f"case-{index}"
         )
+        if "source_file" in item:
+            raise ValueError(
+                "Eval suite source cases must use 'corpus_citation_path'; "
+                f"'source_file' is no longer supported in {path}"
+            )
+        if "metadata_file" in item:
+            raise ValueError(
+                "Eval suite source metadata now comes from corpus.provisions; "
+                f"'metadata_file' is no longer supported in {path}"
+            )
 
         case = EvalSuiteCase(
             kind=kind,
@@ -483,19 +486,9 @@ def load_eval_suite_manifest(path: Path) -> EvalSuiteManifest:
             ],
             citation=item.get("citation"),
             source_id=item.get("source_id"),
-            source_file=(
-                _resolve_manifest_path(base_dir, item["source_file"])
-                if item.get("source_file")
-                else None
-            ),
             corpus_citation_path=(
                 str(item.get("corpus_citation_path")).strip()
                 if item.get("corpus_citation_path") is not None
-                else None
-            ),
-            metadata_file=(
-                _resolve_manifest_path(base_dir, item["metadata_file"])
-                if item.get("metadata_file")
                 else None
             ),
             policyengine_rule_hint=(
@@ -616,40 +609,31 @@ def run_eval_suite(
                             extra_context_paths=extra_context,
                         )
                     elif case.kind == "source":
-                        policy_repo_root = (
-                            find_policy_repo_root(case.source_file)
-                            if case.source_file is not None
-                            else None
-                        ) or axiom_rules_path
-                        source_metadata_payload = None
-                        if case.corpus_citation_path:
-                            if corpus_path is None:
-                                raise ValueError(
-                                    "corpus_path is required for corpus-backed "
-                                    "source eval suite cases"
-                                )
-                            source_unit = resolve_corpus_source_unit(
-                                case.corpus_citation_path,
-                                corpus_path,
+                        if corpus_path is None:
+                            raise ValueError(
+                                "corpus_path is required for corpus-backed "
+                                "source eval suite cases"
                             )
-                            source_text = source_unit.body
-                            source_metadata_payload = {
-                                "corpus_citation_path": source_unit.citation_path,
-                                "corpus_source": source_unit.source,
-                                "requested_source": source_unit.requested,
-                            }
-                        else:
-                            source_text = load_source_text_for_eval(
-                                case.source_file or Path()
-                            )
+                        source_unit = resolve_corpus_source_unit(
+                            case.corpus_citation_path or "",
+                            corpus_path,
+                        )
+                        source_text = source_unit.body
+                        policy_repo_root = _policy_repo_root_for_corpus_source(
+                            source_unit.citation_path,
+                            axiom_rules_path,
+                        )
+                        source_metadata_payload = {
+                            "corpus_citation_path": source_unit.citation_path,
+                            "corpus_source": source_unit.source,
+                            "requested_source": source_unit.requested,
+                        }
                         case_results = run_source_eval(
                             source_id=case.source_id or case.name,
                             source_text=source_text,
                             runner_specs=resolved_runners,
                             output_root=case_output_root,
                             policy_path=policy_repo_root,
-                            source_path=case.source_file,
-                            source_metadata_path=case.metadata_file,
                             source_metadata_payload=source_metadata_payload,
                             runtime_axiom_rules_path=axiom_rules_path,
                             mode=case.mode,
@@ -1244,7 +1228,7 @@ def _validate_eval_suite_case(case: EvalSuiteCase, index: int) -> None:
     if case.kind == "source":
         if not case.source_id:
             raise ValueError(f"Eval suite case #{index} is missing 'source_id'")
-        if case.source_file is None and not case.corpus_citation_path:
+        if not case.corpus_citation_path:
             raise ValueError(
                 f"Eval suite case #{index} is missing 'corpus_citation_path'"
             )
@@ -1351,8 +1335,6 @@ def prepare_eval_workspace(
     source_text: str,
     axiom_rules_path: Path,
     mode: EvalMode,
-    source_path: Path | None = None,
-    source_metadata_path: Path | None = None,
     source_metadata_payload: dict[str, object] | None = None,
     extra_context_paths: list[Path] | None = None,
 ) -> EvalWorkspace:
@@ -1365,26 +1347,11 @@ def prepare_eval_workspace(
         shutil.rmtree(workspace_root.parent)
     workspace_root.mkdir(parents=True, exist_ok=True)
 
-    source_file = workspace_root / "source.txt"
-    source_file.write_text(source_text.strip() + "\n")
-    source_metadata: dict[str, object] | None = None
-    if source_metadata_path is not None:
-        payload = yaml.safe_load(source_metadata_path.read_text())
-        if payload is not None and not isinstance(payload, dict):
-            raise ValueError(
-                "Explicit source metadata sidecar must decode to a mapping: "
-                f"{source_metadata_path}"
-            )
-        source_metadata = payload
-    elif source_metadata_payload is None:
-        source_metadata_path, source_metadata = _load_source_metadata_for_path(
-            source_path
-        )
-    if source_metadata_payload is not None:
-        source_metadata = {
-            **(source_metadata or {}),
-            **source_metadata_payload,
-        }
+    source_text_file = workspace_root / "source.txt"
+    source_text_file.write_text(source_text.strip() + "\n")
+    source_metadata = dict(source_metadata_payload or {})
+    if not source_metadata:
+        source_metadata = None
     source_metadata_file: Path | None = None
     if source_metadata is not None:
         source_metadata_file = workspace_root / "source-metadata.json"
@@ -1456,7 +1423,7 @@ def prepare_eval_workspace(
             {
                 "citation": citation,
                 "mode": mode,
-                "source_file": str(source_file.relative_to(workspace_root)),
+                "source_text_file": str(source_text_file.relative_to(workspace_root)),
                 "source_metadata_file": (
                     str(source_metadata_file.relative_to(workspace_root))
                     if source_metadata_file is not None
@@ -1472,44 +1439,12 @@ def prepare_eval_workspace(
 
     return EvalWorkspace(
         root=workspace_root,
-        source_file=source_file,
+        source_text_file=source_text_file,
         manifest_file=manifest_file,
         source_metadata_file=source_metadata_file,
         source_metadata=source_metadata,
         context_files=context_files,
     )
-
-
-def _load_source_metadata_for_path(
-    source_path: Path | None,
-) -> tuple[Path | None, dict[str, object] | None]:
-    """Return companion source metadata for a source file when present."""
-    if source_path is None:
-        return None, None
-
-    candidates = [
-        source_path.with_name(f"{source_path.stem}.meta.yaml"),
-        source_path.with_name(f"{source_path.stem}.meta.yml"),
-        source_path.with_suffix(source_path.suffix + ".meta.yaml"),
-        source_path.with_suffix(source_path.suffix + ".meta.yml"),
-    ]
-    metadata_path = next((path for path in candidates if path.exists()), None)
-    if metadata_path is None:
-        return None, None
-
-    payload = yaml.safe_load(metadata_path.read_text())
-    if payload is None:
-        return metadata_path, None
-    if not isinstance(payload, dict):
-        raise ValueError(
-            f"Source metadata sidecar must decode to a mapping: {metadata_path}"
-        )
-    return metadata_path, payload
-
-
-def load_source_text_for_eval(source_path: Path) -> str:
-    """Load authoritative eval text directly from a source file."""
-    return Path(source_path).read_text()
 
 
 def resolve_corpus_source_unit(
@@ -1575,9 +1510,8 @@ def _candidate_corpus_citation_paths(identifier: str) -> tuple[str, ...]:
 
     add(primary)
     parts = primary.split("/")
-    if len(parts) >= 5 and parts[:2] in (["us", "statute"], ["us", "statutes"]):
-        # Current USC corpus artifacts are section-level for these sources.
-        add("/".join(["us", "statute", parts[2], parts[3]]))
+    for end in range(len(parts) - 1, 2, -1):
+        add("/".join(parts[:end]))
     return tuple(candidates)
 
 
@@ -1672,9 +1606,9 @@ def _materialize_resolved_canonical_concept(
     )
     target = workspace_root / relative_target
     target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(resolved_concept.source_file, target)
+    shutil.copy2(resolved_concept.rulespec_file, target)
     return EvalContextFile(
-        source_path=str(resolved_concept.source_file),
+        source_path=str(resolved_concept.rulespec_file),
         workspace_path=str(relative_target),
         import_path=_relative_rulespec_path_to_import_target(
             relative_target.relative_to("context")
@@ -1730,6 +1664,19 @@ def _target_rel_for_eval_identifier(citation: str) -> Path | None:
         return citation_to_relative_rulespec_path(citation)
     except Exception:
         return None
+
+
+def _policy_repo_root_for_corpus_source(
+    corpus_citation_path: str,
+    axiom_rules_path: Path,
+) -> Path:
+    """Choose the jurisdiction RuleSpec repo for a corpus citation path."""
+    jurisdiction = corpus_citation_path.strip().split("/", 1)[0] or "us"
+    repo_name = "rules-us" if jurisdiction == "us" else f"rules-{jurisdiction}"
+    if axiom_rules_path.name == repo_name:
+        return axiom_rules_path
+    candidate = axiom_rules_path.parent / repo_name
+    return candidate if candidate.exists() else axiom_rules_path
 
 
 def evaluate_artifact(
@@ -2033,8 +1980,6 @@ def _run_single_source_eval(
     runner: EvalRunnerSpec,
     output_root: Path,
     policy_path: Path,
-    source_path: Path | None,
-    source_metadata_path: Path | None,
     source_metadata_payload: dict[str, object] | None,
     runtime_axiom_rules_path: Path,
     mode: EvalMode,
@@ -2043,7 +1988,7 @@ def _run_single_source_eval(
     policyengine_country: str,
     policyengine_rule_hint: str | None,
 ) -> EvalResult:
-    """Run one eval on an arbitrary source-backed text unit rather than a USC citation."""
+    """Run one eval on a corpus-backed source unit rather than a USC citation."""
     workspace = prepare_eval_workspace(
         citation=source_id,
         runner=runner,
@@ -2051,8 +1996,6 @@ def _run_single_source_eval(
         source_text=source_text,
         axiom_rules_path=policy_path,
         mode=mode,
-        source_path=source_path,
-        source_metadata_path=source_metadata_path,
         source_metadata_payload=source_metadata_payload,
         extra_context_paths=extra_context_paths,
     )
@@ -2154,7 +2097,7 @@ def _build_rulespec_eval_prompt(
     policyengine_rule_hint: str | None,
 ) -> str:
     """Build the RuleSpec authoring prompt used by current evals."""
-    source_text = workspace.source_file.read_text().strip()
+    source_text = workspace.source_text_file.read_text().strip()
     corpus_citation_path = _workspace_corpus_citation_path(workspace)
     backend_section = ""
     if runner_backend == "openai":

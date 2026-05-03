@@ -55,6 +55,24 @@ def _mock_generalist_reviewer():
         yield
 
 
+def _write_test_corpus_provision(
+    tmp_path: Path,
+    citation_path: str = "us/statute/7/2017",
+    body: str = "authoritative source text",
+) -> Path:
+    corpus_path = tmp_path / "axiom-corpus"
+    parts = citation_path.split("/")
+    provisions_dir = (
+        corpus_path / "data" / "corpus" / "provisions" / parts[0] / parts[1]
+    )
+    provisions_dir.mkdir(parents=True, exist_ok=True)
+    (provisions_dir / "test.jsonl").write_text(
+        json.dumps({"citation_path": citation_path, "body": body}) + "\n",
+        encoding="utf-8",
+    )
+    return corpus_path
+
+
 class TestParseRunnerSpec:
     def test_parses_named_runner(self):
         runner = parse_runner_spec("gpt=codex:gpt-5.4")
@@ -130,12 +148,7 @@ class TestCorpusSourceResolution:
         )
         assert "Do not emit `source_url`" in prompt
 
-    def test_workspace_merges_source_metadata_sidecar_with_corpus_payload(
-        self, tmp_path
-    ):
-        metadata_file = tmp_path / "source.yaml"
-        metadata_file.write_text("source_name: Federal Insurance Contributions Act\n")
-
+    def test_workspace_writes_corpus_source_metadata_payload(self, tmp_path):
         workspace = prepare_eval_workspace(
             citation="26 USC 3101(a)",
             runner=parse_runner_spec("codex:gpt-5.4"),
@@ -143,8 +156,8 @@ class TestCorpusSourceResolution:
             source_text="Section text states 6.2 percent.",
             axiom_rules_path=tmp_path / "rules-us",
             mode="cold",
-            source_metadata_path=metadata_file,
             source_metadata_payload={
+                "source_name": "Federal Insurance Contributions Act",
                 "corpus_citation_path": "us/statute/26/3101",
             },
             extra_context_paths=[],
@@ -3249,7 +3262,7 @@ cases:
   - kind: source
     name: uc-standard-allowance-single-young
     source_id: uc-std-allowance-single
-    source_file: ./source.txt
+    corpus_citation_path: us/statute/7/2017
     oracle: policyengine
     policyengine_country: uk
     policyengine_rule_hint: uc_standard_allowance_single_claimant_aged_under_25
@@ -3277,7 +3290,7 @@ cases:
   - kind: source
     name: sample
     source_id: sample-source
-    source_file: ./source.txt
+    corpus_citation_path: us/statute/7/2017
             """.strip()
         )
         (tmp_path / "source.txt").write_text("authoritative row text")
@@ -3299,7 +3312,7 @@ cases:
   - kind: source
     name: uc-standard-allowance-single-young
     source_id: uc-std-allowance-single
-    source_file: ./source.txt
+    corpus_citation_path: us/statute/7/2017
     oracle: policyengine
     policyengine_country: uk
     policyengine_rule_hint: uc_standard_allowance_single_claimant_aged_under_25
@@ -3317,7 +3330,7 @@ cases:
                 manifest=manifest,
                 output_root=tmp_path / "out",
                 axiom_rules_path=tmp_path / "axiom-rules",
-                corpus_path=None,
+                corpus_path=_write_test_corpus_provision(tmp_path),
             )
 
         assert results == [source_result]
@@ -3337,7 +3350,7 @@ cases:
   - kind: source
     name: tanf-slice
     source_id: co-tanf-f
-    source_file: ./source.txt
+    corpus_citation_path: us/statute/7/2017
             """.strip()
         )
         (tmp_path / "source.txt").write_text("authoritative source text")
@@ -3360,7 +3373,7 @@ cases:
                 manifest=manifest,
                 output_root=output_root,
                 axiom_rules_path=tmp_path / "axiom-rules",
-                corpus_path=None,
+                corpus_path=_write_test_corpus_provision(tmp_path),
             )
 
         assert len(snapshots) == 1
@@ -3379,19 +3392,11 @@ cases:
 
     def test_run_eval_suite_routes_source_case_to_enclosing_policy_repo(self, tmp_path):
         policy_repo = tmp_path / "rules-us-tn"
-        source_file = (
-            policy_repo
-            / "sources"
-            / "slices"
-            / "tenncare"
-            / "post-eligibility"
-            / "current-effective"
-            / "snap_standard_utility_allowance_tn.txt"
-        )
-        source_file.parent.mkdir(parents=True, exist_ok=True)
-        source_file.write_text("Tennessee source text")
+        policy_repo.mkdir()
         runtime_axiom_rules = tmp_path / "axiom-rules"
         runtime_axiom_rules.mkdir()
+        corpus_path = tmp_path / "axiom-corpus"
+        corpus_path.mkdir()
         output_root = tmp_path / "out"
 
         manifest = EvalSuiteManifest(
@@ -3406,7 +3411,7 @@ cases:
                     kind="source",
                     name="snap-tn-sua",
                     source_id="snap_standard_utility_allowance_tn",
-                    source_file=source_file,
+                    corpus_citation_path="us-tn/policy/snap-standard-utility-allowance",
                     mode="repo-augmented",
                 )
             ],
@@ -3414,6 +3419,15 @@ cases:
         source_result = _fake_eval_result("openai-gpt-5.4", "snap-tn-sua")
 
         with (
+            patch(
+                "axiom_encode.harness.evals.resolve_corpus_source_unit",
+                return_value=Mock(
+                    body="Tennessee source text",
+                    citation_path="us-tn/policy/snap-standard-utility-allowance",
+                    source="local",
+                    requested="us-tn/policy/snap-standard-utility-allowance",
+                ),
+            ),
             patch(
                 "axiom_encode.harness.evals.run_source_eval",
                 return_value=[source_result],
@@ -3423,11 +3437,15 @@ cases:
                 manifest=manifest,
                 output_root=output_root,
                 axiom_rules_path=runtime_axiom_rules,
-                corpus_path=None,
+                corpus_path=corpus_path,
             )
 
         assert mock_run_source_eval.call_args.kwargs["policy_path"] == policy_repo
-        assert mock_run_source_eval.call_args.kwargs["source_path"] == source_file
+        assert mock_run_source_eval.call_args.kwargs["source_metadata_payload"] == {
+            "corpus_citation_path": "us-tn/policy/snap-standard-utility-allowance",
+            "corpus_source": "local",
+            "requested_source": "us-tn/policy/snap-standard-utility-allowance",
+        }
         assert (
             mock_run_source_eval.call_args.kwargs["runtime_axiom_rules_path"]
             == runtime_axiom_rules
@@ -3444,7 +3462,7 @@ cases:
   - kind: source
     name: tanf-slice
     source_id: co-tanf-f
-    source_file: ./source.txt
+    corpus_citation_path: us/statute/7/2017
             """.strip()
         )
         (tmp_path / "source.txt").write_text("authoritative source text")
@@ -3459,7 +3477,7 @@ cases:
                 manifest=manifest,
                 output_root=tmp_path / "out",
                 axiom_rules_path=tmp_path / "axiom-rules",
-                corpus_path=None,
+                corpus_path=_write_test_corpus_provision(tmp_path),
             )
 
         assert results == [source_result]
@@ -3476,7 +3494,7 @@ cases:
   - kind: source
     name: tanf-slice
     source_id: co-tanf-f
-    source_file: ./source.txt
+    corpus_citation_path: us/statute/7/2017
             """.strip()
         )
         (tmp_path / "source.txt").write_text("authoritative source text")
@@ -3494,7 +3512,7 @@ cases:
                 manifest=manifest,
                 output_root=tmp_path / "out",
                 axiom_rules_path=tmp_path / "axiom-rules",
-                corpus_path=None,
+                corpus_path=_write_test_corpus_provision(tmp_path),
             )
 
         assert results == [source_result]
@@ -3511,7 +3529,7 @@ cases:
   - kind: source
     name: tanf-slice
     source_id: co-tanf-f
-    source_file: ./source.txt
+    corpus_citation_path: us/statute/7/2017
             """.strip()
         )
         (tmp_path / "source.txt").write_text("authoritative source text")
@@ -3530,7 +3548,7 @@ cases:
                 manifest=manifest,
                 output_root=tmp_path / "out",
                 axiom_rules_path=tmp_path / "axiom-rules",
-                corpus_path=None,
+                corpus_path=_write_test_corpus_provision(tmp_path),
             )
 
         assert results == [failed]
@@ -3547,11 +3565,11 @@ cases:
   - kind: source
     name: case-one
     source_id: case-one
-    source_file: ./source.txt
+    corpus_citation_path: us/statute/7/2017
   - kind: source
     name: case-two
     source_id: case-two
-    source_file: ./source.txt
+    corpus_citation_path: us/statute/7/2017
             """.strip()
         )
         (tmp_path / "source.txt").write_text("authoritative source text")
@@ -3576,7 +3594,7 @@ cases:
                 manifest=manifest,
                 output_root=output_root,
                 axiom_rules_path=tmp_path / "axiom-rules",
-                corpus_path=None,
+                corpus_path=_write_test_corpus_provision(tmp_path),
             )
 
         assert results == [usage_limited]
@@ -3599,7 +3617,7 @@ cases:
   - kind: source
     name: case-one
     source_id: case-one
-    source_file: ./source.txt
+    corpus_citation_path: us/statute/7/2017
             """.strip()
         )
         (tmp_path / "source.txt").write_text("authoritative source text")
@@ -3623,7 +3641,7 @@ cases:
                 manifest=manifest,
                 output_root=tmp_path / "out",
                 axiom_rules_path=tmp_path / "axiom-rules",
-                corpus_path=None,
+                corpus_path=_write_test_corpus_provision(tmp_path),
             )
 
         assert results == [recovered]
@@ -3640,11 +3658,11 @@ cases:
   - kind: source
     name: case-one
     source_id: case-one
-    source_file: ./source.txt
+    corpus_citation_path: us/statute/7/2017
   - kind: source
     name: case-two
     source_id: case-two
-    source_file: ./source.txt
+    corpus_citation_path: us/statute/7/2017
             """.strip()
         )
         (tmp_path / "source.txt").write_text("authoritative source text")
@@ -3697,7 +3715,7 @@ cases:
                 manifest=manifest,
                 output_root=output_root,
                 axiom_rules_path=tmp_path / "axiom-rules",
-                corpus_path=None,
+                corpus_path=_write_test_corpus_provision(tmp_path),
                 resume_existing=True,
             )
 
@@ -3711,2044 +3729,111 @@ cases:
         lines = (output_root / "suite-results.jsonl").read_text().strip().splitlines()
         assert len(lines) == 2
 
-    def test_repo_us_co_colorado_works_seed_manifest_loads_expected_cases(self):
+    @pytest.mark.parametrize(
+        ("manifest_filename", "expected_corpus_paths"),
+        [
+            (
+                "us_co_colorado_works_seed.yaml",
+                [
+                    "us-co/regulation/9-ccr-2503-6/3.606.1/F",
+                    "us-co/regulation/9-ccr-2503-6/3.606.1/G",
+                    "us-co/regulation/9-ccr-2503-6/3.606.1/H",
+                    "us-co/regulation/9-ccr-2503-6/3.606.1/I",
+                    "us-co/regulation/9-ccr-2503-6/3.606.1/K",
+                ],
+            ),
+            (
+                "us_co_colorado_works_leaf_seed.yaml",
+                [
+                    "us-co/regulation/9-ccr-2503-6/3.606.1/E",
+                    "us-co/regulation/9-ccr-2503-6/3.606.1/G",
+                    "us-co/regulation/9-ccr-2503-6/3.606.1/H",
+                    "us-co/regulation/9-ccr-2503-6/3.606.1/I",
+                    "us-co/regulation/9-ccr-2503-6/3.606.1/J",
+                    "us-co/regulation/9-ccr-2503-6/3.606.1/K",
+                ],
+            ),
+            (
+                "us_co_colorado_works_leaf_repair.yaml",
+                [
+                    "us-co/regulation/9-ccr-2503-6/3.606.1/G",
+                    "us-co/regulation/9-ccr-2503-6/3.606.1/H",
+                    "us-co/regulation/9-ccr-2503-6/3.606.1/I",
+                    "us-co/regulation/9-ccr-2503-6/3.606.1/J",
+                    "us-co/regulation/9-ccr-2503-6/3.606.1/K",
+                ],
+            ),
+            (
+                "us_co_colorado_works_leaf_k_repair.yaml",
+                ["us-co/regulation/9-ccr-2503-6/3.606.1/K"],
+            ),
+            (
+                "us_co_colorado_works_leaf_h_repair.yaml",
+                ["us-co/regulation/9-ccr-2503-6/3.606.1/H"],
+            ),
+            (
+                "us_co_colorado_works_leaf_closeout.yaml",
+                [
+                    "us-co/regulation/9-ccr-2503-6/3.606.1/H",
+                    "us-co/regulation/9-ccr-2503-6/3.606.1/K",
+                ],
+            ),
+            (
+                "us_snap_federal_reconstruction_seed.yaml",
+                [
+                    "us/statute/7/2017/a",
+                    "us/statute/7/2017/c/1",
+                    "us/statute/7/2017/c/3",
+                    "us/guidance/usda/fns/snap-fy2026-cola/page-1",
+                ],
+            ),
+            ("us_snap_federal_c3_repair.yaml", ["us/statute/7/2017/c/3"]),
+            (
+                "us_snap_fy2026_cola_table_repair.yaml",
+                ["us/guidance/usda/fns/snap-fy2026-cola/page-1"],
+            ),
+            ("us_snap_asset_test_refresh.yaml", ["us/statute/7/2014/g/1"]),
+            (
+                "us_snap_asset_test_current_effective_refresh.yaml",
+                ["us/guidance/usda/fns/snap-fy2026-cola/page-2"],
+            ),
+            ("us_snap_eligibility_refresh.yaml", ["us/statute/7/2014"]),
+            (
+                "us_snap_earned_income_deduction_refresh.yaml",
+                ["us/statute/7/2014/e/2/B"],
+            ),
+            (
+                "us_snap_net_income_pre_shelter_refresh.yaml",
+                ["us/statute/7/2014/e/6/A"],
+            ),
+            (
+                "us_snap_co_self_employment_expense_option_refresh.yaml",
+                ["us-co/regulation/10-ccr-2506-1/4.403.11"],
+            ),
+            (
+                "us_snap_co_child_support_deduction_option_refresh.yaml",
+                ["us-co/regulation/10-ccr-2506-1/4.407.5"],
+            ),
+        ],
+    )
+    def test_repo_benchmark_manifests_are_corpus_backed(
+        self,
+        manifest_filename,
+        expected_corpus_paths,
+    ):
         repo_root = Path(__file__).resolve().parents[1]
         manifest = load_eval_suite_manifest(
-            repo_root / "benchmarks" / "us_co_colorado_works_seed.yaml"
+            repo_root / "benchmarks" / manifest_filename
         )
 
         assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 5
-        assert manifest.gates.min_cases == 5
-        assert manifest.gates.min_compile_pass_rate == 1.0
-        assert manifest.gates.min_ci_pass_rate == 1.0
+        assert [
+            case.corpus_citation_path for case in manifest.cases
+        ] == expected_corpus_paths
         assert all(case.kind == "source" for case in manifest.cases)
-        assert [case.name for case in manifest.cases] == [
-            "co-3-606-1-f",
-            "co-3-606-1-g",
-            "co-3-606-1-h",
-            "co-3-606-1-i",
-            "co-3-606-1-k",
-        ]
-        assert manifest.cases[0].allow_context == []
-        assert manifest.cases[2].allow_context == [
-            (
-                repo_root.parent
-                / "rules-us-co"
-                / "regulation"
-                / "9-CCR-2503-6"
-                / "3.606.1"
-                / "F.yaml"
-            ).resolve()
-        ]
-        assert manifest.cases[4].allow_context == [
-            (
-                repo_root.parent
-                / "rules-us-co"
-                / "regulation"
-                / "9-CCR-2503-6"
-                / "3.606.1"
-                / "F.yaml"
-            ).resolve(),
-            (
-                repo_root.parent
-                / "rules-us-co"
-                / "regulation"
-                / "9-CCR-2503-6"
-                / "3.606.1"
-                / "I.yaml"
-            ).resolve(),
-        ]
-
-    def test_repo_us_co_colorado_works_leaf_seed_manifest_loads_expected_cases(self):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root / "benchmarks" / "us_co_colorado_works_leaf_seed.yaml"
-        )
-
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 6
-        assert manifest.gates.min_cases == 6
-        assert manifest.gates.min_compile_pass_rate == 1.0
-        assert manifest.gates.min_ci_pass_rate == 1.0
-        assert all(case.kind == "source" for case in manifest.cases)
-        assert [case.name for case in manifest.cases] == [
-            "co-3-606-1-e",
-            "co-3-606-1-g",
-            "co-3-606-1-h",
-            "co-3-606-1-i",
-            "co-3-606-1-j",
-            "co-3-606-1-k",
-        ]
-        assert manifest.cases[0].allow_context == []
-        assert manifest.cases[2].allow_context == [
-            (
-                repo_root.parent
-                / "rules-us-co"
-                / "regulation"
-                / "9-CCR-2503-6"
-                / "3.606.1"
-                / "F.yaml"
-            ).resolve()
-        ]
-        assert manifest.cases[5].allow_context == [
-            (
-                repo_root.parent
-                / "rules-us-co"
-                / "regulation"
-                / "9-CCR-2503-6"
-                / "3.606.1"
-                / "F.yaml"
-            ).resolve(),
-            (
-                repo_root.parent
-                / "rules-us-co"
-                / "regulation"
-                / "9-CCR-2503-6"
-                / "3.606.1"
-                / "I.yaml"
-            ).resolve(),
-        ]
-
-    def test_repo_us_co_colorado_works_leaf_repair_manifest_loads_expected_cases(self):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root / "benchmarks" / "us_co_colorado_works_leaf_repair.yaml"
-        )
-
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 5
-        assert manifest.gates.min_cases == 5
-        assert manifest.gates.min_compile_pass_rate == 1.0
-        assert manifest.gates.min_ci_pass_rate == 1.0
-        assert all(case.kind == "source" for case in manifest.cases)
-        assert [case.name for case in manifest.cases] == [
-            "co-3-606-1-g",
-            "co-3-606-1-h",
-            "co-3-606-1-i",
-            "co-3-606-1-j",
-            "co-3-606-1-k",
-        ]
-        assert manifest.cases[0].allow_context == []
-        assert manifest.cases[1].allow_context == [
-            (
-                repo_root.parent
-                / "rules-us-co"
-                / "regulation"
-                / "9-CCR-2503-6"
-                / "3.606.1"
-                / "F.yaml"
-            ).resolve()
-        ]
-        assert manifest.cases[4].allow_context == [
-            (
-                repo_root.parent
-                / "rules-us-co"
-                / "regulation"
-                / "9-CCR-2503-6"
-                / "3.606.1"
-                / "F.yaml"
-            ).resolve(),
-            (
-                repo_root.parent
-                / "rules-us-co"
-                / "regulation"
-                / "9-CCR-2503-6"
-                / "3.606.1"
-                / "I.yaml"
-            ).resolve(),
-        ]
-
-    def test_repo_us_co_colorado_works_leaf_k_repair_manifest_loads_expected_case(self):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root / "benchmarks" / "us_co_colorado_works_leaf_k_repair.yaml"
-        )
-
-        assert manifest.name == "Colorado Works leaf K repair"
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 1
-        assert manifest.gates.min_cases == 1
-        assert manifest.gates.min_success_rate == 1.0
-        assert manifest.gates.min_compile_pass_rate == 1.0
-        assert manifest.gates.min_ci_pass_rate == 1.0
-        assert manifest.gates.min_zero_ungrounded_rate == 1.0
-        assert manifest.gates.min_generalist_review_pass_rate == 1.0
-        assert manifest.gates.max_mean_estimated_cost_usd == 0.5
-        assert manifest.cases[0].name == "co-3-606-1-k"
-        assert manifest.cases[0].source_id == "9 CCR 2503-6 3.606.1(K)"
-        assert manifest.cases[0].allow_context == [
-            (
-                repo_root.parent
-                / "rules-us-co"
-                / "regulation"
-                / "9-CCR-2503-6"
-                / "3.606.1"
-                / "F.yaml"
-            ).resolve(),
-            (
-                repo_root.parent
-                / "rules-us-co"
-                / "regulation"
-                / "9-CCR-2503-6"
-                / "3.606.1"
-                / "I.yaml"
-            ).resolve(),
-        ]
-
-    def test_repo_us_co_colorado_works_leaf_h_repair_manifest_loads_expected_case(self):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root / "benchmarks" / "us_co_colorado_works_leaf_h_repair.yaml"
-        )
-
-        assert manifest.name == "Colorado Works leaf H repair"
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 1
-        assert manifest.gates.min_cases == 1
-        assert manifest.gates.min_success_rate == 1.0
-        assert manifest.gates.min_compile_pass_rate == 1.0
-        assert manifest.gates.min_ci_pass_rate == 1.0
-        assert manifest.gates.min_zero_ungrounded_rate == 1.0
-        assert manifest.gates.min_generalist_review_pass_rate == 1.0
-        assert manifest.gates.max_mean_estimated_cost_usd == 0.5
-        assert manifest.cases[0].name == "co-3-606-1-h"
-        assert manifest.cases[0].source_id == "9 CCR 2503-6 3.606.1(H)"
-        assert manifest.cases[0].allow_context == [
-            (
-                repo_root.parent
-                / "rules-us-co"
-                / "regulation"
-                / "9-CCR-2503-6"
-                / "3.606.1"
-                / "F.yaml"
-            ).resolve()
-        ]
-
-    def test_repo_us_co_colorado_works_leaf_closeout_manifest_loads_expected_cases(
-        self,
-    ):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root / "benchmarks" / "us_co_colorado_works_leaf_closeout.yaml"
-        )
-
-        assert manifest.name == "Colorado Works leaf closeout"
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 2
-        assert manifest.gates.min_cases == 2
-        assert manifest.gates.min_success_rate == 1.0
-        assert manifest.gates.min_compile_pass_rate == 1.0
-        assert manifest.gates.min_ci_pass_rate == 1.0
-        assert manifest.gates.min_zero_ungrounded_rate == 1.0
-        assert manifest.gates.min_generalist_review_pass_rate == 1.0
-        assert manifest.gates.max_mean_estimated_cost_usd == 0.5
-        assert [case.name for case in manifest.cases] == [
-            "co-3-606-1-h",
-            "co-3-606-1-k",
-        ]
-        assert manifest.cases[0].allow_context == [
-            (
-                repo_root.parent
-                / "rules-us-co"
-                / "regulation"
-                / "9-CCR-2503-6"
-                / "3.606.1"
-                / "F.yaml"
-            ).resolve()
-        ]
-        assert manifest.cases[1].allow_context == [
-            (
-                repo_root.parent
-                / "rules-us-co"
-                / "regulation"
-                / "9-CCR-2503-6"
-                / "3.606.1"
-                / "F.yaml"
-            ).resolve(),
-            (
-                repo_root.parent
-                / "rules-us-co"
-                / "regulation"
-                / "9-CCR-2503-6"
-                / "3.606.1"
-                / "I.yaml"
-            ).resolve(),
-        ]
-
-    def test_repo_us_snap_federal_reconstruction_seed_manifest_loads_expected_cases(
-        self,
-    ):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root / "benchmarks" / "us_snap_federal_reconstruction_seed.yaml"
-        )
-
-        assert manifest.name == "SNAP federal reconstruction seed"
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 4
-        assert manifest.gates.min_cases == 4
-        assert manifest.gates.min_success_rate == 0.75
-        assert manifest.gates.min_compile_pass_rate == 1.0
-        assert manifest.gates.min_ci_pass_rate == 1.0
-        assert manifest.gates.min_zero_ungrounded_rate == 1.0
-        assert manifest.gates.min_generalist_review_pass_rate == 1.0
-        assert manifest.gates.max_mean_estimated_cost_usd == 0.75
-        assert all(case.kind == "source" for case in manifest.cases)
-        assert [case.name for case in manifest.cases] == [
-            "snap-2017-a",
-            "snap-2017-c-1",
-            "snap-2017-c-3",
-            "snap-fy2026-cola-allotments",
-        ]
-        assert manifest.cases[0].allow_context == [
-            (
-                repo_root.parent / "rules-us" / "statutes" / "7" / "2014" / "e.yaml"
-            ).resolve(),
-            (
-                repo_root.parent
-                / "rules-us"
-                / "statutes"
-                / "7"
-                / "2014"
-                / "g"
-                / "1.yaml"
-            ).resolve(),
-        ]
-        assert manifest.cases[1].allow_context == [
-            (
-                repo_root.parent / "rules-us" / "statutes" / "7" / "2017" / "a.yaml"
-            ).resolve()
-        ]
-        assert manifest.cases[2].allow_context == [
-            (
-                repo_root.parent / "rules-us" / "statutes" / "7" / "2017" / "a.yaml"
-            ).resolve(),
-            (
-                repo_root.parent
-                / "rules-us"
-                / "statutes"
-                / "7"
-                / "2017"
-                / "c"
-                / "1.yaml"
-            ).resolve(),
-        ]
-        assert manifest.cases[3].allow_context == [
-            (
-                repo_root.parent / "rules-us" / "statutes" / "7" / "2017" / "a.yaml"
-            ).resolve()
-        ]
-
-    def test_repo_us_snap_federal_c3_repair_manifest_loads_expected_case(
-        self,
-    ):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root / "benchmarks" / "us_snap_federal_c3_repair.yaml"
-        )
-
-        assert manifest.name == "SNAP federal 2017(c)(3) repair"
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 1
-        assert manifest.gates.min_cases == 1
-        assert manifest.gates.min_success_rate == 1.0
-        assert manifest.gates.min_compile_pass_rate == 1.0
-        assert manifest.gates.min_ci_pass_rate == 1.0
-        assert manifest.gates.min_zero_ungrounded_rate == 1.0
-        assert manifest.gates.min_generalist_review_pass_rate == 1.0
-        assert manifest.gates.max_mean_estimated_cost_usd == 0.2
-        case = manifest.cases[0]
-        assert case.kind == "source"
-        assert case.name == "snap-2017-c-3"
-        assert case.source_id == "7 USC 2017(c)(3)"
-        assert (
-            case.source_file
-            == (
-                repo_root.parent
-                / "rules-us"
-                / "sources"
-                / "slices"
-                / "7-USC"
-                / "2017"
-                / "c"
-                / "3.txt"
-            ).resolve()
-        )
-        assert case.allow_context == [
-            (
-                repo_root.parent / "rules-us" / "statutes" / "7" / "2017" / "a.yaml"
-            ).resolve(),
-            (
-                repo_root.parent
-                / "rules-us"
-                / "statutes"
-                / "7"
-                / "2017"
-                / "c"
-                / "1.yaml"
-            ).resolve(),
-        ]
-
-    def test_repo_us_snap_fy2026_cola_table_repair_manifest_loads_expected_case(
-        self,
-    ):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root / "benchmarks" / "us_snap_fy2026_cola_table_repair.yaml"
-        )
-
-        assert manifest.name == "SNAP FY2026 COLA table repair"
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 1
-        assert manifest.gates.min_cases == 1
-        assert manifest.gates.min_success_rate == 1.0
-        assert manifest.gates.min_compile_pass_rate == 1.0
-        assert manifest.gates.min_ci_pass_rate == 1.0
-        assert manifest.gates.min_zero_ungrounded_rate == 1.0
-        assert manifest.gates.min_generalist_review_pass_rate == 1.0
-        assert manifest.gates.max_mean_estimated_cost_usd == 0.3
-        case = manifest.cases[0]
-        assert case.kind == "source"
-        assert case.name == "snap-fy2026-cola-allotments"
-        assert case.source_id == "USDA SNAP FY 2026 COLA allotment table"
-        assert (
-            case.source_file
-            == (
-                repo_root.parent
-                / "rules-us"
-                / "sources"
-                / "slices"
-                / "usda"
-                / "snap"
-                / "fy-2026-cola"
-                / "allotment-table.txt"
-            ).resolve()
-        )
-        assert case.allow_context == [
-            (
-                repo_root.parent / "rules-us" / "statutes" / "7" / "2017" / "a.yaml"
-            ).resolve()
-        ]
-
-    def test_repo_us_snap_asset_test_refresh_manifest_loads_expected_case(self):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root / "benchmarks" / "us_snap_asset_test_refresh.yaml"
-        )
-
-        assert manifest.name == "SNAP asset test refresh"
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 1
-        assert manifest.gates.min_cases == 1
-        assert manifest.gates.min_success_rate == 1.0
-        assert manifest.gates.min_compile_pass_rate == 1.0
-        assert manifest.gates.min_ci_pass_rate == 1.0
-        assert manifest.gates.min_zero_ungrounded_rate == 1.0
-        assert manifest.gates.min_generalist_review_pass_rate == 1.0
-        assert manifest.gates.min_policyengine_pass_rate == 1.0
-        case = manifest.cases[0]
-        assert case.kind == "source"
-        assert case.name == "meets_snap_asset_test"
-        assert case.source_id == "7 USC 2014(g)(1)"
-        assert (
-            case.source_file
-            == (
-                repo_root.parent
-                / "rules-us"
-                / "sources"
-                / "slices"
-                / "7-USC"
-                / "2014"
-                / "g"
-                / "1.txt"
-            ).resolve()
-        )
-        assert case.allow_context == [
-            (
-                repo_root.parent
-                / "rules-us"
-                / "usda"
-                / "snap"
-                / "fy-2026-cola"
-                / "2.yaml"
-            ).resolve()
-        ]
-        assert case.oracle == "policyengine"
-        assert case.policyengine_country == "auto"
-        assert case.policyengine_rule_hint == "meets_snap_asset_test"
-
-    def test_repo_us_snap_asset_test_current_effective_refresh_manifest_loads_expected_case(
-        self,
-    ):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root
-            / "benchmarks"
-            / "us_snap_asset_test_current_effective_refresh.yaml"
-        )
-
-        assert manifest.name == "SNAP asset test current-effective refresh"
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 1
-        assert manifest.gates.min_cases == 1
-        assert manifest.gates.min_success_rate == 1.0
-        assert manifest.gates.min_compile_pass_rate == 1.0
-        assert manifest.gates.min_ci_pass_rate == 1.0
-        assert manifest.gates.min_zero_ungrounded_rate == 1.0
-        assert manifest.gates.min_generalist_review_pass_rate == 1.0
-        assert manifest.gates.min_policyengine_pass_rate == 1.0
-        case = manifest.cases[0]
-        assert case.kind == "source"
-        assert case.name == "meets_snap_asset_test_current_effective"
-        assert case.source_id == "USDA SNAP FY2026 maximum asset limits"
-        assert (
-            case.source_file
-            == (
-                repo_root.parent
-                / "rules-us"
-                / "sources"
-                / "slices"
-                / "usda"
-                / "snap"
-                / "fy-2026-cola"
-                / "asset-limits-current-effective.txt"
-            ).resolve()
-        )
-        assert case.allow_context == [
-            (
-                repo_root.parent
-                / "rules-us"
-                / "statutes"
-                / "7"
-                / "2014"
-                / "g"
-                / "1.yaml"
-            ).resolve()
-        ]
-        assert case.oracle == "policyengine"
-        assert case.policyengine_country == "auto"
-        assert case.policyengine_rule_hint == "meets_snap_asset_test"
-
-    def test_repo_us_snap_eligibility_refresh_manifest_loads_expected_case(self):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root / "benchmarks" / "us_snap_eligibility_refresh.yaml"
-        )
-
-        assert manifest.name == "SNAP eligibility refresh"
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 1
-        assert manifest.gates.min_cases == 1
-        assert manifest.gates.min_success_rate == 1.0
-        assert manifest.gates.min_compile_pass_rate == 1.0
-        assert manifest.gates.min_ci_pass_rate == 1.0
-        assert manifest.gates.min_zero_ungrounded_rate == 1.0
-        assert manifest.gates.min_generalist_review_pass_rate == 1.0
-        assert manifest.gates.min_policyengine_pass_rate == 1.0
-        case = manifest.cases[0]
-        assert case.kind == "source"
-        assert case.name == "is_snap_eligible"
-        assert case.source_id == "Federal SNAP current-effective household eligibility"
-        assert (
-            case.source_file
-            == (
-                repo_root.parent
-                / "rules-us"
-                / "sources"
-                / "slices"
-                / "7-USC"
-                / "snap"
-                / "current-effective"
-                / "is_snap_eligible.txt"
-            ).resolve()
-        )
-        assert case.allow_context == [
-            (
-                repo_root.parent / "rules-us" / "statutes" / "7" / "2014" / "c.yaml"
-            ).resolve(),
-            (
-                repo_root.parent
-                / "rules-us"
-                / "statutes"
-                / "7"
-                / "2014"
-                / "g"
-                / "1.yaml"
-            ).resolve(),
-        ]
-        assert case.oracle == "policyengine"
-        assert case.policyengine_country == "auto"
-        assert case.policyengine_rule_hint == "is_snap_eligible"
-
-    def test_repo_us_snap_earned_income_deduction_refresh_manifest_loads_expected_case(
-        self,
-    ):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root / "benchmarks" / "us_snap_earned_income_deduction_refresh.yaml"
-        )
-
-        assert manifest.name == "SNAP earned income deduction refresh"
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 1
-        assert manifest.gates.min_policyengine_pass_rate == 1.0
-        case = manifest.cases[0]
-        assert case.kind == "source"
-        assert case.name == "snap_earned_income_deduction"
-        assert (
-            case.source_id == "SNAP earned income deduction under 7 USC 2014(e)(2)(B)"
-        )
-        assert (
-            case.source_file
-            == (
-                repo_root.parent
-                / "rules-us"
-                / "sources"
-                / "slices"
-                / "7-USC"
-                / "snap"
-                / "current-effective"
-                / "snap_earned_income_deduction.txt"
-            ).resolve()
-        )
-        assert case.allow_context == []
-        assert case.oracle == "policyengine"
-        assert case.policyengine_country == "auto"
-        assert case.policyengine_rule_hint == "snap_earned_income_deduction"
-
-    def test_repo_us_snap_net_income_pre_shelter_refresh_manifest_loads_expected_case(
-        self,
-    ):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root / "benchmarks" / "us_snap_net_income_pre_shelter_refresh.yaml"
-        )
-
-        assert manifest.name == "SNAP pre-shelter net income refresh"
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 1
-        assert manifest.gates.min_policyengine_pass_rate == 1.0
-        case = manifest.cases[0]
-        assert case.kind == "source"
-        assert case.name == "snap_net_income_pre_shelter"
-        assert case.source_id == "SNAP pre-shelter net income under 7 USC 2014(e)(6)(A)"
-        assert (
-            case.source_file
-            == (
-                repo_root.parent
-                / "rules-us"
-                / "sources"
-                / "slices"
-                / "7-USC"
-                / "snap"
-                / "current-effective"
-                / "snap_net_income_pre_shelter.txt"
-            ).resolve()
-        )
-        assert case.allow_context == []
-        assert case.oracle == "policyengine"
-        assert case.policyengine_country == "auto"
-        assert case.policyengine_rule_hint == "snap_net_income_pre_shelter"
-
-    def test_repo_us_snap_nc_standard_utility_allowance_refresh_manifest_loads_expected_case(
-        self,
-    ):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root
-            / "benchmarks"
-            / "us_snap_nc_standard_utility_allowance_refresh.yaml"
-        )
-
-        assert manifest.name == "North Carolina SNAP standard utility allowance refresh"
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 1
-        assert manifest.gates.min_policyengine_pass_rate == 1.0
-        case = manifest.cases[0]
-        assert case.kind == "source"
-        assert case.name == "snap_standard_utility_allowance_nc"
-        assert (
-            case.source_id
-            == "North Carolina SNAP standard utility allowance under FNS 360.01(A)(1)"
-        )
-        assert (
-            case.source_file
-            == (
-                repo_root.parent
-                / "rules-us-nc"
-                / "sources"
-                / "slices"
-                / "ncdhhs"
-                / "fns"
-                / "360"
-                / "current-effective"
-                / "snap_standard_utility_allowance_nc.txt"
-            ).resolve()
-        )
-        assert case.allow_context == []
-        assert case.oracle == "policyengine"
-        assert case.policyengine_country == "auto"
-        assert case.policyengine_rule_hint == "snap_standard_utility_allowance"
-
-    def test_repo_us_snap_nc_limited_utility_allowance_refresh_manifest_loads_expected_case(
-        self,
-    ):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root
-            / "benchmarks"
-            / "us_snap_nc_limited_utility_allowance_refresh.yaml"
-        )
-
-        assert manifest.name == "North Carolina SNAP limited utility allowance refresh"
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 1
-        assert manifest.gates.min_policyengine_pass_rate == 1.0
-        case = manifest.cases[0]
-        assert case.kind == "source"
-        assert case.name == "snap_limited_utility_allowance_nc"
-        assert (
-            case.source_id
-            == "North Carolina SNAP basic utility allowance under FNS 360.01(A)(2)"
-        )
-        assert (
-            case.source_file
-            == (
-                repo_root.parent
-                / "rules-us-nc"
-                / "sources"
-                / "slices"
-                / "ncdhhs"
-                / "fns"
-                / "360"
-                / "current-effective"
-                / "snap_limited_utility_allowance_nc.txt"
-            ).resolve()
-        )
-        assert case.allow_context == []
-        assert case.oracle == "policyengine"
-        assert case.policyengine_country == "auto"
-        assert case.policyengine_rule_hint == "snap_limited_utility_allowance"
-
-    def test_repo_us_snap_nc_individual_utility_allowance_refresh_manifest_loads_expected_case(
-        self,
-    ):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root
-            / "benchmarks"
-            / "us_snap_nc_individual_utility_allowance_refresh.yaml"
-        )
-
-        assert (
-            manifest.name == "North Carolina SNAP individual utility allowance refresh"
-        )
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 1
-        assert manifest.gates.min_policyengine_pass_rate == 1.0
-        case = manifest.cases[0]
-        assert case.kind == "source"
-        assert case.name == "snap_individual_utility_allowance_nc"
-        assert (
-            case.source_id
-            == "North Carolina SNAP telephone utility allowance under FNS 360.01(A)(3)"
-        )
-        assert (
-            case.source_file
-            == (
-                repo_root.parent
-                / "rules-us-nc"
-                / "sources"
-                / "slices"
-                / "ncdhhs"
-                / "fns"
-                / "360"
-                / "current-effective"
-                / "snap_individual_utility_allowance_nc.txt"
-            ).resolve()
-        )
-        assert case.allow_context == []
-        assert case.oracle == "policyengine"
-        assert case.policyengine_country == "auto"
-        assert case.policyengine_rule_hint == "snap_individual_utility_allowance"
-
-    def test_repo_us_snap_tn_standard_utility_allowance_refresh_manifest_loads_expected_case(
-        self,
-    ):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root
-            / "benchmarks"
-            / "us_snap_tn_standard_utility_allowance_refresh.yaml"
-        )
-
-        assert manifest.name == "Tennessee SNAP standard utility allowance refresh"
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 1
-        assert manifest.gates.min_policyengine_pass_rate == 1.0
-        case = manifest.cases[0]
-        assert case.kind == "source"
-        assert case.name == "snap_standard_utility_allowance_tn"
-        assert (
-            case.source_id
-            == "Tennessee SNAP standard utility allowance under TennCare ABD Manual 125.020 section 3.d.ii.1.c.i"
-        )
-        assert (
-            case.source_file
-            == (
-                repo_root.parent
-                / "rules-us-tn"
-                / "sources"
-                / "slices"
-                / "tenncare"
-                / "post-eligibility"
-                / "current-effective"
-                / "snap_standard_utility_allowance_tn.txt"
-            ).resolve()
-        )
-        assert case.allow_context == []
-        assert case.oracle == "policyengine"
-        assert case.policyengine_country == "auto"
-        assert case.policyengine_rule_hint == "snap_standard_utility_allowance"
-
-    def test_repo_us_snap_tn_limited_utility_allowance_refresh_manifest_loads_expected_case(
-        self,
-    ):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root
-            / "benchmarks"
-            / "us_snap_tn_limited_utility_allowance_refresh.yaml"
-        )
-
-        assert manifest.name == "Tennessee SNAP limited utility allowance refresh"
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 1
-        assert manifest.gates.min_policyengine_pass_rate == 1.0
-        case = manifest.cases[0]
-        assert case.kind == "source"
-        assert case.name == "snap_limited_utility_allowance_tn"
-        assert (
-            case.source_id
-            == "Tennessee SNAP limited utility allowance under TennCare ABD Manual 125.020 section 3.d.ii.1.c.ii"
-        )
-        assert (
-            case.source_file
-            == (
-                repo_root.parent
-                / "rules-us-tn"
-                / "sources"
-                / "slices"
-                / "tenncare"
-                / "post-eligibility"
-                / "current-effective"
-                / "snap_limited_utility_allowance_tn.txt"
-            ).resolve()
-        )
-        assert case.allow_context == []
-        assert case.oracle == "policyengine"
-        assert case.policyengine_country == "auto"
-        assert case.policyengine_rule_hint == "snap_limited_utility_allowance"
-
-    def test_repo_us_snap_tn_individual_utility_allowance_refresh_manifest_loads_expected_case(
-        self,
-    ):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root
-            / "benchmarks"
-            / "us_snap_tn_individual_utility_allowance_refresh.yaml"
-        )
-
-        assert manifest.name == "Tennessee SNAP individual utility allowance refresh"
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 1
-        assert manifest.gates.min_policyengine_pass_rate == 1.0
-        case = manifest.cases[0]
-        assert case.kind == "source"
-        assert case.name == "snap_individual_utility_allowance_tn"
-        assert (
-            case.source_id
-            == "Tennessee SNAP telephone utility allowance under TennCare ABD Manual 125.020 section 3.d.ii.1.c.iii"
-        )
-        assert (
-            case.source_file
-            == (
-                repo_root.parent
-                / "rules-us-tn"
-                / "sources"
-                / "slices"
-                / "tenncare"
-                / "post-eligibility"
-                / "current-effective"
-                / "snap_individual_utility_allowance_tn.txt"
-            ).resolve()
-        )
-        assert case.allow_context == []
-        assert case.oracle == "policyengine"
-        assert case.policyengine_country == "auto"
-        assert case.policyengine_rule_hint == "snap_individual_utility_allowance"
-
-    def test_repo_us_snap_tn_child_support_deduction_option_refresh_manifest_loads_expected_case(
-        self,
-    ):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root
-            / "benchmarks"
-            / "us_snap_tn_child_support_deduction_option_refresh.yaml"
-        )
-
-        assert manifest.name == "Tennessee SNAP child support deduction option refresh"
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 1
-        assert manifest.gates.min_policyengine_pass_rate == 1.0
-        case = manifest.cases[0]
-        assert case.kind == "source"
-        assert case.name == "snap_state_uses_child_support_deduction_tn"
-        assert (
-            case.source_id
-            == "Tennessee SNAP child support deduction election under SNAP Policy Manual Chapter 23.L"
-        )
-        assert (
-            case.source_file
-            == (
-                repo_root.parent
-                / "rules-us-tn"
-                / "sources"
-                / "slices"
-                / "tdhs"
-                / "snap"
-                / "current-effective"
-                / "snap_state_uses_child_support_deduction_tn.txt"
-            ).resolve()
-        )
-        assert case.allow_context == []
-        assert case.oracle == "policyengine"
-        assert case.policyengine_country == "auto"
-        assert case.policyengine_rule_hint == "snap_state_uses_child_support_deduction"
-
-    def test_repo_us_snap_tn_self_employment_expense_option_refresh_manifest_loads_expected_case(
-        self,
-    ):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root
-            / "benchmarks"
-            / "us_snap_tn_self_employment_expense_option_refresh.yaml"
-        )
-
-        assert manifest.name == "Tennessee SNAP self-employment expense option refresh"
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 1
-        assert manifest.gates.min_policyengine_pass_rate == 1.0
-        case = manifest.cases[0]
-        assert case.kind == "source"
-        assert case.name == "snap_self_employment_expense_based_deduction_applies_tn"
-        assert (
-            case.source_id
-            == "Tennessee SNAP self-employment expense option under TDHS SNAP Income Policy 24.14"
-        )
-        assert (
-            case.source_file
-            == (
-                repo_root.parent
-                / "rules-us-tn"
-                / "sources"
-                / "slices"
-                / "tdhs"
-                / "snap"
-                / "current-effective"
-                / "snap_self_employment_expense_based_deduction_applies_tn.txt"
-            ).resolve()
-        )
-        assert case.allow_context == []
-        assert case.oracle == "policyengine"
-        assert case.policyengine_country == "auto"
-        assert (
-            case.policyengine_rule_hint
-            == "snap_self_employment_expense_based_deduction_applies"
-        )
-
-    def test_repo_us_snap_ca_self_employment_expense_option_refresh_manifest_loads_expected_case(
-        self,
-    ):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root
-            / "benchmarks"
-            / "us_snap_ca_self_employment_expense_option_refresh.yaml"
-        )
-
-        assert manifest.name == "California SNAP self-employment expense option refresh"
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 1
-        assert manifest.gates.min_policyengine_pass_rate == 1.0
-        case = manifest.cases[0]
-        assert case.kind == "source"
-        assert case.name == "snap_self_employment_expense_based_deduction_applies_ca"
-        assert (
-            case.source_id
-            == "California CalFresh self-employment expense choice under MPP 63-503.413"
-        )
-        assert (
-            case.source_file
-            == (
-                repo_root.parent
-                / "rules-us-ca"
-                / "sources"
-                / "slices"
-                / "cdss"
-                / "calfresh"
-                / "current-effective"
-                / "snap_self_employment_expense_based_deduction_applies_ca.txt"
-            ).resolve()
-        )
-        assert case.allow_context == []
-        assert case.oracle == "policyengine"
-        assert case.policyengine_country == "auto"
-        assert (
-            case.policyengine_rule_hint
-            == "snap_self_employment_expense_based_deduction_applies"
-        )
-
-    def test_repo_us_snap_ca_child_support_deduction_option_refresh_manifest_loads_expected_case(
-        self,
-    ):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root
-            / "benchmarks"
-            / "us_snap_ca_child_support_deduction_option_refresh.yaml"
-        )
-
-        assert manifest.name == "California SNAP child support deduction option refresh"
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 1
-        assert manifest.gates.min_policyengine_pass_rate == 1.0
-        case = manifest.cases[0]
-        assert case.kind == "source"
-        assert case.name == "snap_state_uses_child_support_deduction_ca"
-        assert (
-            case.source_id
-            == "California CalFresh child support exclusion under MPP 63-502.2(p)"
-        )
-        assert (
-            case.source_file
-            == (
-                repo_root.parent
-                / "rules-us-ca"
-                / "sources"
-                / "slices"
-                / "cdss"
-                / "calfresh"
-                / "current-effective"
-                / "snap_state_uses_child_support_deduction_ca.txt"
-            ).resolve()
-        )
-        assert case.allow_context == []
-        assert case.oracle == "policyengine"
-        assert case.policyengine_country == "auto"
-        assert case.policyengine_rule_hint == "snap_state_uses_child_support_deduction"
-
-    def test_repo_us_snap_co_self_employment_expense_option_refresh_manifest_loads_expected_case(
-        self,
-    ):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root
-            / "benchmarks"
-            / "us_snap_co_self_employment_expense_option_refresh.yaml"
-        )
-
-        assert manifest.name == "Colorado SNAP self-employment expense option refresh"
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 1
-        assert manifest.gates.min_policyengine_pass_rate == 1.0
-        case = manifest.cases[0]
-        assert case.kind == "source"
-        assert case.name == "snap_self_employment_expense_based_deduction_applies_co"
-        assert (
-            case.source_id
-            == "Colorado SNAP self-employment expense deduction rule under 10 CCR 2506-1 section 4.403.11(B)-(C)(3)"
-        )
-        assert (
-            case.source_file
-            == (
-                repo_root.parent
-                / "rules-us-co"
-                / "sources"
-                / "slices"
-                / "cdhs"
-                / "snap"
-                / "current-effective"
-                / "snap_self_employment_expense_based_deduction_applies_co.txt"
-            ).resolve()
-        )
-        assert case.allow_context == []
-        assert case.oracle == "policyengine"
-        assert case.policyengine_country == "auto"
-        assert (
-            case.policyengine_rule_hint
-            == "snap_self_employment_expense_based_deduction_applies"
-        )
-
-    def test_repo_us_snap_co_child_support_deduction_option_refresh_manifest_loads_expected_case(
-        self,
-    ):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root
-            / "benchmarks"
-            / "us_snap_co_child_support_deduction_option_refresh.yaml"
-        )
-
-        assert manifest.name == "Colorado SNAP child support deduction option refresh"
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 1
-        assert manifest.gates.min_policyengine_pass_rate == 1.0
-        case = manifest.cases[0]
-        assert case.kind == "source"
-        assert case.name == "snap_state_uses_child_support_deduction_co"
-        assert (
-            case.source_id
-            == "Colorado SNAP child support exclusion under 10 CCR 2506-1 section 4.407.5"
-        )
-        assert (
-            case.source_file
-            == (
-                repo_root.parent
-                / "rules-us-co"
-                / "sources"
-                / "slices"
-                / "cdhs"
-                / "snap"
-                / "current-effective"
-                / "snap_state_uses_child_support_deduction_co.txt"
-            ).resolve()
-        )
-        assert case.allow_context == []
-        assert case.oracle == "policyengine"
-        assert case.policyengine_country == "auto"
-        assert case.policyengine_rule_hint == "snap_state_uses_child_support_deduction"
-
-    def test_repo_us_snap_ny_individual_utility_allowance_refresh_manifest_loads_expected_case(
-        self,
-    ):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root
-            / "benchmarks"
-            / "us_snap_ny_individual_utility_allowance_refresh.yaml"
-        )
-
-        assert manifest.name == "New York SNAP individual utility allowance refresh"
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 1
-        assert manifest.gates.min_policyengine_pass_rate == 1.0
-        case = manifest.cases[0]
-        assert case.kind == "source"
-        assert case.name == "snap_individual_utility_allowance_ny"
-        assert (
-            case.source_id
-            == "New York SNAP telephone utility allowance under OTDA LDSS-5006 effective October 1, 2025"
-        )
-        assert (
-            case.source_file
-            == (
-                repo_root.parent
-                / "rules-us-ny"
-                / "sources"
-                / "slices"
-                / "otda"
-                / "snap"
-                / "current-effective"
-                / "snap_individual_utility_allowance_ny.txt"
-            ).resolve()
-        )
-        assert case.allow_context == []
-        assert case.oracle == "policyengine"
-        assert case.policyengine_country == "auto"
-        assert case.policyengine_rule_hint == "snap_individual_utility_allowance"
-
-    def test_repo_us_snap_ny_child_support_deduction_option_refresh_manifest_loads_expected_case(
-        self,
-    ):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root
-            / "benchmarks"
-            / "us_snap_ny_child_support_deduction_option_refresh.yaml"
-        )
-
-        assert manifest.name == "New York SNAP child support deduction option refresh"
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 1
-        assert manifest.gates.min_policyengine_pass_rate == 1.0
-        case = manifest.cases[0]
-        assert case.kind == "source"
-        assert case.name == "snap_state_uses_child_support_deduction_ny"
-        assert (
-            case.source_id
-            == "New York SNAP child support deduction election under OTDA SNAP Source Book section 13.G.2"
-        )
-        assert (
-            case.source_file
-            == (
-                repo_root.parent
-                / "rules-us-ny"
-                / "sources"
-                / "slices"
-                / "otda"
-                / "snap"
-                / "current-effective"
-                / "snap_state_uses_child_support_deduction_ny.txt"
-            ).resolve()
-        )
-        assert case.allow_context == []
-        assert case.oracle == "policyengine"
-        assert case.policyengine_country == "auto"
-        assert case.policyengine_rule_hint == "snap_state_uses_child_support_deduction"
-
-    def test_repo_us_snap_nc_child_support_deduction_option_refresh_manifest_loads_expected_case(
-        self,
-    ):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root
-            / "benchmarks"
-            / "us_snap_nc_child_support_deduction_option_refresh.yaml"
-        )
-
-        assert (
-            manifest.name
-            == "North Carolina SNAP child support deduction option refresh"
-        )
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 1
-        assert manifest.gates.min_policyengine_pass_rate == 1.0
-        case = manifest.cases[0]
-        assert case.kind == "source"
-        assert case.name == "snap_state_uses_child_support_deduction_nc"
-        assert (
-            case.source_id
-            == "North Carolina SNAP child support deduction election under FNS 340 section 340.19"
-        )
-        assert (
-            case.source_file
-            == (
-                repo_root.parent
-                / "rules-us-nc"
-                / "sources"
-                / "slices"
-                / "ncdhhs"
-                / "fns"
-                / "340"
-                / "current-effective"
-                / "snap_state_uses_child_support_deduction_nc.txt"
-            ).resolve()
-        )
-        assert case.allow_context == []
-        assert case.oracle == "policyengine"
-        assert case.policyengine_country == "auto"
-        assert case.policyengine_rule_hint == "snap_state_uses_child_support_deduction"
-
-    def test_repo_us_snap_nc_self_employment_expense_option_refresh_manifest_loads_expected_case(
-        self,
-    ):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root
-            / "benchmarks"
-            / "us_snap_nc_self_employment_expense_option_refresh.yaml"
-        )
-
-        assert (
-            manifest.name
-            == "North Carolina SNAP self-employment expense option refresh"
-        )
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 1
-        assert manifest.gates.min_policyengine_pass_rate == 1.0
-        case = manifest.cases[0]
-        assert case.kind == "source"
-        assert case.name == "snap_self_employment_expense_based_deduction_applies_nc"
-        assert (
-            case.source_id
-            == "North Carolina SNAP self-employment expense option under FNS 315 section 315.28"
-        )
-        assert (
-            case.source_file
-            == (
-                repo_root.parent
-                / "rules-us-nc"
-                / "sources"
-                / "slices"
-                / "ncdhhs"
-                / "fns"
-                / "315"
-                / "current-effective"
-                / "snap_self_employment_expense_based_deduction_applies_nc.txt"
-            ).resolve()
-        )
-        assert case.allow_context == []
-        assert case.oracle == "policyengine"
-        assert case.policyengine_country == "auto"
-        assert (
-            case.policyengine_rule_hint
-            == "snap_self_employment_expense_based_deduction_applies"
-        )
-
-    def test_repo_us_snap_ny_self_employment_expense_option_refresh_manifest_loads_expected_case(
-        self,
-    ):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root
-            / "benchmarks"
-            / "us_snap_ny_self_employment_expense_option_refresh.yaml"
-        )
-
-        assert manifest.name == "New York SNAP self-employment expense option refresh"
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 1
-        assert manifest.gates.min_policyengine_pass_rate == 1.0
-        case = manifest.cases[0]
-        assert case.kind == "source"
-        assert case.name == "snap_self_employment_expense_based_deduction_applies_ny"
-        assert (
-            case.source_id
-            == "New York SNAP self-employment expense treatment under OTDA SNAP Source Book section 13.H"
-        )
-        assert (
-            case.source_file
-            == (
-                repo_root.parent
-                / "rules-us-ny"
-                / "sources"
-                / "slices"
-                / "otda"
-                / "snap"
-                / "current-effective"
-                / "snap_self_employment_expense_based_deduction_applies_ny.txt"
-            ).resolve()
-        )
-        assert case.allow_context == []
-        assert case.oracle == "policyengine"
-        assert case.policyengine_country == "auto"
-        assert (
-            case.policyengine_rule_hint
-            == "snap_self_employment_expense_based_deduction_applies"
-        )
-
-    def test_repo_us_snap_ny_standard_utility_allowance_refresh_manifest_loads_expected_case(
-        self,
-    ):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root
-            / "benchmarks"
-            / "us_snap_ny_standard_utility_allowance_refresh.yaml"
-        )
-
-        assert manifest.name == "New York SNAP standard utility allowance refresh"
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 1
-        assert manifest.gates.min_policyengine_pass_rate == 1.0
-        case = manifest.cases[0]
-        assert case.kind == "source"
-        assert case.name == "snap_standard_utility_allowance_ny"
-        assert (
-            case.source_id
-            == "New York SNAP standard utility allowance under OTDA LDSS-5006 effective October 1, 2025"
-        )
-        assert (
-            case.source_file
-            == (
-                repo_root.parent
-                / "rules-us-ny"
-                / "sources"
-                / "slices"
-                / "otda"
-                / "snap"
-                / "current-effective"
-                / "snap_standard_utility_allowance_ny.txt"
-            ).resolve()
-        )
-        assert case.allow_context == []
-        assert case.oracle == "policyengine"
-        assert case.policyengine_country == "auto"
-        assert case.policyengine_rule_hint == "snap_standard_utility_allowance"
-
-    def test_repo_us_snap_ny_limited_utility_allowance_refresh_manifest_loads_expected_case(
-        self,
-    ):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root
-            / "benchmarks"
-            / "us_snap_ny_limited_utility_allowance_refresh.yaml"
-        )
-
-        assert manifest.name == "New York SNAP limited utility allowance refresh"
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 1
-        assert manifest.gates.min_policyengine_pass_rate == 1.0
-        case = manifest.cases[0]
-        assert case.kind == "source"
-        assert case.name == "snap_limited_utility_allowance_ny"
-        assert (
-            case.source_id
-            == "New York SNAP limited utility allowance under OTDA LDSS-5006 effective October 1, 2025"
-        )
-        assert (
-            case.source_file
-            == (
-                repo_root.parent
-                / "rules-us-ny"
-                / "sources"
-                / "slices"
-                / "otda"
-                / "snap"
-                / "current-effective"
-                / "snap_limited_utility_allowance_ny.txt"
-            ).resolve()
-        )
-        assert case.allow_context == []
-        assert case.oracle == "policyengine"
-        assert case.policyengine_country == "auto"
-        assert case.policyengine_rule_hint == "snap_limited_utility_allowance"
-
-    def test_repo_us_snap_fl_child_support_deduction_option_refresh_manifest_loads_expected_case(
-        self,
-    ):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root
-            / "benchmarks"
-            / "us_snap_fl_child_support_deduction_option_refresh.yaml"
-        )
-
-        assert manifest.name == "Florida SNAP child support deduction option refresh"
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 1
-        assert manifest.gates.min_policyengine_pass_rate == 1.0
-        case = manifest.cases[0]
-        assert case.kind == "source"
-        assert case.name == "snap_state_uses_child_support_deduction_fl"
-        assert (
-            case.source_id
-            == "Florida SNAP child support deduction election under ESS Program Policy Manual 2610.0410"
-        )
-        assert (
-            case.source_file
-            == (
-                repo_root.parent
-                / "rules-us-fl"
-                / "sources"
-                / "slices"
-                / "myflfamilies"
-                / "ess"
-                / "current-effective"
-                / "snap_state_uses_child_support_deduction_fl.txt"
-            ).resolve()
-        )
-        assert case.allow_context == []
-        assert case.oracle == "policyengine"
-        assert case.policyengine_country == "auto"
-        assert case.policyengine_rule_hint == "snap_state_uses_child_support_deduction"
-
-    def test_repo_us_snap_fl_self_employment_expense_option_refresh_manifest_loads_expected_case(
-        self,
-    ):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root
-            / "benchmarks"
-            / "us_snap_fl_self_employment_expense_option_refresh.yaml"
-        )
-
-        assert manifest.name == "Florida SNAP self-employment expense option refresh"
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 1
-        assert manifest.gates.min_policyengine_pass_rate == 1.0
-        case = manifest.cases[0]
-        assert case.kind == "source"
-        assert case.name == "snap_self_employment_expense_based_deduction_applies_fl"
-        assert (
-            case.source_id
-            == "Florida SNAP self-employment expense option under ESS Program Policy Manual 1810.0302"
-        )
-        assert (
-            case.source_file
-            == (
-                repo_root.parent
-                / "rules-us-fl"
-                / "sources"
-                / "slices"
-                / "myflfamilies"
-                / "ess"
-                / "current-effective"
-                / "snap_self_employment_expense_based_deduction_applies_fl.txt"
-            ).resolve()
-        )
-        assert case.allow_context == []
-        assert case.oracle == "policyengine"
-        assert case.policyengine_country == "auto"
-        assert (
-            case.policyengine_rule_hint
-            == "snap_self_employment_expense_based_deduction_applies"
-        )
-
-    def test_repo_us_snap_md_child_support_deduction_option_refresh_manifest_loads_expected_case(
-        self,
-    ):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root
-            / "benchmarks"
-            / "us_snap_md_child_support_deduction_option_refresh.yaml"
-        )
-
-        assert manifest.name == "Maryland SNAP child support deduction option refresh"
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 1
-        assert manifest.gates.min_policyengine_pass_rate == 1.0
-        case = manifest.cases[0]
-        assert case.kind == "source"
-        assert case.name == "snap_state_uses_child_support_deduction_md"
-        assert (
-            case.source_id
-            == "Maryland SNAP child support deduction election under SNAP Manual Section 408 Verification"
-        )
-        assert (
-            case.source_file
-            == (
-                repo_root.parent
-                / "rules-us-md"
-                / "sources"
-                / "slices"
-                / "dhs"
-                / "snap"
-                / "current-effective"
-                / "snap_state_uses_child_support_deduction_md.txt"
-            ).resolve()
-        )
-        assert case.allow_context == []
-        assert case.oracle == "policyengine"
-        assert case.policyengine_country == "auto"
-        assert case.policyengine_rule_hint == "snap_state_uses_child_support_deduction"
-
-    def test_repo_us_snap_md_self_employment_simplified_deduction_rate_refresh_manifest_loads_expected_case(
-        self,
-    ):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root
-            / "benchmarks"
-            / "us_snap_md_self_employment_simplified_deduction_rate_refresh.yaml"
-        )
-
-        assert (
-            manifest.name
-            == "Maryland SNAP self-employment simplified deduction rate refresh"
-        )
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 1
-        assert manifest.gates.min_policyengine_pass_rate == 1.0
-        case = manifest.cases[0]
-        assert case.kind == "source"
-        assert case.name == "snap_self_employment_simplified_deduction_rate_md"
-        assert (
-            case.source_id
-            == "Maryland SNAP self-employment simplified deduction rate under SNAP Manual Section 104 Self-employed Households"
-        )
-        assert (
-            case.source_file
-            == (
-                repo_root.parent
-                / "rules-us-md"
-                / "sources"
-                / "slices"
-                / "dhs"
-                / "snap"
-                / "current-effective"
-                / "snap_self_employment_simplified_deduction_rate_md.txt"
-            ).resolve()
-        )
-        assert case.allow_context == []
-        assert case.oracle == "policyengine"
-        assert case.policyengine_country == "auto"
-        assert (
-            case.policyengine_rule_hint
-            == "snap_self_employment_simplified_deduction_rate"
-        )
-
-    def test_repo_us_snap_ga_child_support_deduction_option_refresh_manifest_loads_expected_case(
-        self,
-    ):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root
-            / "benchmarks"
-            / "us_snap_ga_child_support_deduction_option_refresh.yaml"
-        )
-
-        assert manifest.name == "Georgia SNAP child support deduction option refresh"
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 1
-        assert manifest.gates.min_policyengine_pass_rate == 1.0
-        case = manifest.cases[0]
-        assert case.kind == "source"
-        assert case.name == "snap_state_uses_child_support_deduction_ga"
-        assert (
-            case.source_id
-            == "Georgia SNAP child support deduction election under DFCS SNAP Manual 3035 Verification"
-        )
-        assert (
-            case.source_file
-            == (
-                repo_root.parent
-                / "rules-us-ga"
-                / "sources"
-                / "slices"
-                / "dfcs"
-                / "snap"
-                / "current-effective"
-                / "snap_state_uses_child_support_deduction_ga.txt"
-            ).resolve()
-        )
-        assert case.allow_context == []
-        assert case.oracle == "policyengine"
-        assert case.policyengine_country == "auto"
-        assert case.policyengine_rule_hint == "snap_state_uses_child_support_deduction"
-
-    def test_repo_us_snap_ga_self_employment_expense_option_refresh_manifest_loads_expected_case(
-        self,
-    ):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root
-            / "benchmarks"
-            / "us_snap_ga_self_employment_expense_option_refresh.yaml"
-        )
-
-        assert manifest.name == "Georgia SNAP self-employment expense option refresh"
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 1
-        assert manifest.gates.min_policyengine_pass_rate == 1.0
-        case = manifest.cases[0]
-        assert case.kind == "source"
-        assert case.name == "snap_self_employment_expense_based_deduction_applies_ga"
-        assert (
-            case.source_id
-            == "Georgia SNAP self-employment expense option under DFCS SNAP Manual 3425 Self-Employment Income"
-        )
-        assert (
-            case.source_file
-            == (
-                repo_root.parent
-                / "rules-us-ga"
-                / "sources"
-                / "slices"
-                / "dfcs"
-                / "snap"
-                / "current-effective"
-                / "snap_self_employment_expense_based_deduction_applies_ga.txt"
-            ).resolve()
-        )
-        assert case.allow_context == []
-        assert case.oracle == "policyengine"
-        assert case.policyengine_country == "auto"
-        assert (
-            case.policyengine_rule_hint
-            == "snap_self_employment_expense_based_deduction_applies"
-        )
-
-    def test_repo_us_snap_ga_self_employment_simplified_deduction_rate_refresh_manifest_loads_expected_case(
-        self,
-    ):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root
-            / "benchmarks"
-            / "us_snap_ga_self_employment_simplified_deduction_rate_refresh.yaml"
-        )
-
-        assert (
-            manifest.name
-            == "Georgia SNAP self-employment simplified deduction rate refresh"
-        )
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 1
-        assert manifest.gates.min_policyengine_pass_rate == 1.0
-        case = manifest.cases[0]
-        assert case.kind == "source"
-        assert case.name == "snap_self_employment_simplified_deduction_rate_ga"
-        assert (
-            case.source_id
-            == "Georgia SNAP self-employment simplified deduction rate under DFCS SNAP Manual 3425 Self-Employment Income"
-        )
-        assert (
-            case.source_file
-            == (
-                repo_root.parent
-                / "rules-us-ga"
-                / "sources"
-                / "slices"
-                / "dfcs"
-                / "snap"
-                / "current-effective"
-                / "snap_self_employment_simplified_deduction_rate_ga.txt"
-            ).resolve()
-        )
-        assert case.allow_context == []
-        assert case.oracle == "policyengine"
-        assert case.policyengine_country == "auto"
-        assert (
-            case.policyengine_rule_hint
-            == "snap_self_employment_simplified_deduction_rate"
-        )
-
-    def test_repo_us_snap_sc_child_support_deduction_option_refresh_manifest_loads_expected_case(
-        self,
-    ):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root
-            / "benchmarks"
-            / "us_snap_sc_child_support_deduction_option_refresh.yaml"
-        )
-
-        assert (
-            manifest.name
-            == "South Carolina SNAP child support deduction option refresh"
-        )
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 1
-        assert manifest.gates.min_policyengine_pass_rate == 1.0
-        case = manifest.cases[0]
-        assert case.kind == "source"
-        assert case.name == "snap_state_uses_child_support_deduction_sc"
-        assert (
-            case.source_id
-            == "South Carolina SNAP child support deduction under SNAP Manual Vol 65 section 12.7"
-        )
-        assert (
-            case.source_file
-            == (
-                repo_root.parent
-                / "rules-us-sc"
-                / "sources"
-                / "slices"
-                / "scdss"
-                / "snap"
-                / "current-effective"
-                / "snap_state_uses_child_support_deduction_sc.txt"
-            ).resolve()
-        )
-        assert case.allow_context == []
-        assert case.oracle == "policyengine"
-        assert case.policyengine_country == "auto"
-        assert case.policyengine_rule_hint == "snap_state_uses_child_support_deduction"
-
-    def test_repo_us_snap_sc_self_employment_expense_option_refresh_manifest_loads_expected_case(
-        self,
-    ):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root
-            / "benchmarks"
-            / "us_snap_sc_self_employment_expense_option_refresh.yaml"
-        )
-
-        assert (
-            manifest.name
-            == "South Carolina SNAP self-employment expense option refresh"
-        )
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 1
-        assert manifest.gates.min_policyengine_pass_rate == 1.0
-        case = manifest.cases[0]
-        assert case.kind == "source"
-        assert case.name == "snap_self_employment_expense_based_deduction_applies_sc"
-        assert (
-            case.source_id
-            == "South Carolina SNAP self-employment expense option under SNAP Manual Vol 65 section 11.4(3)"
-        )
-        assert (
-            case.source_file
-            == (
-                repo_root.parent
-                / "rules-us-sc"
-                / "sources"
-                / "slices"
-                / "scdss"
-                / "snap"
-                / "current-effective"
-                / "snap_self_employment_expense_based_deduction_applies_sc.txt"
-            ).resolve()
-        )
-        assert case.allow_context == []
-        assert case.oracle == "policyengine"
-        assert case.policyengine_country == "auto"
-        assert (
-            case.policyengine_rule_hint
-            == "snap_self_employment_expense_based_deduction_applies"
-        )
-
-    def test_repo_us_snap_sc_self_employment_simplified_deduction_rate_refresh_manifest_loads_expected_case(
-        self,
-    ):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root
-            / "benchmarks"
-            / "us_snap_sc_self_employment_simplified_deduction_rate_refresh.yaml"
-        )
-
-        assert (
-            manifest.name
-            == "South Carolina SNAP self-employment simplified deduction rate refresh"
-        )
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 1
-        assert manifest.gates.min_policyengine_pass_rate == 1.0
-        case = manifest.cases[0]
-        assert case.kind == "source"
-        assert case.name == "snap_self_employment_simplified_deduction_rate_sc"
-        assert (
-            case.source_id
-            == "South Carolina SNAP self-employment simplified deduction rate under SNAP Manual Vol 65 section 11.4(3)"
-        )
-        assert (
-            case.source_file
-            == (
-                repo_root.parent
-                / "rules-us-sc"
-                / "sources"
-                / "slices"
-                / "scdss"
-                / "snap"
-                / "current-effective"
-                / "snap_self_employment_simplified_deduction_rate_sc.txt"
-            ).resolve()
-        )
-        assert case.allow_context == []
-        assert case.oracle == "policyengine"
-        assert case.policyengine_country == "auto"
-        assert (
-            case.policyengine_rule_hint
-            == "snap_self_employment_simplified_deduction_rate"
-        )
-
-    def test_repo_us_snap_al_child_support_deduction_option_refresh_manifest_loads_expected_case(
-        self,
-    ):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root
-            / "benchmarks"
-            / "us_snap_al_child_support_deduction_option_refresh.yaml"
-        )
-
-        assert manifest.name == "Alabama SNAP child support deduction option refresh"
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 1
-        assert manifest.gates.min_policyengine_pass_rate == 1.0
-        case = manifest.cases[0]
-        assert case.kind == "source"
-        assert case.name == "snap_state_uses_child_support_deduction_al"
-        assert (
-            case.source_id
-            == "Alabama SNAP child support deduction under DHR Food Assistance Program Points of Eligibility Manual Appendix I section E"
-        )
-        assert (
-            case.source_file
-            == (
-                repo_root.parent
-                / "rules-us-al"
-                / "sources"
-                / "slices"
-                / "aldhr"
-                / "poe"
-                / "current-effective"
-                / "snap_state_uses_child_support_deduction_al.txt"
-            ).resolve()
-        )
-        assert case.allow_context == []
-        assert case.oracle == "policyengine"
-        assert case.policyengine_country == "auto"
-        assert case.policyengine_rule_hint == "snap_state_uses_child_support_deduction"
-
-    def test_repo_us_snap_al_self_employment_expense_option_refresh_manifest_loads_expected_case(
-        self,
-    ):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root
-            / "benchmarks"
-            / "us_snap_al_self_employment_expense_option_refresh.yaml"
-        )
-
-        assert manifest.name == "Alabama SNAP self-employment expense option refresh"
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 1
-        assert manifest.gates.min_policyengine_pass_rate == 1.0
-        case = manifest.cases[0]
-        assert case.kind == "source"
-        assert case.name == "snap_self_employment_expense_based_deduction_applies_al"
-        assert (
-            case.source_id
-            == "Alabama SNAP self-employment expense option under DHR Food Assistance Program Points of Eligibility Manual Chapter 11 section D"
-        )
-        assert (
-            case.source_file
-            == (
-                repo_root.parent
-                / "rules-us-al"
-                / "sources"
-                / "slices"
-                / "aldhr"
-                / "poe"
-                / "current-effective"
-                / "snap_self_employment_expense_based_deduction_applies_al.txt"
-            ).resolve()
-        )
-        assert case.allow_context == []
-        assert case.oracle == "policyengine"
-        assert case.policyengine_country == "auto"
-        assert (
-            case.policyengine_rule_hint
-            == "snap_self_employment_expense_based_deduction_applies"
-        )
-
-    def test_repo_us_snap_al_self_employment_simplified_deduction_rate_refresh_manifest_loads_expected_case(
-        self,
-    ):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root
-            / "benchmarks"
-            / "us_snap_al_self_employment_simplified_deduction_rate_refresh.yaml"
-        )
-
-        assert (
-            manifest.name
-            == "Alabama SNAP self-employment simplified deduction rate refresh"
-        )
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 1
-        assert manifest.gates.min_policyengine_pass_rate == 1.0
-        case = manifest.cases[0]
-        assert case.kind == "source"
-        assert case.name == "snap_self_employment_simplified_deduction_rate_al"
-        assert (
-            case.source_id
-            == "Alabama SNAP self-employment simplified deduction rate under DHR Food Assistance Program Points of Eligibility Manual Chapter 11 section 1100"
-        )
-        assert (
-            case.source_file
-            == (
-                repo_root.parent
-                / "rules-us-al"
-                / "sources"
-                / "slices"
-                / "aldhr"
-                / "poe"
-                / "current-effective"
-                / "snap_self_employment_simplified_deduction_rate_al.txt"
-            ).resolve()
-        )
-        assert case.allow_context == []
-        assert case.oracle == "policyengine"
-        assert case.policyengine_country == "auto"
-        assert (
-            case.policyengine_rule_hint
-            == "snap_self_employment_simplified_deduction_rate"
-        )
-
-    def test_repo_us_snap_ar_child_support_deduction_option_refresh_manifest_loads_expected_case(
-        self,
-    ):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root
-            / "benchmarks"
-            / "us_snap_ar_child_support_deduction_option_refresh.yaml"
-        )
-
-        assert manifest.name == "Arkansas SNAP child support deduction option refresh"
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 1
-        assert manifest.gates.min_policyengine_pass_rate == 1.0
-        case = manifest.cases[0]
-        assert case.kind == "source"
-        assert case.name == "snap_state_uses_child_support_deduction_ar"
-        assert (
-            case.source_id
-            == "Arkansas SNAP child support deduction under DHS SNAP Certification Manual section 6550 Child Support Deductions"
-        )
-        assert (
-            case.source_file
-            == (
-                repo_root.parent
-                / "rules-us-ar"
-                / "sources"
-                / "slices"
-                / "ardhs"
-                / "snap"
-                / "current-effective"
-                / "snap_state_uses_child_support_deduction_ar.txt"
-            ).resolve()
-        )
-        assert case.allow_context == []
-        assert case.oracle == "policyengine"
-        assert case.policyengine_country == "auto"
-        assert case.policyengine_rule_hint == "snap_state_uses_child_support_deduction"
-
-    def test_repo_us_snap_ar_self_employment_expense_option_refresh_manifest_loads_expected_case(
-        self,
-    ):
-        repo_root = Path(__file__).resolve().parents[1]
-        manifest = load_eval_suite_manifest(
-            repo_root
-            / "benchmarks"
-            / "us_snap_ar_self_employment_expense_option_refresh.yaml"
-        )
-
-        assert manifest.name == "Arkansas SNAP self-employment expense option refresh"
-        assert manifest.mode == "repo-augmented"
-        assert len(manifest.cases) == 1
-        assert manifest.gates.min_policyengine_pass_rate == 1.0
-        case = manifest.cases[0]
-        assert case.kind == "source"
-        assert case.name == "snap_self_employment_expense_based_deduction_applies_ar"
-        assert (
-            case.source_id
-            == "Arkansas SNAP self-employment expense option under DHS SNAP Certification Manual section 5663 Costs of Producing Self-Employment Income"
-        )
-        assert (
-            case.source_file
-            == (
-                repo_root.parent
-                / "rules-us-ar"
-                / "sources"
-                / "slices"
-                / "ardhs"
-                / "snap"
-                / "current-effective"
-                / "snap_self_employment_expense_based_deduction_applies_ar.txt"
-            ).resolve()
-        )
-        assert case.allow_context == []
-        assert case.oracle == "policyengine"
-        assert case.policyengine_country == "auto"
-        assert (
-            case.policyengine_rule_hint
-            == "snap_self_employment_expense_based_deduction_applies"
-        )
+        for case in manifest.cases:
+            for context_path in case.allow_context:
+                assert context_path.exists()
 
 
 class TestReadinessSummary:
@@ -5889,39 +3974,30 @@ class TestRepoAugmentedContext:
 
         manifest = json.loads(workspace.manifest_file.read_text())
         assert manifest["mode"] == "repo-augmented"
-        assert manifest["source_file"] == "source.txt"
+        assert manifest["source_text_file"] == "source.txt"
         assert manifest["context_files"][0]["source_path"] == str(context_file)
         assert manifest["context_files"][0]["import_path"] == "statutes/26/24/b"
         copied = workspace.root / manifest["context_files"][0]["workspace_path"]
         assert copied.exists()
 
-    def test_prepare_eval_workspace_materializes_source_metadata_sidecar(
-        self, tmp_path
-    ):
-        repo_root = tmp_path / "repos"
-        policy_repo = repo_root / "rules-us-tn"
-        policy_repo.mkdir(parents=True)
-        source_path = policy_repo / "sources" / "slices" / "tn" / "snap_sua.txt"
-        source_path.parent.mkdir(parents=True, exist_ok=True)
-        source_path.write_text("Tennessee source text")
-        source_metadata_path = source_path.with_name("snap_sua.meta.yaml")
-        source_metadata_path.write_text(
-            "version: 1\n"
-            "relations:\n"
-            "  - relation: sets\n"
-            "    target: us:regulation/7-cfr/273/9/d/6/iii#snap_standard_utility_allowance\n"
-            "    jurisdiction: TN\n"
-        )
-
+    def test_prepare_eval_workspace_materializes_corpus_source_metadata(self, tmp_path):
         runner = parse_runner_spec("openai:gpt-5.4")
         workspace = prepare_eval_workspace(
             citation="snap_sua_tn",
             runner=runner,
             output_root=tmp_path / "out",
             source_text="Tennessee source text",
-            axiom_rules_path=repo_root / "axiom-rules",
+            axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
-            source_path=source_path,
+            source_metadata_payload={
+                "relations": [
+                    {
+                        "relation": "sets",
+                        "target": "us:regulation/7-cfr/273/9/d/6/iii#snap_standard_utility_allowance",
+                        "jurisdiction": "TN",
+                    }
+                ]
+            },
             extra_context_paths=[],
         )
 
@@ -6458,17 +4534,6 @@ class TestSourceEval:
 
     def test_build_eval_prompt_includes_sets_source_metadata_guidance(self, tmp_path):
         runner = parse_runner_spec("openai:gpt-5.4")
-        source_path = tmp_path / "snap_standard_utility_allowance_tn.txt"
-        source_path.write_text("The SUA is $451, effective October 1, 2025.")
-        source_path.with_name(
-            "snap_standard_utility_allowance_tn.meta.yaml"
-        ).write_text(
-            "version: 1\n"
-            "relations:\n"
-            "  - relation: sets\n"
-            "    target: us:regulation/7-cfr/273/9/d/6/iii#snap_standard_utility_allowance\n"
-            "    jurisdiction: TN\n"
-        )
         workspace = prepare_eval_workspace(
             citation="snap_standard_utility_allowance_tn",
             runner=runner,
@@ -6476,7 +4541,15 @@ class TestSourceEval:
             source_text="The SUA is $451, effective October 1, 2025.",
             axiom_rules_path=tmp_path / "axiom-rules",
             mode="cold",
-            source_path=source_path,
+            source_metadata_payload={
+                "relations": [
+                    {
+                        "relation": "sets",
+                        "target": "us:regulation/7-cfr/273/9/d/6/iii#snap_standard_utility_allowance",
+                        "jurisdiction": "TN",
+                    }
+                ]
+            },
             extra_context_paths=[],
         )
 

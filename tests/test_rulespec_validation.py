@@ -38,6 +38,76 @@ def _mock_corpus_source_text(monkeypatch, text: str) -> None:
     )
 
 
+def _write_local_corpus_provision(
+    repo_parent: Path,
+    citation_path: str,
+    body: str = "Authoritative source text.",
+) -> None:
+    parts = citation_path.split("/")
+    provisions_dir = repo_parent / "axiom-corpus" / "data" / "corpus" / "provisions"
+    provisions_dir = provisions_dir / parts[0] / parts[1]
+    provisions_dir.mkdir(parents=True, exist_ok=True)
+    (provisions_dir / "test.jsonl").write_text(
+        json.dumps({"citation_path": citation_path, "body": body}) + "\n",
+        encoding="utf-8",
+    )
+
+
+def test_promoted_stub_check_uses_corpus_provisions(tmp_path):
+    repo_parent = tmp_path / "repos"
+    rules_repo = repo_parent / "rules-us"
+    rules_file = rules_repo / "statutes" / "7" / "2014" / "e" / "4.yaml"
+    rules_file.parent.mkdir(parents=True)
+    rules_file.write_text(
+        "format: rulespec/v1\nmodule:\n  status: stub\nrules: []\n",
+        encoding="utf-8",
+    )
+    _write_local_corpus_provision(repo_parent, "us/statute/7/2014/e/4")
+
+    pipeline = ValidatorPipeline(
+        policy_repo_path=rules_repo,
+        axiom_rules_path=repo_parent / "axiom-rules",
+        enable_oracles=False,
+    )
+
+    issues = pipeline._check_promoted_stub_file(rules_file)
+
+    assert issues
+    assert "corpus.provisions has source text" in issues[0]
+
+
+def test_imported_stub_dependency_check_uses_corpus_provisions(tmp_path):
+    repo_parent = tmp_path / "repos"
+    rules_repo = repo_parent / "rules-us"
+    rules_file = rules_repo / "statutes" / "7" / "2014" / "root.yaml"
+    target_file = rules_repo / "statutes" / "7" / "2014" / "e" / "4.yaml"
+    target_file.parent.mkdir(parents=True)
+    target_file.write_text(
+        "format: rulespec/v1\nmodule:\n  status: stub\nrules: []\n",
+        encoding="utf-8",
+    )
+    rules_file.parent.mkdir(parents=True, exist_ok=True)
+    rules_file.write_text(
+        "format: rulespec/v1\n"
+        "imports:\n"
+        "  - statutes/7/2014/e/4#snap_state_uses_child_support_deduction\n"
+        "rules: []\n",
+        encoding="utf-8",
+    )
+    _write_local_corpus_provision(repo_parent, "us/statute/7/2014/e/4")
+
+    pipeline = ValidatorPipeline(
+        policy_repo_path=rules_repo,
+        axiom_rules_path=repo_parent / "axiom-rules",
+        enable_oracles=False,
+    )
+
+    issues = pipeline._check_imported_stub_dependencies(rules_file)
+
+    assert issues
+    assert "corpus.provisions has source text" in issues[0]
+
+
 def test_rulespec_compile_ci_and_grounding(tmp_path, monkeypatch):
     if not AXIOM_RULES_BINARY.exists():
         pytest.skip("local axiom-rules binary is not built")

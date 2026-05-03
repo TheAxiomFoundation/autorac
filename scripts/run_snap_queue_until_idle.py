@@ -25,6 +25,8 @@ from typing import Any
 
 import yaml
 
+from axiom_encode.harness.evals import resolve_corpus_source_unit
+
 CODEX_HOME = (
     Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex")))
     .expanduser()
@@ -32,6 +34,16 @@ CODEX_HOME = (
 )
 AXIOM_ENCODE_ROOT = (
     Path(os.environ.get("AXIOM_ENCODE_ROOT", str(Path(__file__).resolve().parents[1])))
+    .expanduser()
+    .resolve()
+)
+AXIOM_CORPUS_ROOT = (
+    Path(
+        os.environ.get(
+            "AXIOM_CORPUS_ROOT",
+            str(AXIOM_ENCODE_ROOT.parent / "axiom-corpus"),
+        )
+    )
     .expanduser()
     .resolve()
 )
@@ -119,7 +131,7 @@ class ActiveState:
     manifest: str = "none"
     target: str = "none"
     source_repo: str = "none"
-    source_file: str = "none"
+    corpus_citation_path: str = "none"
     output_dir: str = "none"
     archive_path: str = "none"
     started_at: str = "none"
@@ -257,60 +269,41 @@ def resolve_policyengine_us_python() -> str | None:
     return None
 
 
-def infer_repo(source_file: str | None) -> str:
-    if not source_file:
+def infer_repo(corpus_citation_path: str | None) -> str:
+    if not corpus_citation_path:
         return "none"
-    path = Path(source_file)
-    git_root = git_root_for_path(path)
-    if git_root and git_root.name.startswith("rules-"):
-        return git_root.name
-    for workspace in WORKSPACES:
-        try:
-            path.resolve().relative_to(workspace.resolve())
-            return workspace.name
-        except ValueError:
-            continue
-    return path.parents[0].name if path.exists() else "unknown"
+    jurisdiction = corpus_citation_path.strip().split("/", 1)[0]
+    if not jurisdiction:
+        return "none"
+    return "rules-us" if jurisdiction == "us" else f"rules-{jurisdiction}"
 
 
-def resolve_manifest_source_file(
-    manifest_path: Path, source_file: str | None
-) -> Path | None:
-    if not source_file:
-        return None
-    candidate = Path(source_file)
-    if not candidate.is_absolute():
-        candidate = (manifest_path.parent / candidate).resolve()
-    return candidate
-
-
-def resolve_companion_metadata_file(source_file: Path | None) -> Path | None:
-    if source_file is None:
-        return None
-    candidates = [
-        source_file.with_name(f"{source_file.stem}.meta.yaml"),
-        source_file.with_name(f"{source_file.stem}.meta.yml"),
-        source_file.with_suffix(source_file.suffix + ".meta.yaml"),
-        source_file.with_suffix(source_file.suffix + ".meta.yml"),
-    ]
-    return next((path for path in candidates if path.exists()), None)
-
-
-def resolve_manifest_case_source_inputs(
-    manifest_path: Path,
+def resolve_manifest_case_corpus_citation_path(
     case: dict[str, Any],
-) -> tuple[Path | None, list[Path]]:
+) -> str | None:
     kind = str(case.get("kind") or "")
     if kind == "source":
-        source_file = resolve_manifest_source_file(
-            manifest_path, case.get("source_file")
+        corpus_citation_path = str(case.get("corpus_citation_path") or "").strip()
+        return corpus_citation_path or None
+    return None
+
+
+def sha256_corpus_source(corpus_citation_path: str | None) -> str | None:
+    if not corpus_citation_path:
+        return None
+    try:
+        source_unit = resolve_corpus_source_unit(
+            corpus_citation_path,
+            AXIOM_CORPUS_ROOT,
         )
-        metadata_file = resolve_companion_metadata_file(source_file)
-        source_inputs = [
-            path for path in (source_file, metadata_file) if path is not None
-        ]
-        return source_file, source_inputs
-    return None, []
+    except Exception:
+        return None
+    digest = hashlib.sha256()
+    digest.update(b"corpus\0")
+    digest.update(source_unit.citation_path.encode("utf-8"))
+    digest.update(b"\0")
+    digest.update(source_unit.body.encode("utf-8"))
+    return digest.hexdigest()
 
 
 def iter_manifest_queue_candidates() -> list[dict[str, str]]:
@@ -329,20 +322,21 @@ def iter_manifest_queue_candidates() -> list[dict[str, str]]:
             if not isinstance(case, dict):
                 continue
             name = case.get("name")
-            source_file, source_inputs = resolve_manifest_case_source_inputs(
-                manifest_path, case
-            )
-            if not name or source_file is None or not source_inputs:
+            corpus_citation_path = resolve_manifest_case_corpus_citation_path(case)
+            if not name or corpus_citation_path is None:
                 continue
-            source_repo = infer_repo(str(source_file))
+            source_repo = infer_repo(corpus_citation_path)
             if source_repo in {"none", "unknown"}:
+                continue
+            source_sha = sha256_corpus_source(corpus_citation_path)
+            if source_sha is None:
                 continue
             candidates.append(
                 {
                     "name": str(name),
                     "manifest": str(manifest_path),
-                    "source_file": str(source_file),
-                    "source_inputs": [str(path) for path in source_inputs],
+                    "corpus_citation_path": corpus_citation_path,
+                    "corpus_source_sha256": source_sha,
                     "source_repo": source_repo,
                 }
             )
@@ -366,9 +360,7 @@ def sync_queue_with_manifests(
     changed = False
     for candidate in candidates:
         manifest_sha = sha256_file(Path(candidate["manifest"]))
-        source_sha = sha256_paths(
-            [Path(path) for path in candidate.get("source_inputs", [])]
-        )
+        source_sha = candidate.get("corpus_source_sha256")
         existing = by_name.get(candidate["name"])
         if existing is None:
             items.append(
@@ -376,10 +368,9 @@ def sync_queue_with_manifests(
                     "name": candidate["name"],
                     "status": "queued",
                     "manifest": candidate["manifest"],
-                    "source_file": candidate["source_file"],
-                    "source_inputs": candidate.get("source_inputs", []),
+                    "corpus_citation_path": candidate["corpus_citation_path"],
                     "manifest_sha256": manifest_sha,
-                    "source_sha256": source_sha,
+                    "corpus_source_sha256": source_sha,
                     "source_tracking_version": SOURCE_TRACKING_VERSION,
                     "note": "queued from manifest sync",
                 }
@@ -388,17 +379,17 @@ def sync_queue_with_manifests(
             changed = True
             continue
         previous_manifest_sha = existing.get("manifest_sha256")
-        previous_source_sha = existing.get("source_sha256")
+        previous_source_sha = existing.get("corpus_source_sha256")
         previous_tracking_version = existing.get("source_tracking_version")
-        for key in ("manifest", "source_file", "source_inputs"):
+        for key in ("manifest", "corpus_citation_path"):
             if existing.get(key) != candidate[key]:
                 existing[key] = candidate[key]
                 changed = True
         if existing.get("manifest_sha256") != manifest_sha:
             existing["manifest_sha256"] = manifest_sha
             changed = True
-        if existing.get("source_sha256") != source_sha:
-            existing["source_sha256"] = source_sha
+        if existing.get("corpus_source_sha256") != source_sha:
+            existing["corpus_source_sha256"] = source_sha
             changed = True
         if existing.get("source_tracking_version") != SOURCE_TRACKING_VERSION:
             existing["source_tracking_version"] = SOURCE_TRACKING_VERSION
@@ -636,14 +627,12 @@ def build_run_record(
     backfilled: bool = False,
 ) -> dict[str, Any]:
     manifest_path = Path(item["manifest"]).resolve() if item.get("manifest") else None
-    source_path = (
-        Path(item["source_file"]).resolve() if item.get("source_file") else None
-    )
-    source_inputs = [
-        Path(path).resolve() for path in (item.get("source_inputs") or []) if path
-    ]
+    corpus_citation_path = item.get("corpus_citation_path")
     output_dir = Path(item["output_dir"]).resolve() if item.get("output_dir") else None
-    policy_repo_root = git_root_for_path(source_path)
+    source_repo = infer_repo(corpus_citation_path)
+    policy_repo_root = AXIOM_ENCODE_ROOT.parent / source_repo
+    if not policy_repo_root.exists():
+        policy_repo_root = None
     policyengine_root = detect_policyengine_root()
     effective_runner = None
     readiness_block = None
@@ -714,12 +703,13 @@ def build_run_record(
         "reviewer_cli": reviewer_cli,
         "manifest_path": str(manifest_path) if manifest_path else None,
         "manifest_sha256": sha256_file(manifest_path),
-        "source_file": str(source_path) if source_path else None,
-        "source_sha256": sha256_paths(source_inputs or [source_path]),
+        "corpus_citation_path": corpus_citation_path,
+        "corpus_source_sha256": item.get("corpus_source_sha256")
+        or sha256_corpus_source(corpus_citation_path),
         "source_tracking_version": item.get(
             "source_tracking_version", SOURCE_TRACKING_VERSION
         ),
-        "source_repo": infer_repo(item.get("source_file")),
+        "source_repo": source_repo,
         "axiom_encode_sha": git_head(AXIOM_ENCODE_ROOT),
         "policy_repo_sha": git_head(policy_repo_root),
         "policyengine_sha": git_head(policyengine_root),
@@ -826,7 +816,7 @@ def render_memory(data: dict[str, Any], active: ActiveState) -> str:
         f"- manifest: {active.manifest}",
         f"- target: {active.target}",
         f"- source repo: {active.source_repo}",
-        f"- source file: {active.source_file}",
+        f"- corpus citation path: {active.corpus_citation_path}",
         f"- output dir: {active.output_dir}",
         f"- archive path: {active.archive_path}",
         f"- suite started_at: {active.started_at}",
@@ -841,8 +831,8 @@ def render_memory(data: dict[str, Any], active: ActiveState) -> str:
         lines.append(f"- `{item['name']}`: {item.get('status', 'unknown')}")
         if item.get("manifest"):
             lines.append(f"  manifest: `{item['manifest']}`")
-        if item.get("source_file"):
-            lines.append(f"  source file: `{item['source_file']}`")
+        if item.get("corpus_citation_path"):
+            lines.append(f"  corpus citation path: `{item['corpus_citation_path']}`")
         if item.get("output_dir"):
             lines.append(f"  output dir: `{item['output_dir']}`")
         if item.get("archive_path"):
@@ -1038,8 +1028,8 @@ def process_queue(queue_path: Path) -> int:
             action="running the next queued SNAP eval until completion",
             manifest=item.get("manifest", "none"),
             target=item["name"],
-            source_repo=infer_repo(item.get("source_file")),
-            source_file=item.get("source_file", "none"),
+            source_repo=infer_repo(item.get("corpus_citation_path")),
+            corpus_citation_path=item.get("corpus_citation_path", "none"),
             output_dir=str(output_dir),
             started_at=item["started_at"],
             outcome=f"started at {now_local()} with backend `{backend}`",
@@ -1088,8 +1078,8 @@ def process_queue(queue_path: Path) -> int:
             action="last queued SNAP eval finished",
             manifest=item.get("manifest", "none"),
             target=item["name"],
-            source_repo=infer_repo(item.get("source_file")),
-            source_file=item.get("source_file", "none"),
+            source_repo=infer_repo(item.get("corpus_citation_path")),
+            corpus_citation_path=item.get("corpus_citation_path", "none"),
             output_dir=str(output_dir),
             archive_path=str(archive_path) if archive_path else "none",
             started_at=item.get("started_at", "none"),

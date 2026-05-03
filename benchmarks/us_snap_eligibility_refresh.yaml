@@ -14,10 +14,11 @@ cases:
   - kind: source
     name: is_snap_eligible
     source_id: Federal SNAP current-effective household eligibility
-    source_file: ../../rules-us/sources/slices/7-USC/snap/current-effective/is_snap_eligible.txt
+    corpus_citation_path: us/statute/7/2014
     allow_context:
-      - ../../rules-us/statutes/7/2014/c.yaml
-      - ../../rules-us/statutes/7/2014/g/1.yaml
+      - ../../rules-us/statutes/7/2014/e/2.yaml
+      - ../../rules-us/statutes/7/2014/e/6/A.yaml
+      - ../../rules-us/policies/usda/snap/fy-2026-cola/income-eligibility-standards.yaml
     oracle: policyengine
     policyengine_country: auto
     policyengine_rule_hint: is_snap_eligible

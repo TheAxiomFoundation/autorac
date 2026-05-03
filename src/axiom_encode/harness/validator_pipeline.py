@@ -58,7 +58,7 @@ from axiom_encode.oracles.policyengine.registry import (
 from axiom_encode.repo_routing import find_policy_repo_root
 
 from .dependency_stubs import (
-    has_ingested_source_for_import_target,
+    has_corpus_provision_for_import_target,
     resolve_canonical_concepts_from_text,
     resolve_defined_terms_from_text,
     rulespec_content_has_stub_status,
@@ -4726,7 +4726,7 @@ class ValidatorPipeline:
         return issues
 
     def _check_promoted_stub_file(self, rulespec_file: Path) -> list[str]:
-        """Flag committed RuleSpec stubs when their source is already ingested."""
+        """Flag committed RuleSpec stubs when their corpus source exists."""
         source_root = self._validation_source_root(rulespec_file)
         try:
             relative = rulespec_file.resolve().relative_to(source_root.resolve())
@@ -4735,19 +4735,19 @@ class ValidatorPipeline:
 
         if not rulespec_content_has_stub_status(rulespec_file.read_text()):
             return []
-        if not has_ingested_source_for_import_target(
+        if not has_corpus_provision_for_import_target(
             relative.with_suffix("").as_posix(), source_root
         ):
             return []
 
         return [
-            "Promoted RuleSpec stub with ingested source: "
-            f"{relative.as_posix()} still declares `status: stub` even though the official source is present locally; "
+            "Promoted RuleSpec stub with corpus source: "
+            f"{relative.as_posix()} still declares `status: stub` even though corpus.provisions has source text; "
             "replace the stub with a real encoding before promotion"
         ]
 
     def _check_imported_stub_dependencies(self, rulespec_file: Path) -> list[str]:
-        """Flag imports that still point at stubs even though source is already ingested."""
+        """Flag imports that point at stubs even though corpus source exists."""
         source_root = self._validation_source_root(rulespec_file)
         issues: list[str] = []
 
@@ -4755,12 +4755,12 @@ class ValidatorPipeline:
             target = source_root / self._import_to_relative_rulespec_path(import_path)
             if not rulespec_file_has_stub_status(target):
                 continue
-            if not has_ingested_source_for_import_target(import_path, source_root):
+            if not has_corpus_provision_for_import_target(import_path, source_root):
                 continue
             issues.append(
-                "Imported stub dependency with ingested source: "
+                "Imported stub dependency with corpus source: "
                 f"{rulespec_file.name} imports `{import_path}` but `{target.relative_to(source_root).as_posix()}` "
-                "is still a stub while the official source is already present locally; encode the upstream file instead"
+                "is still a stub while corpus.provisions has source text; encode the upstream file instead"
             )
 
         return issues

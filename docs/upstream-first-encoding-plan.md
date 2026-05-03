@@ -329,7 +329,7 @@ earned-income deductions, or statutory elderly/disabled definitions.
 
 ### Phase 1: Relation-Aware Harness
 
-- Keep source-metadata relation checks in `axiom-encode`.
+- Keep corpus relation-metadata checks in `axiom-encode`.
 - Add TDD cases for generic `reiterates`, `sets`, `amends`, `implements`,
   duplicate concept detection, source-span scoping, and period conflicts.
 - Add schema validation for `metadata.source_relation`, `metadata.defines`,
@@ -339,8 +339,9 @@ earned-income deductions, or statutory elderly/disabled definitions.
 
 ### Phase 2: Source Graph Ingestion
 
-- Require sidecar metadata for source slices or spans that are known
-  restatements, delegated settings, amendments, or implementation documents.
+- Require structured `corpus.provisions.relations` metadata for spans that are
+  known restatements, delegated settings, amendments, or implementation
+  documents.
 - Populate `corpus.provisions.relations` from source-side metadata and citation
   extraction.
 - Add concept ids and source span ids.

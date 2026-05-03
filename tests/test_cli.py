@@ -15,7 +15,6 @@ import pytest
 
 from axiom_encode.cli import (
     _effective_runner_specs,
-    _extract_subsections_from_xml,
     _rewrite_gpt_runner_backend,
     cmd_calibration,
     cmd_compile,
@@ -33,7 +32,6 @@ from axiom_encode.cli import (
     cmd_session_stats,
     cmd_sessions,
     cmd_stats,
-    cmd_statute,
     cmd_sync_agent_sessions,
     cmd_sync_transcripts,
     cmd_transcript_stats,
@@ -152,12 +150,6 @@ class TestMain:
                 main()
                 mock_cmd.assert_called_once()
 
-    def test_statute_command_dispatches(self):
-        with patch("sys.argv", ["axiom_encode", "statute", "26 USC 1"]):
-            with patch("axiom_encode.cli.cmd_statute") as mock_cmd:
-                main()
-                mock_cmd.assert_called_once()
-
     def test_runs_command_dispatches(self):
         with patch("sys.argv", ["axiom_encode", "runs"]):
             with patch("axiom_encode.cli.cmd_runs") as mock_cmd:
@@ -177,31 +169,28 @@ class TestMain:
                 mock_cmd.assert_called_once()
 
     def test_eval_source_command_dispatches(self):
-        with tempfile.NamedTemporaryFile() as f:
-            with patch(
-                "sys.argv",
-                ["axiom_encode", "eval-source", "CO TANF 3.606.1(F)", f.name],
-            ):
-                with patch("axiom_encode.cli.cmd_eval_source") as mock_cmd:
-                    main()
-                    mock_cmd.assert_called_once()
+        with patch(
+            "sys.argv",
+            ["axiom_encode", "eval-source", "us-co/regulation/9-ccr-2503-6/3.606.1/F"],
+        ):
+            with patch("axiom_encode.cli.cmd_eval_source") as mock_cmd:
+                main()
+                mock_cmd.assert_called_once()
 
     def test_eval_source_accepts_policyengine_rule_hint(self):
-        with tempfile.NamedTemporaryFile() as f:
-            with patch(
-                "sys.argv",
-                [
-                    "axiom_encode",
-                    "eval-source",
-                    "UC row",
-                    f.name,
-                    "--policyengine-rule-hint",
-                    "uc_standard_allowance_single_claimant_aged_under_25",
-                ],
-            ):
-                with patch("axiom_encode.cli.cmd_eval_source") as mock_cmd:
-                    main()
-                    mock_cmd.assert_called_once()
+        with patch(
+            "sys.argv",
+            [
+                "axiom_encode",
+                "eval-source",
+                "us/statute/7/2014/e/2/B",
+                "--policyengine-rule-hint",
+                "snap_earned_income_deduction",
+            ],
+        ):
+            with patch("axiom_encode.cli.cmd_eval_source") as mock_cmd:
+                main()
+                mock_cmd.assert_called_once()
 
     def test_eval_suite_command_dispatches(self):
         with tempfile.NamedTemporaryFile(suffix=".yaml") as f:
@@ -287,9 +276,8 @@ class TestCmdEvalSuite:
     def test_exits_nonzero_when_runner_is_not_ready(self, tmp_path, capsys):
         manifest_file = tmp_path / "suite.yaml"
         manifest_file.write_text(
-            "name: readiness\ncases:\n  - kind: source\n    source_id: x\n    source_file: ./source.txt\n"
+            "name: readiness\ncases:\n  - kind: source\n    source_id: x\n    corpus_citation_path: us/statute/7/2017\n"
         )
-        (tmp_path / "source.txt").write_text("authoritative text")
         args = SimpleNamespace(
             manifest=manifest_file,
             runner=None,
@@ -303,6 +291,7 @@ class TestCmdEvalSuite:
             auto_resume_delay_seconds=0,
         )
         args.axiom_rules_path.mkdir()
+        args.corpus_path.mkdir()
 
         fake_result = MagicMock()
         fake_result.runner = "codex-gpt-5.4"
@@ -368,9 +357,8 @@ class TestCmdEvalSuite:
     def test_passes_resume_flag_to_run_eval_suite(self, tmp_path):
         manifest_file = tmp_path / "suite.yaml"
         manifest_file.write_text(
-            "name: readiness\ncases:\n  - kind: source\n    source_id: x\n    source_file: ./source.txt\n"
+            "name: readiness\ncases:\n  - kind: source\n    source_id: x\n    corpus_citation_path: us/statute/7/2017\n"
         )
-        (tmp_path / "source.txt").write_text("authoritative text")
         args = SimpleNamespace(
             manifest=manifest_file,
             runner=None,
@@ -384,6 +372,7 @@ class TestCmdEvalSuite:
             auto_resume_delay_seconds=0,
         )
         args.axiom_rules_path.mkdir()
+        args.corpus_path.mkdir()
 
         fake_result = MagicMock()
         fake_result.runner = "codex-gpt-5.4"
@@ -443,9 +432,8 @@ class TestCmdEvalSuite:
     def test_auto_resumes_after_unexpected_suite_exception(self, tmp_path):
         manifest_file = tmp_path / "suite.yaml"
         manifest_file.write_text(
-            "name: readiness\ncases:\n  - kind: source\n    source_id: x\n    source_file: ./source.txt\n"
+            "name: readiness\ncases:\n  - kind: source\n    source_id: x\n    corpus_citation_path: us/statute/7/2017\n"
         )
-        (tmp_path / "source.txt").write_text("authoritative text")
         args = SimpleNamespace(
             manifest=manifest_file,
             runner=None,
@@ -459,6 +447,7 @@ class TestCmdEvalSuite:
             auto_resume_delay_seconds=0,
         )
         args.axiom_rules_path.mkdir()
+        args.corpus_path.mkdir()
 
         fake_result = MagicMock()
         fake_result.runner = "codex-gpt-5.4"
@@ -524,9 +513,8 @@ class TestCmdEvalSuite:
     def test_usage_limit_failure_does_not_trigger_auto_resume(self, tmp_path):
         manifest_file = tmp_path / "suite.yaml"
         manifest_file.write_text(
-            "name: readiness\ncases:\n  - kind: source\n    source_id: x\n    source_file: ./source.txt\n"
+            "name: readiness\ncases:\n  - kind: source\n    source_id: x\n    corpus_citation_path: us/statute/7/2017\n"
         )
-        (tmp_path / "source.txt").write_text("authoritative text")
         args = SimpleNamespace(
             manifest=manifest_file,
             runner=None,
@@ -540,6 +528,7 @@ class TestCmdEvalSuite:
             auto_resume_delay_seconds=0,
         )
         args.axiom_rules_path.mkdir()
+        args.corpus_path.mkdir()
 
         fake_result = MagicMock()
         fake_result.runner = "codex-gpt-5.4"
@@ -720,8 +709,6 @@ class TestCmdEvalSuiteReport:
 class TestCmdEvalSuiteRevalidate:
     def test_revalidates_existing_suite_outputs_in_place(self, tmp_path):
         manifest_file = tmp_path / "suite.yaml"
-        source_file = tmp_path / "source.txt"
-        source_file.write_text("authoritative source text")
         manifest_file.write_text(
             "\n".join(
                 [
@@ -732,7 +719,7 @@ class TestCmdEvalSuiteRevalidate:
                     "  - kind: source",
                     "    name: case-a",
                     "    source_id: case-a",
-                    f"    source_file: {source_file}",
+                    "    corpus_citation_path: us/statute/7/2014/e/6/A",
                     "    oracle: policyengine",
                     "    policyengine_country: us",
                     "    policyengine_rule_hint: snap_net_income_pre_shelter",
@@ -881,11 +868,17 @@ class TestCmdEvalSuiteRevalidate:
             source_output=source_output,
             manifest=None,
             axiom_rules_path=tmp_path / "axiom-rules",
+            corpus_path=tmp_path / "axiom-corpus",
             json=True,
         )
         args.axiom_rules_path.mkdir()
+        args.corpus_path.mkdir()
 
         with (
+            patch(
+                "axiom_encode.cli.resolve_corpus_source_unit",
+                return_value=SimpleNamespace(body="authoritative source text"),
+            ),
             patch(
                 "axiom_encode.cli.evaluate_artifact", return_value=fresh_metrics
             ) as mock_eval,
@@ -1930,84 +1923,6 @@ class TestCmdCalibration:
 
 
 # =========================================================================
-# Test cmd_statute
-# =========================================================================
-
-
-class TestCmdStatute:
-    def test_bad_citation(self, capsys):
-        args = MagicMock()
-        args.citation = "invalid"
-        args.xml_path = Path("/tmp")
-        with pytest.raises(SystemExit) as exc_info:
-            cmd_statute(args)
-        assert exc_info.value.code == 1
-
-    def test_xml_not_found(self, capsys, tmp_path):
-        args = MagicMock()
-        args.citation = "26 USC 1"
-        args.xml_path = tmp_path
-        with pytest.raises(SystemExit) as exc_info:
-            cmd_statute(args)
-        assert exc_info.value.code == 1
-        captured = capsys.readouterr()
-        assert "not found" in captured.out
-
-    def test_section_not_found(self, capsys, tmp_path):
-        xml_file = tmp_path / "usc26.xml"
-        xml_file.write_text("<root>no section here</root>")
-        args = MagicMock()
-        args.citation = "26 USC 999"
-        args.xml_path = tmp_path
-        with pytest.raises(SystemExit) as exc_info:
-            cmd_statute(args)
-        assert exc_info.value.code == 1
-
-    def test_statute_success(self, capsys, tmp_path):
-        xml_content = """<root>
-<section identifier="/us/usc/t26/s1" status="active">
-<heading>Tax imposed</heading>
-<subsection identifier="/us/usc/t26/s1/a">
-<heading>Married individuals filing joint returns</heading>
-<content>There is hereby imposed on the taxable income...</content>
-<paragraph identifier="/us/usc/t26/s1/a/1">
-<heading>10 percent bracket</heading>
-<content>Of taxable income not exceeding $19,050</content>
-<subparagraph identifier="/us/usc/t26/s1/a/1/A">
-<heading>In general</heading>
-<content>The tax shall be 10 percent</content>
-</subparagraph>
-</paragraph>
-</subsection>
-</section>
-</root>"""
-        xml_file = tmp_path / "usc26.xml"
-        xml_file.write_text(xml_content)
-        args = MagicMock()
-        args.citation = "26 USC 1"
-        args.xml_path = tmp_path
-        cmd_statute(args)
-        captured = capsys.readouterr()
-        assert "26 USC" in captured.out
-        assert "Tax imposed" in captured.out
-
-    def test_statute_slash_format(self, capsys, tmp_path):
-        xml_content = """<root>
-<section identifier="/us/usc/t26/s1" status="active">
-<heading>Tax imposed</heading>
-</section>
-</root>"""
-        xml_file = tmp_path / "usc26.xml"
-        xml_file.write_text(xml_content)
-        args = MagicMock()
-        args.citation = "26/1"
-        args.xml_path = tmp_path
-        cmd_statute(args)
-        captured = capsys.readouterr()
-        assert "Tax imposed" in captured.out
-
-
-# =========================================================================
 # Test cmd_runs
 # =========================================================================
 
@@ -2398,51 +2313,6 @@ class TestTranscriptSyncCommands:
 
 
 # =========================================================================
-# Test _extract_subsections_from_xml
-# =========================================================================
-
-
-class TestExtractSubsections:
-    def test_section_not_found(self, tmp_path):
-        xml_file = tmp_path / "usc26.xml"
-        xml_file.write_text("<root></root>")
-        result = _extract_subsections_from_xml(xml_file, "999")
-        assert result == []
-
-    def test_extraction_with_nested_elements(self, tmp_path):
-        xml_content = """<root>
-<section identifier="/us/usc/t26/s1" status="active">
-<heading>Tax imposed</heading>
-<chapeau>There is hereby imposed</chapeau>
-<subsection identifier="/us/usc/t26/s1/a">
-<heading>Married individuals</heading>
-<content>Joint returns.</content>
-<paragraph identifier="/us/usc/t26/s1/a/1">
-<heading>10 percent bracket</heading>
-<content>Not exceeding 19050</content>
-<subparagraph identifier="/us/usc/t26/s1/a/1/A">
-<heading>In general</heading>
-<content>The tax shall be 10%</content>
-</subparagraph>
-</paragraph>
-</subsection>
-<subsection identifier="/us/usc/t26/s1/b">
-<heading>Head of household</heading>
-<content>For heads of household.</content>
-</subsection>
-</section>
-</root>"""
-        xml_file = tmp_path / "usc26.xml"
-        xml_file.write_text(xml_content)
-        result = _extract_subsections_from_xml(xml_file, "1")
-        assert len(result) > 0
-        # Should include section heading, subsections, paragraphs, subparagraphs
-        headings = [r["heading"] for r in result]
-        assert "Tax imposed" in headings
-        assert "Married individuals" in headings
-
-
-# =========================================================================
 # Additional edge case tests for remaining uncovered lines
 # =========================================================================
 
@@ -2647,168 +2517,3 @@ class TestCmdCalibrationEdgeCases:
         cmd_calibration(args)
         captured = capsys.readouterr()
         assert "Calibration Report" in captured.out
-
-
-class TestCmdStatuteEdgeCases:
-    def test_statute_para_content_no_heading(self, capsys, tmp_path):
-        """Test statute with paragraph that has content but no heading (lines 944-945).
-
-        extract_element truncates inner XML by len(close_tag) chars, so we add
-        padding (a note element) after the content tag to compensate.
-        """
-        xml_content = """<root>
-<section identifier="/us/usc/t26/s1" status="active">
-<heading>Tax imposed</heading>
-<subsection identifier="/us/usc/t26/s1/a">
-<heading>General</heading>
-<content>General content.</content>
-<paragraph identifier="/us/usc/t26/s1/a/1">
-<content>Para no heading</content>
-<note>Padding after content to compensate for extraction truncation</note>
-</paragraph>
-</subsection>
-</section>
-</root>"""
-        xml_file = tmp_path / "usc26.xml"
-        xml_file.write_text(xml_content)
-        args = MagicMock()
-        args.citation = "26 USC 1"
-        args.xml_path = tmp_path
-        cmd_statute(args)
-        captured = capsys.readouterr()
-        assert "Para no heading" in captured.out
-
-    def test_statute_subpara_content_no_heading(self, capsys, tmp_path):
-        """Test statute with subparagraph that has content but no heading (lines 961-962)."""
-        xml_content = """<root>
-<section identifier="/us/usc/t26/s1" status="active">
-<heading>Tax imposed</heading>
-<subsection identifier="/us/usc/t26/s1/a">
-<heading>General</heading>
-<paragraph identifier="/us/usc/t26/s1/a/1">
-<heading>First para</heading>
-<subparagraph identifier="/us/usc/t26/s1/a/1/A">
-<content>Subpara no heading</content>
-<note>Padding after content to compensate for extraction truncation</note>
-</subparagraph>
-</paragraph>
-</subsection>
-</section>
-</root>"""
-        xml_file = tmp_path / "usc26.xml"
-        xml_file.write_text(xml_content)
-        args = MagicMock()
-        args.citation = "26 USC 1"
-        args.xml_path = tmp_path
-        cmd_statute(args)
-        captured = capsys.readouterr()
-        assert "(A)" in captured.out
-        assert "Subpara no heading" in captured.out
-
-    def test_statute_nested_same_tag(self, capsys, tmp_path):
-        """Test extract_element with nested elements of same tag type (line 908).
-
-        When a <paragraph> contains another <paragraph> (unusual but handled),
-        the depth tracking increments to handle the nesting properly.
-        """
-        xml_content = """<root>
-<section identifier="/us/usc/t26/s1" status="active">
-<heading>Tax imposed</heading>
-<subsection identifier="/us/usc/t26/s1/a">
-<heading>Outer sub</heading>
-<content>Outer text</content>
-<paragraph identifier="/us/usc/t26/s1/a/1">
-<heading>Outer para</heading>
-<content>Has nested paragraph element</content>
-<paragraph identifier="/us/usc/t26/s1/a/1/inner">
-<heading>Inner para</heading>
-<content>Inner content</content>
-</paragraph>
-</paragraph>
-</subsection>
-</section>
-</root>"""
-        xml_file = tmp_path / "usc26.xml"
-        xml_file.write_text(xml_content)
-        args = MagicMock()
-        args.citation = "26 USC 1"
-        args.xml_path = tmp_path
-        cmd_statute(args)
-        captured = capsys.readouterr()
-        assert "Outer para" in captured.out
-
-
-class TestExtractSubsectionsEdgeCases:
-    def test_deep_nesting(self, tmp_path):
-        """Test extraction with deep nesting including clause level."""
-        xml_content = """<root>
-<section identifier="/us/usc/t26/s1" status="active">
-<heading>Tax imposed</heading>
-<subsection identifier="/us/usc/t26/s1/a">
-<heading>General</heading>
-<content>Text</content>
-<paragraph identifier="/us/usc/t26/s1/a/1">
-<heading>First</heading>
-<content>Paragraph text</content>
-<subparagraph identifier="/us/usc/t26/s1/a/1/A">
-<heading>Sub A</heading>
-<content>Sub text</content>
-<clause identifier="/us/usc/t26/s1/a/1/A/i">
-<heading>Clause i</heading>
-<content>Clause text</content>
-<subclause identifier="/us/usc/t26/s1/a/1/A/i/I">
-<heading>Subclause I</heading>
-<content>Subclause text</content>
-</subclause>
-</clause>
-</subparagraph>
-</paragraph>
-</subsection>
-</section>
-</root>"""
-        xml_file = tmp_path / "usc26.xml"
-        xml_file.write_text(xml_content)
-        result = _extract_subsections_from_xml(xml_file, "1")
-        assert len(result) > 3  # Should include deeply nested elements
-
-    def test_nested_same_tag_in_extract(self, tmp_path):
-        """Test _extract_subsections_from_xml with nested elements of same type (line 1064)."""
-        xml_content = """<root>
-<section identifier="/us/usc/t26/s1" status="active">
-<heading>Tax imposed</heading>
-<subsection identifier="/us/usc/t26/s1/a">
-<heading>Outer</heading>
-<content>Text</content>
-<paragraph identifier="/us/usc/t26/s1/a/1">
-<heading>Para</heading>
-<content>Content</content>
-<paragraph identifier="/us/usc/t26/s1/a/1/nested">
-<heading>Nested para</heading>
-<content>Nested content</content>
-</paragraph>
-</paragraph>
-</subsection>
-</section>
-</root>"""
-        xml_file = tmp_path / "usc26.xml"
-        xml_file.write_text(xml_content)
-        result = _extract_subsections_from_xml(xml_file, "1")
-        # Should extract the nested paragraph too
-        assert len(result) >= 3
-
-    def test_identifier_without_section_prefix(self, tmp_path):
-        """Test StopIteration fallback (lines 1088-1089)."""
-        xml_content = """<root>
-<section identifier="/us/usc/t26/s1" status="active">
-<heading>Tax imposed</heading>
-<subsection identifier="nonstandardformat">
-<heading>Nonstandard</heading>
-<content>This has a nonstandard identifier without s prefix</content>
-</subsection>
-</section>
-</root>"""
-        xml_file = tmp_path / "usc26.xml"
-        xml_file.write_text(xml_content)
-        result = _extract_subsections_from_xml(xml_file, "1")
-        # Should still extract the section itself
-        assert len(result) >= 1

@@ -48,19 +48,20 @@ def test_iter_manifest_queue_candidates_includes_federal_rules_us(
     axiom_encode_root = tmp_path / "axiom_encode"
     benchmarks = axiom_encode_root / "benchmarks"
     benchmarks.mkdir(parents=True)
-    source_file = tmp_path / "rules-us" / "sources" / "slices" / "snap.txt"
-    source_file.parent.mkdir(parents=True)
-    source_file.write_text("Federal SNAP source text.\n")
     manifest = benchmarks / "us_snap_federal_demo_refresh.yaml"
     manifest.write_text(
         "name: Federal demo\n"
         "cases:\n"
         "  - kind: source\n"
         "    name: federal_snap_demo\n"
-        "    source_file: ../../rules-us/sources/slices/snap.txt\n"
+        "    corpus_citation_path: us/statute/7/2017/a\n"
     )
     monkeypatch.setattr(module, "AXIOM_ENCODE_ROOT", axiom_encode_root)
-    monkeypatch.setattr(module, "infer_repo", lambda source_file: "rules-us")
+    monkeypatch.setattr(
+        module,
+        "sha256_corpus_source",
+        lambda corpus_citation_path: "corpus-source-sha",
+    )
 
     candidates = module.iter_manifest_queue_candidates()
 
@@ -68,8 +69,8 @@ def test_iter_manifest_queue_candidates_includes_federal_rules_us(
         {
             "name": "federal_snap_demo",
             "manifest": str(manifest),
-            "source_file": str(source_file.resolve()),
-            "source_inputs": [str(source_file.resolve())],
+            "corpus_citation_path": "us/statute/7/2017/a",
+            "corpus_source_sha256": "corpus-source-sha",
             "source_repo": "rules-us",
         }
     ]
@@ -85,10 +86,9 @@ def test_sync_queue_with_manifests_skips_requeue_on_tracking_version_migration(
                 "name": "snap_demo",
                 "status": "done",
                 "manifest": "/tmp/demo.yaml",
-                "source_file": "/tmp/demo.txt",
-                "source_inputs": ["/tmp/demo.txt"],
+                "corpus_citation_path": "us/statute/7/2017/a",
                 "manifest_sha256": "manifest-sha",
-                "source_sha256": "old-source-sha",
+                "corpus_source_sha256": "old-source-sha",
                 "note": "closed fully ready",
             }
         ]
@@ -100,14 +100,13 @@ def test_sync_queue_with_manifests_skips_requeue_on_tracking_version_migration(
             {
                 "name": "snap_demo",
                 "manifest": "/tmp/demo.yaml",
-                "source_file": "/tmp/demo.txt",
-                "source_inputs": ["/tmp/demo.txt", "/tmp/demo.meta.yaml"],
+                "corpus_citation_path": "us/statute/7/2017/a",
+                "corpus_source_sha256": "new-source-sha",
                 "source_repo": "rules-us-demo",
             }
         ],
     )
     monkeypatch.setattr(module, "sha256_file", lambda path: "manifest-sha")
-    monkeypatch.setattr(module, "sha256_paths", lambda paths: "new-source-sha")
 
     changed, added, retired, refreshed = module.sync_queue_with_manifests(data)
 
@@ -130,10 +129,9 @@ def test_sync_queue_with_manifests_requeues_on_source_change_after_tracking_set(
                 "name": "snap_demo",
                 "status": "done",
                 "manifest": "/tmp/demo.yaml",
-                "source_file": "/tmp/demo.txt",
-                "source_inputs": ["/tmp/demo.txt"],
+                "corpus_citation_path": "us/statute/7/2017/a",
                 "manifest_sha256": "manifest-sha",
-                "source_sha256": "old-source-sha",
+                "corpus_source_sha256": "old-source-sha",
                 "source_tracking_version": module.SOURCE_TRACKING_VERSION,
                 "output_dir": "/tmp/out",
                 "archive_path": "/tmp/archive",
@@ -149,14 +147,13 @@ def test_sync_queue_with_manifests_requeues_on_source_change_after_tracking_set(
             {
                 "name": "snap_demo",
                 "manifest": "/tmp/demo.yaml",
-                "source_file": "/tmp/demo.txt",
-                "source_inputs": ["/tmp/demo.txt", "/tmp/demo.meta.yaml"],
+                "corpus_citation_path": "us/statute/7/2017/a",
+                "corpus_source_sha256": "new-source-sha",
                 "source_repo": "rules-us-demo",
             }
         ],
     )
     monkeypatch.setattr(module, "sha256_file", lambda path: "manifest-sha")
-    monkeypatch.setattr(module, "sha256_paths", lambda paths: "new-source-sha")
 
     changed, added, retired, refreshed = module.sync_queue_with_manifests(data)
 

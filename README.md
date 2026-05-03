@@ -28,14 +28,13 @@ Use manifest-driven benchmark suites when you want an explicit readiness answer 
 of ad hoc spot checks.
 
 ```bash
-axiom-encode eval-suite benchmarks/us_snap_ny_standard_utility_allowance_refresh.yaml
+axiom-encode eval-suite benchmarks/us_snap_co_child_support_deduction_option_refresh.yaml
 axiom-encode eval-suite benchmarks/us_snap_federal_reconstruction_seed.yaml
 axiom-encode eval-suite-archive /tmp/axiom-encode-suite-run
 ```
 
-- `benchmarks/us_snap_*_refresh.yaml` manifests are source-file-backed SNAP refresh lanes.
+- `benchmarks/us_snap_*_refresh.yaml` manifests are corpus-backed SNAP refresh lanes.
 - `benchmarks/us_co_*` manifests exercise Colorado Works repair and seed cases.
-- `benchmarks/uk_pension_credit_wave*.yaml` manifests cover source-backed UK pension-credit slices.
 
 Each suite reports:
 - success rate
