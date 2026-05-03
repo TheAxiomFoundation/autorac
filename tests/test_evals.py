@@ -3833,7 +3833,7 @@ cases:
         assert all(case.kind == "source" for case in manifest.cases)
         for case in manifest.cases:
             for context_path in case.allow_context:
-                assert context_path.exists()
+                assert "sources" not in context_path.parts
 
 
 class TestReadinessSummary:
