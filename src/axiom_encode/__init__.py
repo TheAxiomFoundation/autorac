@@ -30,6 +30,7 @@ from .harness import (
     IterationError,
     PipelineResult,
     PredictionScores,
+    ProofValidationResult,
     ReviewResult,
     ReviewResults,
     ValidationResult,
@@ -38,12 +39,14 @@ from .harness import (
     compute_calibration,
     create_run,
     evaluate_artifact,
+    find_rulespec_proof_issues,
     get_calibration_trend,
     parse_runner_spec,
     print_calibration_report,
     run_model_eval,
     save_calibration_snapshot,
     validate_file,
+    validate_rulespec_proofs,
 )
 
 __all__ = [
@@ -64,6 +67,9 @@ __all__ = [
     "ValidationResult",
     "PipelineResult",
     "validate_file",
+    "ProofValidationResult",
+    "find_rulespec_proof_issues",
+    "validate_rulespec_proofs",
     # Encoder Backends
     "EncoderBackend",
     "ClaudeCodeBackend",

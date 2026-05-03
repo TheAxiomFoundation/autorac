@@ -36,6 +36,11 @@ from .metrics import (
     print_calibration_report,
     save_calibration_snapshot,
 )
+from .proof_validator import (
+    ProofValidationResult,
+    find_rulespec_proof_issues,
+    validate_rulespec_proofs,
+)
 from .validator_pipeline import (
     PipelineResult,
     ValidationResult,
@@ -58,6 +63,9 @@ __all__ = [
     "ValidationResult",
     "PipelineResult",
     "validate_file",
+    "ProofValidationResult",
+    "find_rulespec_proof_issues",
+    "validate_rulespec_proofs",
     # Encoder Backends
     "EncoderBackend",
     "ClaudeCodeBackend",

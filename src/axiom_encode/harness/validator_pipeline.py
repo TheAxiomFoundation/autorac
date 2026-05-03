@@ -65,6 +65,7 @@ from .dependency_stubs import (
     rulespec_file_has_stub_status,
 )
 from .encoding_db import EncodingDB, ReviewResult, ReviewResults
+from .proof_validator import find_rulespec_proof_issues
 
 logger = logging.getLogger(__name__)
 
@@ -1670,6 +1671,304 @@ def find_deprecated_source_url_issues(content: str) -> list[str]:
         + ". Use `module.source_verification.corpus_citation_path` or "
         "`module.source_verification.corpus_citation_paths`."
     ]
+
+
+_SOURCE_CLAIM_ALLOWED_KINDS = frozenset(
+    {
+        "defines",
+        "sets",
+        "implements",
+        "amends",
+        "supersedes",
+        "reiterates",
+        "delegates",
+        "applies_to",
+        "requires",
+        "creates_exception",
+    }
+)
+_SOURCE_CLAIM_EXECUTABLE_KEYS = frozenset(
+    {
+        "formula",
+        "formulas",
+        "input",
+        "inputs",
+        "output",
+        "outputs",
+        "case",
+        "cases",
+        "test",
+        "tests",
+        "test_cases",
+        "runtime",
+        "trace",
+        "traces",
+        "result",
+        "results",
+        "eligibility",
+        "benefit_amount",
+        "decision",
+    }
+)
+
+
+def find_source_claim_reference_issues(content: str) -> list[str]:
+    """Validate optional RuleSpec refs to accepted corpus-backed source claims."""
+    try:
+        payload = yaml.safe_load(content)
+    except (yaml.YAMLError, ValueError):
+        return []
+    if not isinstance(payload, dict) or payload.get("format") != "rulespec/v1":
+        return []
+
+    module = payload.get("module")
+    if not isinstance(module, dict) or "source_claims" not in module:
+        return []
+
+    raw_refs = module.get("source_claims")
+    if not isinstance(raw_refs, list) or not raw_refs:
+        return [
+            "Source claims malformed: `module.source_claims` must be a non-empty "
+            "list of accepted claim IDs."
+        ]
+
+    source_verification = _source_verification_block(payload)
+    citation_paths: tuple[str, ...] = ()
+    if source_verification is not None:
+        citation_paths, _ = _source_verification_source_fields(source_verification)
+
+    issues: list[str] = []
+    if not citation_paths:
+        issues.append(
+            "Source claims require direct source verification: "
+            "`module.source_claims` may only supplement, not replace, "
+            "`module.source_verification.corpus_citation_path` or "
+            "`module.source_verification.corpus_citation_paths`."
+        )
+
+    claim_ids = _extract_source_claim_ids(raw_refs)
+    if not claim_ids:
+        issues.append(
+            "Source claims malformed: `module.source_claims` must contain claim "
+            "IDs as strings or `{id: ...}` mappings."
+        )
+        return issues
+
+    for claim_id in claim_ids:
+        claim = _fetch_local_source_claim_record(claim_id)
+        if claim is None:
+            issues.append(
+                "Source claim missing: "
+                f"`{claim_id}` was not found in local corpus claim artifacts."
+            )
+            continue
+        issues.extend(
+            _validate_source_claim_record(
+                claim_id=claim_id,
+                claim=claim,
+                rulespec_citation_paths=citation_paths,
+            )
+        )
+
+    return issues
+
+
+def _extract_source_claim_ids(raw_refs: list[Any]) -> list[str]:
+    claim_ids: list[str] = []
+    for raw_ref in raw_refs:
+        claim_id = ""
+        if isinstance(raw_ref, str):
+            claim_id = raw_ref.strip()
+        elif isinstance(raw_ref, dict):
+            claim_id = str(raw_ref.get("id") or "").strip()
+        if claim_id:
+            claim_ids.append(claim_id)
+    return claim_ids
+
+
+def _validate_source_claim_record(
+    *,
+    claim_id: str,
+    claim: dict[str, Any],
+    rulespec_citation_paths: tuple[str, ...],
+) -> list[str]:
+    issues: list[str] = []
+
+    actual_id = str(claim.get("id") or "").strip()
+    if actual_id != claim_id:
+        issues.append(
+            "Source claim ID mismatch: "
+            f"`{claim_id}` resolved to a claim with id `{actual_id or '<missing>'}`."
+        )
+
+    status = str(claim.get("status") or "").strip()
+    if status != "accepted":
+        issues.append(
+            "Source claim not accepted: "
+            f"`{claim_id}` has status `{status or '<missing>'}`; RuleSpec may only "
+            "reference accepted source claims."
+        )
+
+    kind = str(claim.get("kind") or "").strip()
+    if kind not in _SOURCE_CLAIM_ALLOWED_KINDS:
+        allowed = ", ".join(sorted(_SOURCE_CLAIM_ALLOWED_KINDS))
+        issues.append(
+            "Source claim kind invalid: "
+            f"`{claim_id}` has kind `{kind or '<missing>'}`; allowed kinds are "
+            f"{allowed}."
+        )
+
+    executable_paths = _source_claim_executable_field_paths(claim)
+    if executable_paths:
+        issues.append(
+            "Source claim is executable: "
+            f"`{claim_id}` contains execution fields "
+            + ", ".join(f"`{path}`" for path in executable_paths[:5])
+            + ("; ..." if len(executable_paths) > 5 else "")
+            + ". Claims may assert source meaning but must not contain formulas, "
+            "case inputs, outputs, tests, runtime traces, decisions, or benefit amounts."
+        )
+
+    evidence = claim.get("evidence")
+    if not isinstance(evidence, list) or not evidence:
+        issues.append(
+            "Source claim evidence missing: "
+            f"`{claim_id}` must cite at least one corpus evidence span."
+        )
+        return issues
+
+    for index, evidence_item in enumerate(evidence):
+        if not isinstance(evidence_item, dict):
+            issues.append(
+                "Source claim evidence malformed: "
+                f"`{claim_id}.evidence[{index}]` must be a mapping."
+            )
+            continue
+        evidence_path = str(evidence_item.get("corpus_citation_path") or "").strip()
+        if not evidence_path:
+            issues.append(
+                "Source claim evidence missing corpus path: "
+                f"`{claim_id}.evidence[{index}]` must declare "
+                "`corpus_citation_path`."
+            )
+            continue
+        if rulespec_citation_paths and evidence_path not in rulespec_citation_paths:
+            issues.append(
+                "Source claim evidence outside RuleSpec source: "
+                f"`{claim_id}` cites `{evidence_path}`, but the RuleSpec verifies "
+                "against "
+                + _format_source_verification_paths(rulespec_citation_paths)
+                + ". Add the corpus path to `module.source_verification` or split "
+                "the claim reference."
+            )
+        quote = str(evidence_item.get("quote") or "").strip()
+        if quote:
+            source_text = _fetch_corpus_source_text(evidence_path)
+            if source_text is not None and quote not in source_text:
+                issues.append(
+                    "Source claim quote not found: "
+                    f"`{claim_id}.evidence[{index}].quote` does not appear in "
+                    f"`{evidence_path}`."
+                )
+
+    return issues
+
+
+def _source_claim_executable_field_paths(value: Any, prefix: str = "") -> list[str]:
+    paths: list[str] = []
+    if isinstance(value, dict):
+        for key, child in value.items():
+            key_text = str(key)
+            path = f"{prefix}.{key_text}" if prefix else key_text
+            if key_text in _SOURCE_CLAIM_EXECUTABLE_KEYS:
+                paths.append(path)
+            paths.extend(_source_claim_executable_field_paths(child, path))
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            paths.extend(
+                _source_claim_executable_field_paths(child, f"{prefix}[{index}]")
+            )
+    return paths
+
+
+@functools.lru_cache(maxsize=512)
+def _fetch_local_source_claim_record(claim_id: str) -> dict[str, Any] | None:
+    normalized_id = claim_id.strip()
+    if not normalized_id:
+        return None
+
+    for claims_root in _local_corpus_claims_roots():
+        for claim_file in sorted(claims_root.rglob("*.jsonl")):
+            claim = _read_local_source_claim_file(claim_file, normalized_id)
+            if claim is not None:
+                return claim
+    return None
+
+
+def _read_local_source_claim_file(
+    claim_file: Path,
+    claim_id: str,
+) -> dict[str, Any] | None:
+    try:
+        lines = claim_file.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    for line in lines:
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(record, dict) or record.get("id") != claim_id:
+            continue
+        return record
+    return None
+
+
+def _local_corpus_claims_roots() -> tuple[Path, ...]:
+    roots: list[Path] = []
+    for env_name in (
+        "AXIOM_CORPUS_CLAIMS_ROOT",
+        "AXIOM_CORPUS_ARTIFACT_ROOT",
+        "AXIOM_CORPUS_REPO",
+    ):
+        raw_root = os.environ.get(env_name)
+        if raw_root:
+            roots.append(Path(raw_root).expanduser())
+
+    with contextlib.suppress(OSError):
+        cwd = Path.cwd().resolve()
+        for base in (cwd, *cwd.parents):
+            roots.extend(
+                (
+                    base,
+                    base / "axiom-corpus",
+                    base / "TheAxiomFoundation" / "axiom-corpus",
+                    base.parent / "axiom-corpus",
+                    base / "_axiom" / "axiom-corpus",
+                )
+            )
+
+    with contextlib.suppress(RuntimeError, OSError):
+        roots.append(Path.home() / "TheAxiomFoundation" / "axiom-corpus")
+
+    claims_roots: list[Path] = []
+    seen: set[Path] = set()
+    for root in roots:
+        for candidate in (
+            root,
+            root / "claims",
+            root / "data" / "corpus",
+            root / "data" / "corpus" / "claims",
+        ):
+            claims_root = candidate if candidate.name == "claims" else candidate / "claims"
+            with contextlib.suppress(OSError):
+                resolved = claims_root.resolve()
+                if resolved.is_dir() and resolved not in seen:
+                    seen.add(resolved)
+                    claims_roots.append(resolved)
+    return tuple(claims_roots)
 
 
 def find_structured_scale_parameter_issues(content: str) -> list[str]:
@@ -4454,6 +4753,8 @@ class ValidatorPipeline:
 
         issues.extend(find_ungrounded_numeric_issues(content))
         issues.extend(find_deprecated_source_url_issues(content))
+        issues.extend(find_source_claim_reference_issues(content))
+        issues.extend(find_rulespec_proof_issues(content))
         issues.extend(find_structured_scale_parameter_issues(content))
         issues.extend(find_upstream_placement_issues(content, rules_file=rules_file))
         issues.extend(find_source_verification_issues(content))

@@ -10,6 +10,15 @@ Hard requirements:
 - If the source has an ingested corpus provision, include
   `module.source_verification.corpus_citation_path` or
   `module.source_verification.corpus_citation_paths`.
+- If accepted source claims are supplied, include their IDs under
+  `module.source_claims`; do not inline claim bodies, values, formulas,
+  evidence, or review metadata in RuleSpec.
+- Include `module.proof_validation.required: true` and add
+  `metadata.proof.atoms` to each policy-bearing rule. Each proof atom must point
+  to direct corpus source text, a claim listed in `module.source_claims`, or an
+  explicit imported RuleSpec export. If you cannot build that proof, stop and
+  emit a typed request such as `missing_claim`, `bundle_expansion_request`,
+  `corpus_defect`, `segmentation_fix`, `stale_claim`, or `conflicting_claims`.
 - Do not emit `source_url`; RuleSpec validation reads normalized corpus provisions,
   not raw PDFs or web pages.
 - Use `rules:` as a list of rule objects.
@@ -24,10 +33,9 @@ Hard requirements:
   canonical rule. It must include `reiterates.target` and must not include
   executable `versions`; optional `verification` may record matching source
   values for audit.
-- If context/source metadata says this source `sets`, `amends`, or
-  `implements` an upstream target, put the relationship on the rule as
-  `metadata.source_relation` plus the matching `metadata.sets`,
-  `metadata.amends`, or `metadata.implements` target.
+- Do not put source graph relationships on executable rules. If a source
+  `sets`, `amends`, `implements`, or `reiterates` another source, reference
+  accepted source claim IDs in `module.source_claims`.
 - Emit only RuleSpec YAML; use `.test.yaml` companions when tests are requested.
 - Do not emit Python code, markdown fences, prose, or file-write confirmations.
 - Do not invent values or ontology beyond the source text.
@@ -40,6 +48,8 @@ Minimal shape:
 
 format: rulespec/v1
 module:
+  proof_validation:
+    required: true
   summary: |-
     <source text>
 rules:
@@ -47,6 +57,13 @@ rules:
     kind: parameter
     dtype: Money
     unit: USD
+    metadata:
+      proof:
+        atoms:
+          - path: versions[0].formula
+            kind: amount
+            source:
+              corpus_citation_path: <corpus path>
     versions:
       - effective_from: '2024-01-01'
         formula: |-

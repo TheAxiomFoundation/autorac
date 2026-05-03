@@ -15,12 +15,17 @@ axiom-encode encode "26 USC 32(a)(1)" \
   --output /tmp/axiom-encode-encodings
 
 axiom-encode validate /tmp/axiom-encode-encodings/codex-gpt-5.5/statutes/26/32/a/1.yaml
+axiom-encode proof-validate /tmp/axiom-encode-encodings/codex-gpt-5.5/statutes/26/32/a/1.yaml
 ```
 
 `encode` resolves the requested citation to `corpus.provisions` before model
 generation. Local `axiom-corpus/data/corpus/provisions` artifacts are used first;
 Supabase is the fallback. If no corpus provision exists, encoding stops before
 calling a model.
+
+`proof-validate` checks explicit RuleSpec proof trees without reviewers or
+oracles. Strict proof validation is enabled per file with
+`module.proof_validation.required: true`.
 
 ## Eval suites and readiness gates
 
@@ -58,3 +63,5 @@ changes and current evidence.
 
 - `docs/axiom-encode-methods-log.md` tracks the last meaningful harness changes,
   their hypotheses, and the evidence path to justify them later.
+- `docs/rulespec-proof-validation.md` defines the proof-tree contract that keeps
+  source claims, corpus anchors, and executable RuleSpec separated.

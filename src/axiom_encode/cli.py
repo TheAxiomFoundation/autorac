@@ -44,6 +44,7 @@ from .harness.evals import (
     run_source_eval,
     summarize_readiness,
 )
+from .harness.proof_validator import validate_rulespec_proofs
 from .harness.validator_pipeline import ValidatorPipeline
 from .repo_routing import find_policy_repo_root
 
@@ -208,6 +209,17 @@ def main():
         "--require-oracle-classification",
         action="store_true",
         help="Fail oracle validation when oracle coverage reports unclassified legal IDs",
+    )
+
+    proof_validate_parser = subparsers.add_parser(
+        "proof-validate",
+        help="Validate explicit RuleSpec proof trees without reviewers or oracles",
+    )
+    proof_validate_parser.add_argument(
+        "file", type=Path, help="Path to RuleSpec YAML file"
+    )
+    proof_validate_parser.add_argument(
+        "--json", action="store_true", help="Output as JSON"
     )
 
     # log command
@@ -707,6 +719,8 @@ def main():
 
     if args.command == "validate":
         cmd_validate(args)
+    elif args.command == "proof-validate":
+        cmd_proof_validate(args)
     elif args.command == "compile":
         cmd_compile(args)
     elif args.command == "log":
@@ -920,6 +934,39 @@ def cmd_validate(args):
                     print(f"  - {name}: ... {len(issues) - 10} more oracle issue(s)")
 
     sys.exit(0 if all_passed else 1)
+
+
+def cmd_proof_validate(args):
+    """Validate explicit RuleSpec proof trees."""
+    if not args.file.exists():
+        print(f"File not found: {args.file}")
+        sys.exit(1)
+
+    rulespec_file = args.file.resolve()
+    result = validate_rulespec_proofs(rulespec_file.read_text(encoding="utf-8"))
+
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "file": str(rulespec_file),
+                    "passed": result.passed,
+                    "proof_required": result.proof_required,
+                    "atoms_checked": result.atoms_checked,
+                    "issues": result.issues,
+                },
+                indent=2,
+            )
+        )
+    else:
+        print(f"File: {rulespec_file}")
+        print(f"Proofs required: {'yes' if result.proof_required else 'no'}")
+        print(f"Atoms checked: {result.atoms_checked}")
+        print(f"Result: {'✓ PASSED' if result.passed else '✗ FAILED'}")
+        for issue in result.issues:
+            print(f"  - {issue}")
+
+    sys.exit(0 if result.passed else 1)
 
 
 def cmd_compile(args):

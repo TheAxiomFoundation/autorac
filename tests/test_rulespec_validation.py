@@ -4,6 +4,10 @@ from pathlib import Path
 import pytest
 
 from axiom_encode.harness import validator_pipeline
+from axiom_encode.harness.proof_validator import (
+    find_rulespec_proof_issues,
+    validate_rulespec_proofs,
+)
 from axiom_encode.harness.validator_pipeline import (
     OracleSubprocessResult,
     ValidatorPipeline,
@@ -17,6 +21,7 @@ from axiom_encode.harness.validator_pipeline import (
     extract_grounding_values,
     extract_named_scalar_occurrences,
     find_deprecated_source_url_issues,
+    find_source_claim_reference_issues,
     find_source_verification_issues,
     find_ungrounded_numeric_issues,
     find_upstream_placement_issues,
@@ -49,6 +54,15 @@ def _write_local_corpus_provision(
     provisions_dir.mkdir(parents=True, exist_ok=True)
     (provisions_dir / "test.jsonl").write_text(
         json.dumps({"citation_path": citation_path, "body": body}) + "\n",
+        encoding="utf-8",
+    )
+
+
+def _write_local_source_claim(repo_parent: Path, record: dict) -> None:
+    claims_dir = repo_parent / "axiom-corpus" / "data" / "corpus" / "claims" / "us"
+    claims_dir.mkdir(parents=True, exist_ok=True)
+    (claims_dir / "test.jsonl").write_text(
+        json.dumps(record) + "\n",
         encoding="utf-8",
     )
 
@@ -757,6 +771,190 @@ rules:
     assert len(issues) == 1
     assert "Legacy source URL metadata not allowed" in issues[0]
     assert "rules.standard_deduction_single.source_url" in issues[0]
+
+
+def test_rulespec_accepts_accepted_source_claim_reference(tmp_path, monkeypatch):
+    repo_parent = tmp_path / "repos"
+    corpus_repo = repo_parent / "axiom-corpus"
+    monkeypatch.setenv("AXIOM_CORPUS_REPO", str(corpus_repo))
+    validator_pipeline._fetch_local_source_claim_record.cache_clear()
+    validator_pipeline._fetch_corpus_source_text.cache_clear()
+    validator_pipeline._fetch_local_corpus_source_text.cache_clear()
+
+    _write_local_corpus_provision(
+        repo_parent,
+        "us/guidance/example/page-1",
+        "Table 1 sets the monthly maximum allotment for household size 1 at $298.",
+    )
+    _write_local_source_claim(
+        repo_parent,
+        {
+            "id": "claims:us/guidance/example/page-1#sets-maximum-allotment",
+            "kind": "sets",
+            "status": "accepted",
+            "subject": {"type": "concept", "id": "snap.maximum_allotment"},
+            "object": {
+                "type": "parameter_table",
+                "unit": "USD",
+                "effective_from": "2025-10-01",
+                "effective_to": "2026-09-30",
+            },
+            "evidence": [
+                {
+                    "corpus_citation_path": "us/guidance/example/page-1",
+                    "quote": "Table 1 sets the monthly maximum allotment",
+                }
+            ],
+            "provenance": {"method": "manual"},
+        },
+    )
+
+    content = """format: rulespec/v1
+module:
+  source_verification:
+    corpus_citation_path: us/guidance/example/page-1
+  source_claims:
+    - claims:us/guidance/example/page-1#sets-maximum-allotment
+rules: []
+"""
+
+    assert find_source_claim_reference_issues(content) == []
+
+
+def test_rulespec_rejects_executable_or_unaccepted_source_claim(tmp_path, monkeypatch):
+    repo_parent = tmp_path / "repos"
+    corpus_repo = repo_parent / "axiom-corpus"
+    monkeypatch.setenv("AXIOM_CORPUS_REPO", str(corpus_repo))
+    validator_pipeline._fetch_local_source_claim_record.cache_clear()
+
+    _write_local_source_claim(
+        repo_parent,
+        {
+            "id": "claims:us/guidance/example/page-1#sets-maximum-allotment",
+            "kind": "sets",
+            "status": "proposed",
+            "subject": {"type": "concept", "id": "snap.maximum_allotment"},
+            "formula": "if household_size == 1: 298 else: 0",
+            "evidence": [
+                {"corpus_citation_path": "us/guidance/example/page-1"},
+            ],
+        },
+    )
+
+    content = """format: rulespec/v1
+module:
+  source_verification:
+    corpus_citation_path: us/guidance/example/page-1
+  source_claims:
+    - claims:us/guidance/example/page-1#sets-maximum-allotment
+rules: []
+"""
+
+    issues = find_source_claim_reference_issues(content)
+
+    assert any("Source claim not accepted" in issue for issue in issues)
+    assert any("Source claim is executable" in issue for issue in issues)
+
+
+def test_rulespec_proof_validator_accepts_direct_source_and_claim_atom():
+    content = """format: rulespec/v1
+module:
+  proof_validation:
+    required: true
+  source_verification:
+    corpus_citation_path: us/guidance/example/page-1
+    values:
+      snap_maximum_allotment_table:
+        1: 298
+  source_claims:
+    - claims:us/guidance/example/page-1#sets-maximum-allotment
+rules:
+  - name: snap_maximum_allotment_table
+    kind: parameter
+    dtype: Money
+    unit: USD
+    indexed_by: household_size
+    metadata:
+      proof:
+        atoms:
+          - path: versions[0].values
+            kind: parameter_table
+            source:
+              corpus_citation_path: us/guidance/example/page-1
+              value_key: snap_maximum_allotment_table
+              table:
+                header: Maximum Allotment
+                row_key: household_size
+                column_key: amount
+            claim:
+              id: claims:us/guidance/example/page-1#sets-maximum-allotment
+    versions:
+      - effective_from: '2025-10-01'
+        values:
+          1: 298
+"""
+
+    result = validate_rulespec_proofs(content)
+
+    assert result.passed is True
+    assert result.proof_required is True
+    assert result.atoms_checked == 1
+    assert result.issues == []
+
+
+def test_rulespec_proof_validator_rejects_missing_and_unscoped_proofs():
+    content = """format: rulespec/v1
+module:
+  proof_validation:
+    required: true
+  source_verification:
+    corpus_citation_path: us/guidance/example/page-1
+    values:
+      source_amount: 298
+  source_claims:
+    - claims:us/guidance/example/page-1#sets-amount
+rules:
+  - name: missing_proof_amount
+    kind: parameter
+    dtype: Money
+    versions:
+      - effective_from: '2025-10-01'
+        formula: '298'
+  - name: malformed_proof_amount
+    kind: parameter
+    dtype: Money
+    metadata:
+      proof:
+        atoms:
+          - path: versions[0].formula
+            kind: table_cell
+            source:
+              corpus_citation_path: us/guidance/example/page-2
+              value_key: absent_amount
+              table:
+                header: Amount table
+                row: household size 1
+            claim:
+              id: claims:us/guidance/example/page-1#sets-other-amount
+          - path: versions[0].formula
+            kind: import
+            import:
+              target: us:statutes/7/2017/a#snap_regular_month_allotment
+              output: snap_regular_month_allotment
+              hash: compiled-export
+    versions:
+      - effective_from: '2025-10-01'
+        formula: '298'
+"""
+
+    issues = find_rulespec_proof_issues(content)
+
+    assert any("Proof missing" in issue for issue in issues)
+    assert any("Proof source outside RuleSpec source" in issue for issue in issues)
+    assert any("Proof source value key missing" in issue for issue in issues)
+    assert any("Proof table cell provenance incomplete" in issue for issue in issues)
+    assert any("Proof claim outside declared claims" in issue for issue in issues)
+    assert any("Proof import hash invalid" in issue for issue in issues)
 
 
 def test_rulespec_grounding_accepts_source_leading_decimal():
