@@ -6,6 +6,7 @@ All external dependencies are mocked.
 """
 
 import json
+import os
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -1988,12 +1989,16 @@ class TestCmdEncode:
         args.policy_repo_path = overrides.get("policy_repo_path", policy_repo_path)
         args.mode = overrides.get("mode", "repo-augmented")
         args.allow_context = overrides.get("allow_context", [])
+        args.db = overrides.get("db", tmp_path / "encodings.db")
+        args.sync = overrides.get("sync", True)
         return args
 
     def _make_eval_result(self, success=True):
         result = MagicMock()
         result.citation = "26 USC 1(j)(2)"
         result.runner = "codex-test-model"
+        result.backend = "codex"
+        result.model = "test-model"
         result.success = success
         result.duration_ms = 123
         result.estimated_cost_usd = 0.01
@@ -2014,8 +2019,9 @@ class TestCmdEncode:
         with patch(
             "axiom_encode.cli.run_model_eval", return_value=[result]
         ) as mock_run:
-            with pytest.raises(SystemExit) as exc_info:
-                cmd_encode(args)
+            with patch.dict(os.environ, {}, clear=True):
+                with pytest.raises(SystemExit) as exc_info:
+                    cmd_encode(args)
             return mock_run, exc_info.value.code
 
     def test_encode_success(self, capsys, tmp_path):
@@ -2048,6 +2054,49 @@ class TestCmdEncode:
         self._run_encode(args, self._make_eval_result(True))
         captured = capsys.readouterr()
         assert "Runner: codex:test-model" in captured.out
+
+    def test_encode_logs_completed_run(self, tmp_path):
+        args = self._make_args(tmp_path, backend="codex")
+        result = self._make_eval_result(True)
+        output_file = tmp_path / "out.yaml"
+        output_file.write_text("format: rulespec/v1\nrules: []\n")
+        result.output_file = str(output_file)
+
+        _, exit_code = self._run_encode(args, result)
+
+        assert exit_code == 0
+        runs = EncodingDB(args.db).get_recent_runs(limit=1)
+        assert len(runs) == 1
+        assert runs[0].citation == "26 USC 1(j)(2)"
+        assert runs[0].rulespec_content.startswith("format: rulespec/v1")
+
+    def test_encode_syncs_when_credentials_are_configured(self, tmp_path):
+        args = self._make_args(tmp_path, backend="codex")
+        result = self._make_eval_result(True)
+
+        with (
+            patch("axiom_encode.cli.run_model_eval", return_value=[result]),
+            patch.dict(
+                os.environ,
+                {
+                    "AXIOM_ENCODE_SUPABASE_URL": "https://example.supabase.co",
+                    "AXIOM_ENCODE_SUPABASE_SECRET_KEY": "secret",
+                },
+                clear=True,
+            ),
+            patch(
+                "axiom_encode.supabase_sync.sync_run_to_supabase",
+                return_value=True,
+            ) as mock_sync,
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                cmd_encode(args)
+
+        assert exc_info.value.code == 0
+        mock_sync.assert_called_once()
+        synced_run = mock_sync.call_args.args[0]
+        assert synced_run.citation == "26 USC 1(j)(2)"
+        assert mock_sync.call_args.args[1] == "reviewer_agent"
 
 
 # =========================================================================

@@ -159,8 +159,9 @@ class TestSyncRunToSupabase:
             mock_client.schema.return_value.table.return_value.upsert.call_args.args[0]
         )
         assert upsert_payload["rulespec_content"] == "format: rulespec/v1"
-        assert upsert_payload["source_text"] == "source text"
         assert upsert_payload["encoder_version"] is None
+        assert upsert_payload["has_issues"] is False
+        assert upsert_payload["note"] is None
         assert upsert_payload["scores"]["rulespec"] == 8.0
         assert upsert_payload["scores"]["formula"] == 7.0
 

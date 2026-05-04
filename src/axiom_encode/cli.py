@@ -25,6 +25,8 @@ from dataclasses import asdict, is_dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from axiom_encode import __version__
+
 from .constants import DEFAULT_OPENAI_MODEL
 from .harness.encoding_db import (
     EncodingDB,
@@ -349,6 +351,19 @@ def main():
         action="append",
         default=[],
         help="Extra file path to copy into the repo-augmented workspace (repeatable)",
+    )
+    encode_parser.add_argument(
+        "--db",
+        type=Path,
+        default=DEFAULT_DB,
+        help="Local encoding history database",
+    )
+    encode_parser.add_argument(
+        "--no-sync",
+        dest="sync",
+        action="store_false",
+        default=True,
+        help="Do not sync the completed run to Supabase even when credentials are configured",
     )
 
     # eval command - run deterministic model comparisons on one or more citations
@@ -1325,8 +1340,141 @@ def cmd_encode(args):
     print(f"  file={result.output_file}")
     print(f"  trace={result.trace_file}")
     print(f"  manifest={result.context_manifest_file}")
+    logged_run = _log_eval_result(result, db_path=getattr(args, "db", DEFAULT_DB))
+    print(f"  run_id={logged_run.id}")
+    if getattr(args, "sync", True) is True:
+        if _sync_run_to_supabase_if_configured(logged_run):
+            print("  supabase_sync=yes")
+        else:
+            print("  supabase_sync=skipped")
 
     sys.exit(0 if result.success else 1)
+
+
+def _log_eval_result(result, *, db_path: Path) -> EncodingRun:
+    """Persist an eval-backed encode run in the local run history DB."""
+    rulespec_content = _read_optional_text(getattr(result, "output_file", ""))
+    source_text = _read_eval_source_text(getattr(result, "context_manifest_file", ""))
+    error = getattr(result, "error", None)
+    iteration_errors = []
+    if isinstance(error, str) and error:
+        iteration_errors.append(
+            IterationError(
+                error_type="validation",
+                message=error,
+            )
+        )
+
+    run = EncodingRun(
+        citation=result.citation,
+        file_path=str(result.output_file),
+        source_text=source_text,
+        iterations=[
+            Iteration(
+                attempt=1,
+                duration_ms=int(result.duration_ms or 0),
+                errors=iteration_errors,
+                success=bool(result.success),
+            )
+        ],
+        total_duration_ms=int(result.duration_ms or 0),
+        agent_type=f"{result.backend}:encoder",
+        agent_model=str(result.model or ""),
+        rulespec_content=rulespec_content,
+        review_results=_review_results_from_eval_metrics(result.metrics),
+        axiom_encode_version=__version__,
+    )
+    EncodingDB(db_path).log_run(run)
+    return run
+
+
+def _sync_run_to_supabase_if_configured(run: EncodingRun) -> bool:
+    if not (
+        os.environ.get("AXIOM_ENCODE_SUPABASE_URL")
+        and os.environ.get("AXIOM_ENCODE_SUPABASE_SECRET_KEY")
+    ):
+        return False
+    from .supabase_sync import sync_run_to_supabase
+
+    return sync_run_to_supabase(run, "reviewer_agent")
+
+
+def _read_optional_text(path_value) -> str:
+    if not path_value:
+        return ""
+    path = Path(str(path_value))
+    if not path.exists() or not path.is_file():
+        return ""
+    return path.read_text()
+
+
+def _read_eval_source_text(context_manifest_file) -> str | None:
+    if not context_manifest_file:
+        return None
+    manifest_path = Path(str(context_manifest_file))
+    if not manifest_path.exists() or not manifest_path.is_file():
+        return None
+    try:
+        manifest = json.loads(manifest_path.read_text())
+    except json.JSONDecodeError:
+        return None
+    source_text_file = manifest.get("source_text_file")
+    if not isinstance(source_text_file, str) or not source_text_file:
+        return None
+    source_text_path = manifest_path.parent / source_text_file
+    source_text = _read_optional_text(source_text_path)
+    return source_text or None
+
+
+def _review_results_from_eval_metrics(metrics) -> ReviewResults | None:
+    if metrics is None:
+        return None
+
+    reviews = [
+        ReviewResult(
+            reviewer="rulespec_reviewer",
+            passed=bool(metrics.compile_pass),
+            items_checked=10,
+            items_passed=10 if metrics.compile_pass else 0,
+            critical_issues=list(metrics.compile_issues or []),
+        ),
+        ReviewResult(
+            reviewer="formula_reviewer",
+            passed=bool(metrics.ci_pass),
+            items_checked=10,
+            items_passed=10 if metrics.ci_pass else 0,
+            critical_issues=list(metrics.ci_issues or []),
+        ),
+        ReviewResult(
+            reviewer="parameter_reviewer",
+            passed=metrics.ungrounded_numeric_count == 0,
+            items_checked=10,
+            items_passed=10 if metrics.ungrounded_numeric_count == 0 else 0,
+            important_issues=[
+                item.raw
+                for item in (metrics.grounding or [])
+                if not getattr(item, "grounded", False)
+            ],
+        ),
+    ]
+
+    if metrics.generalist_review_score is not None:
+        score = max(0, min(10, int(round(metrics.generalist_review_score))))
+        reviews.append(
+            ReviewResult(
+                reviewer="integration_reviewer",
+                passed=bool(metrics.generalist_review_pass),
+                items_checked=10,
+                items_passed=score,
+                important_issues=list(metrics.generalist_review_issues or []),
+            )
+        )
+
+    return ReviewResults(
+        reviews=reviews,
+        policyengine_match=metrics.policyengine_score,
+        taxsim_match=metrics.taxsim_score,
+    )
 
 
 def _print_eval_metrics(result) -> None:

@@ -105,7 +105,6 @@ def sync_run_to_supabase(
         "timestamp": run.timestamp.isoformat(),
         "citation": run.citation,
         "file_path": run.file_path,
-        "source_text": run.source_text,
         "complexity": {
             "cross_references": run.complexity.cross_references,
             "has_nested_structure": run.complexity.has_nested_structure,
@@ -137,6 +136,8 @@ def sync_run_to_supabase(
         "rulespec_content": run.rulespec_content,
         "session_id": run.session_id,
         "encoder_version": encoder_version or None,
+        "has_issues": _run_has_issues(run),
+        "note": _run_issue_note(run),
         "synced_at": datetime.now().isoformat(),
         "data_source": data_source,
     }
@@ -156,6 +157,58 @@ def sync_run_to_supabase(
     except Exception as e:
         print(f"Error syncing run {run.id}: {e}")
         return False
+
+
+def _run_has_issues(run: "EncodingRun") -> bool:
+    iterations = getattr(run, "iterations", None)
+    if isinstance(iterations, list):
+        if iterations and not getattr(iterations[-1], "success", False):
+            return True
+        for iteration in iterations:
+            errors = getattr(iteration, "errors", None)
+            if isinstance(errors, list) and errors:
+                return True
+
+    review_results = getattr(run, "review_results", None)
+    reviews = getattr(review_results, "reviews", None)
+    if isinstance(reviews, list):
+        for review in reviews:
+            for field in ("critical_issues", "important_issues"):
+                issues = getattr(review, field, None)
+                if isinstance(issues, list) and issues:
+                    return True
+            if getattr(review, "passed", True) is False:
+                return True
+
+    return False
+
+
+def _run_issue_note(run: "EncodingRun") -> str | None:
+    notes: list[str] = []
+
+    iterations = getattr(run, "iterations", None)
+    if isinstance(iterations, list):
+        for iteration in iterations:
+            errors = getattr(iteration, "errors", None)
+            if not isinstance(errors, list):
+                continue
+            for error in errors:
+                message = getattr(error, "message", "")
+                if isinstance(message, str) and message:
+                    notes.append(message)
+
+    review_results = getattr(run, "review_results", None)
+    reviews = getattr(review_results, "reviews", None)
+    if isinstance(reviews, list):
+        for review in reviews:
+            for field in ("critical_issues", "important_issues"):
+                issues = getattr(review, field, None)
+                if isinstance(issues, list):
+                    notes.extend(str(issue) for issue in issues if issue)
+
+    if not notes:
+        return None
+    return "; ".join(notes)[:2000]
 
 
 def sync_all_runs(
