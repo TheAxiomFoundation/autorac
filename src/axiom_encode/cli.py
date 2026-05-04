@@ -1340,13 +1340,22 @@ def cmd_encode(args):
     print(f"  file={result.output_file}")
     print(f"  trace={result.trace_file}")
     print(f"  manifest={result.context_manifest_file}")
-    logged_run = _log_eval_result(result, db_path=getattr(args, "db", DEFAULT_DB))
+    db_path = getattr(args, "db", DEFAULT_DB)
+    logged_run = _log_eval_result(result, db_path=db_path)
     print(f"  run_id={logged_run.id}")
+    repair_manifest = _eval_repair_manifest_path(result)
+    if repair_manifest and repair_manifest.exists():
+        print(f"  repair_manifest={repair_manifest}")
     if getattr(args, "sync", True) is True:
-        if _sync_run_to_supabase_if_configured(logged_run):
-            print("  supabase_sync=yes")
-        else:
+        sync_result = _sync_run_to_supabase_if_configured(logged_run, db_path=db_path)
+        if not sync_result["configured"]:
             print("  supabase_sync=skipped")
+        elif sync_result["run"] and sync_result["session"]:
+            print("  supabase_sync=run+session")
+        elif sync_result["run"]:
+            print("  supabase_sync=run")
+        else:
+            print("  supabase_sync=failed")
 
     sys.exit(0 if result.success else 1)
 
@@ -1384,19 +1393,178 @@ def _log_eval_result(result, *, db_path: Path) -> EncodingRun:
         review_results=_review_results_from_eval_metrics(result.metrics),
         axiom_encode_version=__version__,
     )
-    EncodingDB(db_path).log_run(run)
+    run.session_id = f"encode-{run.id}"
+    db = EncodingDB(db_path)
+    db.log_run(run)
+    repair_manifest = _write_eval_repair_manifest(result, run)
+    _log_eval_session(db, result, run, repair_manifest=repair_manifest)
     return run
 
 
-def _sync_run_to_supabase_if_configured(run: EncodingRun) -> bool:
+def _log_eval_session(
+    db: EncodingDB,
+    result,
+    run: EncodingRun,
+    *,
+    repair_manifest: Path | None = None,
+) -> None:
+    """Persist a minimal SDK-style session for eval-backed encode runs."""
+    session = db.start_session(
+        model=str(getattr(result, "model", "") or ""),
+        cwd=os.getcwd(),
+        session_id=run.session_id,
+        run_id=run.id,
+        axiom_encode_version=__version__,
+    )
+    db.update_session_tokens(
+        session.id,
+        input_tokens=int(getattr(result, "input_tokens", 0) or 0),
+        output_tokens=int(getattr(result, "output_tokens", 0) or 0),
+        cache_read_tokens=int(getattr(result, "cache_read_tokens", 0) or 0),
+        cache_creation_tokens=int(getattr(result, "cache_creation_tokens", 0) or 0),
+    )
+    db.log_event(
+        session.id,
+        "encode_request",
+        content=f"Encode {getattr(result, 'citation', run.citation)} with {getattr(result, 'runner', '')}",
+        tool_name="axiom-encode",
+        metadata={
+            "run_id": run.id,
+            "citation": run.citation,
+            "backend": getattr(result, "backend", ""),
+            "model": getattr(result, "model", ""),
+            "mode": str(getattr(result, "mode", "")),
+        },
+    )
+    result_summary = {
+        "run_id": run.id,
+        "citation": run.citation,
+        "success": bool(getattr(result, "success", False)),
+        "duration_ms": int(getattr(result, "duration_ms", 0) or 0),
+        "estimated_cost_usd": getattr(result, "estimated_cost_usd", None),
+        "input_tokens": int(getattr(result, "input_tokens", 0) or 0),
+        "output_tokens": int(getattr(result, "output_tokens", 0) or 0),
+        "cache_read_tokens": int(getattr(result, "cache_read_tokens", 0) or 0),
+        "cache_creation_tokens": int(getattr(result, "cache_creation_tokens", 0) or 0),
+        "reasoning_output_tokens": int(
+            getattr(result, "reasoning_output_tokens", 0) or 0
+        ),
+        "retrieved_file_count": len(getattr(result, "retrieved_files", []) or []),
+        "unexpected_access_count": len(
+            getattr(result, "unexpected_accesses", []) or []
+        ),
+        "output_file": str(getattr(result, "output_file", "") or ""),
+        "trace_file": str(getattr(result, "trace_file", "") or ""),
+        "context_manifest_file": str(
+            getattr(result, "context_manifest_file", "") or ""
+        ),
+        "repair_manifest": str(repair_manifest) if repair_manifest else None,
+    }
+    db.log_event(
+        session.id,
+        "encode_result",
+        content=json.dumps(result_summary, indent=2, sort_keys=True),
+        tool_name="axiom-encode",
+        metadata={"run_id": run.id, "success": result_summary["success"]},
+    )
+    error = getattr(result, "error", None)
+    if isinstance(error, str) and error:
+        db.log_event(
+            session.id,
+            "encode_issue",
+            content=error,
+            tool_name="validator",
+            metadata={
+                "run_id": run.id,
+                "repair_manifest": str(repair_manifest) if repair_manifest else None,
+            },
+        )
+    db.end_session(session.id)
+
+
+def _write_eval_repair_manifest(result, run: EncodingRun) -> Path | None:
+    """Write a small action manifest for failed eval-backed encode runs."""
+    if bool(getattr(result, "success", False)):
+        return None
+
+    manifest_path = _eval_repair_manifest_path(result)
+    if manifest_path is None:
+        return None
+    try:
+        manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        manifest = {
+            "schema_version": "axiom-encode/repair-manifest/v1",
+            "created_at": _utc_now_iso(),
+            "run_id": run.id,
+            "session_id": run.session_id,
+            "citation": run.citation,
+            "runner": getattr(result, "runner", ""),
+            "backend": getattr(result, "backend", ""),
+            "model": getattr(result, "model", ""),
+            "mode": str(getattr(result, "mode", "")),
+            "error": getattr(result, "error", None),
+            "files": {
+                "output": str(getattr(result, "output_file", "") or ""),
+                "trace": str(getattr(result, "trace_file", "") or ""),
+                "context_manifest": str(
+                    getattr(result, "context_manifest_file", "") or ""
+                ),
+            },
+            "actions": [
+                {
+                    "id": "inspect_trace",
+                    "label": "Inspect the model trace and validation output",
+                    "path": str(getattr(result, "trace_file", "") or ""),
+                },
+                {
+                    "id": "repair_rulespec",
+                    "label": "Repair the generated RuleSpec candidate",
+                    "path": str(getattr(result, "output_file", "") or ""),
+                },
+                {
+                    "id": "rerun_encode",
+                    "label": "Rerun axiom-encode encode for the same citation",
+                    "citation": run.citation,
+                    "backend": getattr(result, "backend", ""),
+                    "model": getattr(result, "model", ""),
+                },
+            ],
+        }
+        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+    except OSError:
+        return None
+    return manifest_path
+
+
+def _eval_repair_manifest_path(result) -> Path | None:
+    output_file = getattr(result, "output_file", None)
+    if not output_file:
+        return None
+    return Path(str(output_file)).with_suffix(".repair.json")
+
+
+def _sync_run_to_supabase_if_configured(
+    run: EncodingRun, *, db_path: Path = DEFAULT_DB
+) -> dict[str, bool]:
     if not (
         os.environ.get("AXIOM_ENCODE_SUPABASE_URL")
         and os.environ.get("AXIOM_ENCODE_SUPABASE_SECRET_KEY")
     ):
-        return False
-    from .supabase_sync import sync_run_to_supabase
+        return {"configured": False, "run": False, "session": False}
+    from .supabase_sync import sync_agent_sessions_to_supabase, sync_run_to_supabase
 
-    return sync_run_to_supabase(run, "reviewer_agent")
+    run_synced = sync_run_to_supabase(run, "reviewer_agent")
+    session_synced = False
+    if run_synced and run.session_id:
+        session_stats = sync_agent_sessions_to_supabase(
+            session_id=run.session_id,
+            db_path=db_path,
+        )
+        session_synced = (
+            session_stats.get("synced", 0) > 0
+            and session_stats.get("failed", 0) == 0
+        )
+    return {"configured": True, "run": run_synced, "session": session_synced}
 
 
 def _read_optional_text(path_value) -> str:

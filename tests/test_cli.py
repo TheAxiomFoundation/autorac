@@ -2039,9 +2039,17 @@ class TestCmdEncode:
 
     def test_encode_with_errors(self, capsys, tmp_path):
         args = self._make_args(tmp_path, citation="26 USC 1", model=None)
-        mock_run, exit_code = self._run_encode(args, self._make_eval_result(False))
+        result = self._make_eval_result(False)
+        result.citation = "26 USC 1"
+        result.output_file = str(tmp_path / "out.yaml")
+        result.trace_file = str(tmp_path / "trace.json")
+        result.context_manifest_file = str(tmp_path / "context.json")
+        mock_run, exit_code = self._run_encode(args, result)
         assert exit_code == 1
         assert mock_run.call_args.kwargs["runner_specs"] == ["codex:gpt-5.5"]
+        repair_manifest = tmp_path / "out.repair.json"
+        assert repair_manifest.exists()
+        assert json.loads(repair_manifest.read_text())["citation"] == "26 USC 1"
 
     def test_encode_openai_backend(self, capsys, tmp_path):
         args = self._make_args(tmp_path, backend="openai")
@@ -2069,6 +2077,12 @@ class TestCmdEncode:
         assert len(runs) == 1
         assert runs[0].citation == "26 USC 1(j)(2)"
         assert runs[0].rulespec_content.startswith("format: rulespec/v1")
+        assert runs[0].session_id is not None
+        session = EncodingDB(args.db).get_session(runs[0].session_id)
+        assert session is not None
+        assert session.run_id == runs[0].id
+        assert session.total_tokens == 150
+        assert session.event_count == 2
 
     def test_encode_syncs_when_credentials_are_configured(self, tmp_path):
         args = self._make_args(tmp_path, backend="codex")
@@ -2088,6 +2102,10 @@ class TestCmdEncode:
                 "axiom_encode.supabase_sync.sync_run_to_supabase",
                 return_value=True,
             ) as mock_sync,
+            patch(
+                "axiom_encode.supabase_sync.sync_agent_sessions_to_supabase",
+                return_value={"total": 1, "synced": 1, "failed": 0},
+            ) as mock_session_sync,
         ):
             with pytest.raises(SystemExit) as exc_info:
                 cmd_encode(args)
@@ -2096,7 +2114,12 @@ class TestCmdEncode:
         mock_sync.assert_called_once()
         synced_run = mock_sync.call_args.args[0]
         assert synced_run.citation == "26 USC 1(j)(2)"
+        assert synced_run.session_id is not None
         assert mock_sync.call_args.args[1] == "reviewer_agent"
+        mock_session_sync.assert_called_once_with(
+            session_id=synced_run.session_id,
+            db_path=args.db,
+        )
 
 
 # =========================================================================

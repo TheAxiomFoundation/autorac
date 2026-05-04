@@ -376,6 +376,7 @@ def sync_agent_sessions_to_supabase(
     session_id: Optional[str] = None,
     client: Optional[Client] = None,
     include_all: bool = False,
+    db_path: Optional[Path] = None,
 ) -> dict:
     """
     Sync agent sessions from encodings.db to Supabase.
@@ -386,19 +387,21 @@ def sync_agent_sessions_to_supabase(
         include_all: Sync every local session. By default only sessions that look
             tied to Axiom Encode are synced, to avoid uploading unrelated global
             agent transcript history.
+        db_path: Optional path to an encodings.db override.
 
     Returns:
         Dict with sync stats
     """
     import sqlite3
 
-    if not ENCODINGS_DB.exists():
+    source_db = Path(db_path) if db_path is not None else ENCODINGS_DB
+    if not source_db.exists():
         return {"total": 0, "synced": 0, "failed": 0, "error": "No encodings.db"}
 
     if client is None:
         client = get_supabase_client()
 
-    conn = sqlite3.connect(str(ENCODINGS_DB))
+    conn = sqlite3.connect(str(source_db))
     conn.row_factory = sqlite3.Row
 
     session_columns = _sqlite_columns(conn, "sessions")

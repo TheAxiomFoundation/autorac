@@ -359,6 +359,21 @@ class TestSessionLogging:
         )
         assert session.id == "custom-123"
 
+    def test_start_session_links_run_id(self, experiment_db, sample_encoding_run):
+        """Test that start_session can link SDK telemetry to an encoding run."""
+        experiment_db.log_run(sample_encoding_run)
+        session = experiment_db.start_session(
+            model="test-model",
+            cwd="/tmp",
+            session_id="linked-session",
+            run_id=sample_encoding_run.id,
+        )
+
+        assert session.run_id == sample_encoding_run.id
+        retrieved = experiment_db.get_session("linked-session")
+        assert retrieved is not None
+        assert retrieved.run_id == sample_encoding_run.id
+
     def test_get_session_retrieves_by_id(self, experiment_db):
         """Test that get_session retrieves session by ID."""
         experiment_db.start_session(

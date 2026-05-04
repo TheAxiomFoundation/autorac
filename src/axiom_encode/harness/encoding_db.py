@@ -385,6 +385,11 @@ class EncodingDB:
             )
         """)
 
+        try:
+            cursor.execute("ALTER TABLE sessions ADD COLUMN run_id TEXT")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_session_run ON sessions(run_id)
         """)
@@ -770,11 +775,13 @@ class EncodingDB:
         self,
         model: str = "",
         cwd: str = "",
-        session_id: str = None,
+        session_id: Optional[str] = None,
+        run_id: Optional[str] = None,
         axiom_encode_version: str = "",
     ) -> Session:
         """Start a new session and return it."""
         session = Session(
+            run_id=run_id,
             model=model,
             cwd=cwd or os.getcwd(),
             axiom_encode_version=axiom_encode_version,
@@ -789,12 +796,13 @@ class EncodingDB:
         cursor.execute(
             """
             INSERT INTO sessions (
-                id, started_at, model, cwd, event_count, total_tokens, axiom_encode_version
+                id, run_id, started_at, model, cwd, event_count, total_tokens, axiom_encode_version
             )
-            VALUES (?, ?, ?, ?, 0, 0, ?)
+            VALUES (?, ?, ?, ?, ?, 0, 0, ?)
         """,
             (
                 session.id,
+                session.run_id,
                 session.started_at.isoformat(),
                 session.model,
                 session.cwd,
@@ -885,7 +893,15 @@ class EncodingDB:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        cursor.execute("SELECT * FROM sessions WHERE id = ?", (session_id,))
+        cursor.execute(
+            """
+            SELECT id, run_id, started_at, ended_at, model, cwd,
+                   event_count, total_tokens, axiom_encode_version
+            FROM sessions
+            WHERE id = ?
+        """,
+            (session_id,),
+        )
         row = cursor.fetchone()
         conn.close()
 
@@ -899,7 +915,7 @@ class EncodingDB:
             ended_at=datetime.fromisoformat(row[3]) if row[3] else None,
             model=row[4] or "",
             cwd=row[5] or "",
-            axiom_encode_version=row[13] if len(row) > 13 and row[13] else "",
+            axiom_encode_version=row[8] or "",
             event_count=row[6] or 0,
             total_tokens=row[7] or 0,
         )
@@ -948,7 +964,11 @@ class EncodingDB:
 
         cursor.execute(
             """
-            SELECT * FROM sessions ORDER BY started_at DESC LIMIT ?
+            SELECT id, run_id, started_at, ended_at, model, cwd,
+                   event_count, total_tokens, axiom_encode_version
+            FROM sessions
+            ORDER BY started_at DESC
+            LIMIT ?
         """,
             (limit,),
         )
@@ -968,7 +988,7 @@ class EncodingDB:
                     ended_at=datetime.fromisoformat(row[3]) if row[3] else None,
                     model=row[4] or "",
                     cwd=row[5] or "",
-                    axiom_encode_version=row[13] if len(row) > 13 and row[13] else "",
+                    axiom_encode_version=row[8] or "",
                     event_count=row[6] or 0,
                     total_tokens=row[7] or 0,
                 )
