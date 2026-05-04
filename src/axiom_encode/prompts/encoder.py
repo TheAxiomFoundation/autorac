@@ -37,6 +37,12 @@ Hard requirements:
   `sets`, `amends`, `implements`, or `reiterates` another source, reference
   accepted source claim IDs in `module.source_claims`.
 - Emit only RuleSpec YAML; use `.test.yaml` companions when tests are requested.
+- In `.test.yaml` companions, every `input:` and `output:` key must be a
+  canonical legal RuleSpec reference that resolves to an actual file and
+  fragment. Use `<jurisdiction>:<repo-path>#input.<fact>` for fact inputs
+  consumed by that file, `<jurisdiction>:<repo-path>#relation.<name>` for
+  relation inputs, and `<jurisdiction>:<repo-path>#<rule_or_parameter>` for
+  executable outputs or imported legal values. Never use bare friendly keys.
 - Do not emit Python code, markdown fences, prose, or file-write confirmations.
 - Do not invent values or ontology beyond the source text.
 - Put formulas under `versions: - effective_from: 'YYYY-MM-DD'` and `formula: |-`.

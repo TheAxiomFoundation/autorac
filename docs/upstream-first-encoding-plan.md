@@ -126,6 +126,20 @@ machine-readable output must carry
 `us:statutes/7/2017/a#snap_regular_month_allotment` so calculated values
 are keyed to the provision that defines them.
 
+Companion `.test.yaml` files are also external surfaces. Their `input:` and
+`output:` keys must be canonical legal RuleSpec references that resolve to real
+files and fragments:
+
+```yaml
+input:
+  us:statutes/7/2017/a#input.household_size: 1
+  us:policies/usda/snap/fy-2026-cola/maximum-allotments#snap_maximum_allotment: 298
+output:
+  us:statutes/7/2017/a#snap_regular_month_allotment: 268
+```
+
+Bare friendly keys and unresolved absolute-looking placeholders are invalid.
+
 ## Encoding Workflow
 
 For each source span:

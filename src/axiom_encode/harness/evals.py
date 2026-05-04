@@ -2217,6 +2217,9 @@ Test file rules:
 - Emit 1-4 cases unless `module.status` is `deferred` or `entity_not_supported`, in which case the test file may be empty.
 - The test file must contain YAML only; do not put prose or markdown fences in it.
 - Use factual predicates or quantities in `input:`, not the output variable being asserted.
+- For repo-backed artifacts, every `input:` and `output:` key must be a canonical
+  legal RuleSpec reference that resolves to an actual file and fragment; do not
+  use bare friendly keys or absolute-looking placeholders.
 - Do not add speculative future-period tests that rely on uprating or amendments not stated in `./source.txt`.
 {oracle_rule.rstrip()}
 """
@@ -2234,6 +2237,7 @@ Preferred principal output:
 - Keep `.test.yaml` inputs oracle-comparable: prefer the oracle's direct component facts over inverted household proxy inputs, preserve direct component surfaces when available, and assert the canonical RuleSpec output whose local name is `{policyengine_rule_hint}` in every non-empty `output:` mapping.
 - Prefer a contemporary monthly `.test.yaml` period like `2022-01` or `2024-01` when the source is current-effective and lacks a better effective date; avoid pre-2015 historical periods that PolicyEngine US cannot evaluate.
 - If that output has a durable `jurisdiction:path#rule` id, key the test by that id rather than the friendly local name.
+- Key inputs by their resolving legal RuleSpec target too, e.g. `jurisdiction:path#input.fact`, `jurisdiction:path#relation.name`, or `jurisdiction:path#upstream_rule`.
 - If a copied downstream output with the oracle hint's local name is available, assert that canonical copied output rather than replacing it with a helper-only local test.
 """
 

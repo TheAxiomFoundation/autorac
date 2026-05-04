@@ -3806,6 +3806,42 @@ def _rulespec_item_friendly_name_and_legal_id(item: Any) -> tuple[str, str] | No
 
 
 _RULESPEC_ABSOLUTE_REFERENCE = re.compile(r"^[a-z][a-z0-9_-]*:[^\s]+$")
+_RULESPEC_IDENTIFIER = re.compile(r"\b[A-Za-z_][A-Za-z0-9_]*\b")
+_RULESPEC_FORMULA_BUILTINS = {
+    "False",
+    "None",
+    "True",
+    "abs",
+    "all",
+    "and",
+    "any",
+    "ceil",
+    "count",
+    "count_where",
+    "else",
+    "floor",
+    "if",
+    "len",
+    "max",
+    "min",
+    "not",
+    "or",
+    "round",
+    "sum",
+    "sum_where",
+    "true",
+    "false",
+}
+
+
+@dataclass(frozen=True)
+class _RuleSpecReferenceSummary:
+    """Symbols a RuleSpec file can legitimately expose to companion tests."""
+
+    derived: frozenset[str]
+    parameters: frozenset[str]
+    relations: frozenset[str]
+    input_slots: frozenset[str]
 
 
 def _rulespec_program_has_legal_ids(compiled_payload: dict[str, Any]) -> bool:
@@ -3849,6 +3885,160 @@ def _rulespec_runtime_name_from_absolute_test_reference(reference: str) -> str:
     return fragment
 
 
+def _rulespec_formula_identifiers(payload: Any) -> set[str]:
+    if not isinstance(payload, dict):
+        return set()
+    rules = payload.get("rules")
+    if not isinstance(rules, list):
+        return set()
+
+    identifiers: set[str] = set()
+    for rule in rules:
+        if not isinstance(rule, dict):
+            continue
+        versions = rule.get("versions")
+        if not isinstance(versions, list):
+            continue
+        for version in versions:
+            if not isinstance(version, dict):
+                continue
+            formula = version.get("formula")
+            if isinstance(formula, str):
+                identifiers.update(_RULESPEC_IDENTIFIER.findall(formula))
+    return identifiers - _RULESPEC_FORMULA_BUILTINS
+
+
+def _rulespec_reference_summary(target_file: Path) -> _RuleSpecReferenceSummary:
+    try:
+        payload = yaml.safe_load(target_file.read_text()) or {}
+    except (OSError, yaml.YAMLError, ValueError):
+        payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
+
+    derived: set[str] = set()
+    parameters: set[str] = set()
+    rules = payload.get("rules")
+    if isinstance(rules, list):
+        for rule in rules:
+            if not isinstance(rule, dict):
+                continue
+            name = str(rule.get("name") or "").strip()
+            if not name:
+                continue
+            if rule.get("kind") == "parameter":
+                parameters.add(name)
+            else:
+                derived.add(name)
+
+    relations: set[str] = set()
+    relation_items = payload.get("relations")
+    if isinstance(relation_items, list):
+        for relation in relation_items:
+            if not isinstance(relation, dict):
+                continue
+            name = str(relation.get("name") or "").strip()
+            if name:
+                relations.add(name)
+
+    formula_identifiers = _rulespec_formula_identifiers(payload)
+    input_slots = formula_identifiers - derived - parameters - relations
+    return _RuleSpecReferenceSummary(
+        derived=frozenset(derived),
+        parameters=frozenset(parameters),
+        relations=frozenset(relations),
+        input_slots=frozenset(input_slots),
+    )
+
+
+def _rulespec_absolute_test_reference_issue(
+    reference: str,
+    *,
+    label: str,
+    policy_repo_path: Path | None,
+    allow_input_slots: bool,
+    allow_relations: bool,
+    allow_outputs: bool,
+) -> str | None:
+    target_ref = _parse_reiteration_target(reference)
+    if target_ref is None or not target_ref.symbol:
+        return f"{label} `{reference}` must be an absolute legal RuleSpec reference."
+
+    target_file = _resolve_reiteration_target_file(target_ref, policy_repo_path)
+    if target_file is None:
+        return (
+            f"{label} `{reference}` points to a RuleSpec file that could not be "
+            f"resolved: {target_ref.repo_name}/{target_ref.relative_path.as_posix()}."
+        )
+
+    summary = _rulespec_reference_summary(target_file)
+    fragment = target_ref.symbol.strip()
+
+    if ".input." in fragment:
+        owner, input_slot = fragment.rsplit(".input.", 1)
+        input_slot = input_slot.strip()
+        owner = owner.strip()
+        if owner and owner not in summary.derived and owner not in summary.parameters:
+            return (
+                f"{label} `{reference}` does not resolve to a derived rule or "
+                f"parameter owner in {target_ref.relative_path.as_posix()}."
+            )
+        if input_slot in summary.input_slots:
+            if allow_input_slots:
+                return None
+            return f"{label} `{reference}` resolves to an input slot, which is not allowed here."
+        return (
+            f"{label} `{reference}` does not resolve to an input slot in "
+            f"{target_ref.relative_path.as_posix()}."
+        )
+
+    if fragment.startswith("input."):
+        input_slot = fragment.removeprefix("input.").strip()
+        if input_slot in summary.input_slots:
+            if allow_input_slots:
+                return None
+            return f"{label} `{reference}` resolves to an input slot, which is not allowed here."
+        return (
+            f"{label} `{reference}` does not resolve to an input slot in "
+            f"{target_ref.relative_path.as_posix()}."
+        )
+
+    if fragment.startswith("relation."):
+        relation = fragment.removeprefix("relation.").strip()
+        if relation in summary.relations:
+            if allow_relations:
+                return None
+            return f"{label} `{reference}` resolves to a relation, which is not allowed here."
+        return (
+            f"{label} `{reference}` does not resolve to a declared relation in "
+            f"{target_ref.relative_path.as_posix()}."
+        )
+
+    if fragment in summary.derived or fragment in summary.parameters:
+        if allow_outputs:
+            return None
+        return f"{label} `{reference}` resolves to a derived rule or parameter, which is not allowed here."
+    allowed_kinds = []
+    if allow_input_slots:
+        allowed_kinds.append("input slot")
+    if allow_relations:
+        allowed_kinds.append("relation")
+    if allow_outputs:
+        allowed_kinds.extend(["derived rule", "parameter"])
+    allowed = ", ".join(allowed_kinds[:-1])
+    if len(allowed_kinds) > 1:
+        allowed = f"{allowed}, or {allowed_kinds[-1]}"
+    elif allowed_kinds:
+        allowed = allowed_kinds[0]
+    else:
+        allowed = "allowed RuleSpec target"
+    article = "an" if allowed.startswith(("input", "allowed")) else "a"
+    return (
+        f"{label} `{reference}` does not resolve to {article} {allowed} in "
+        f"{target_ref.relative_path.as_posix()}."
+    )
+
+
 def _rulespec_test_input_key_suggestion(
     friendly_name: str,
     *,
@@ -3876,8 +4066,22 @@ def _rulespec_runtime_name_for_test_input_key(
     require_legal_input_keys: bool,
     legal_ids_by_friendly_name: dict[str, list[str]],
     module_target: str | None,
+    policy_repo_path: Path | None,
+    allow_input_slots: bool,
+    allow_relations: bool,
+    allow_outputs: bool,
 ) -> str:
     if _RULESPEC_ABSOLUTE_REFERENCE.match(input_key):
+        resolution_issue = _rulespec_absolute_test_reference_issue(
+            input_key,
+            label=label,
+            policy_repo_path=policy_repo_path,
+            allow_input_slots=allow_input_slots,
+            allow_relations=allow_relations,
+            allow_outputs=allow_outputs,
+        )
+        if resolution_issue:
+            raise ValueError(resolution_issue)
         runtime_name = _rulespec_runtime_name_from_absolute_test_reference(input_key)
         if runtime_name:
             return runtime_name
@@ -4419,6 +4623,10 @@ class ValidatorPipeline:
                     require_legal_input_keys=require_legal_input_keys,
                     legal_ids_by_friendly_name=legal_ids_by_friendly_name,
                     module_target=module_target,
+                    policy_repo_path=self.policy_repo_path,
+                    allow_input_slots=False,
+                    allow_relations=True,
+                    allow_outputs=False,
                 )
                 related_entity = self._related_entity_from_relation(relation_name)
                 for item_index, item in enumerate(value, 1):
@@ -4451,6 +4659,10 @@ class ValidatorPipeline:
                             require_legal_input_keys=require_legal_input_keys,
                             legal_ids_by_friendly_name=legal_ids_by_friendly_name,
                             module_target=module_target,
+                            policy_repo_path=self.policy_repo_path,
+                            allow_input_slots=True,
+                            allow_relations=False,
+                            allow_outputs=True,
                         )
                         inputs.append(
                             {
@@ -4472,6 +4684,10 @@ class ValidatorPipeline:
                 require_legal_input_keys=require_legal_input_keys,
                 legal_ids_by_friendly_name=legal_ids_by_friendly_name,
                 module_target=module_target,
+                policy_repo_path=self.policy_repo_path,
+                allow_input_slots=True,
+                allow_relations=False,
+                allow_outputs=True,
             )
             inputs.append(
                 {
@@ -4795,6 +5011,18 @@ class ValidatorPipeline:
                 elif output_key in parameter_by_key:
                     parameter_outputs.append(output_key)
                 else:
+                    if _RULESPEC_ABSOLUTE_REFERENCE.match(output_key):
+                        resolution_issue = _rulespec_absolute_test_reference_issue(
+                            output_key,
+                            label="output",
+                            policy_repo_path=self.policy_repo_path,
+                            allow_input_slots=False,
+                            allow_relations=False,
+                            allow_outputs=True,
+                        )
+                        if resolution_issue:
+                            issues.append(f"Test case `{case_name}` {resolution_issue}")
+                            continue
                     legal_ids = legal_ids_by_friendly_name.get(output_key)
                     if legal_ids:
                         if len(legal_ids) == 1:

@@ -4527,6 +4527,7 @@ class TestSourceEval:
         )
         assert "assert that canonical copied output" in prompt
         assert "key the test by that id rather than the friendly local name" in prompt
+        assert "Key inputs by their resolving legal RuleSpec target too" in prompt
         assert (
             "avoid pre-2015 historical periods that PolicyEngine US cannot evaluate"
             in prompt

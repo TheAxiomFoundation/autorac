@@ -235,6 +235,102 @@ rules:
     )
 
 
+def test_rulespec_ci_rejects_repo_backed_unresolved_output_reference_path(tmp_path):
+    if not AXIOM_RULES_BINARY.exists():
+        pytest.skip("local axiom-rules binary is not built")
+
+    rules_file = tmp_path / "rules-us" / "statutes" / "7" / "2017" / "a.yaml"
+    rules_file.parent.mkdir(parents=True)
+    rules_file.write_text(
+        """format: rulespec/v1
+module:
+  summary: 7 USC 2017(a) sets the regular SNAP allotment.
+rules:
+  - name: snap_regular_month_allotment
+    kind: derived
+    entity: Household
+    dtype: Money
+    period: Month
+    unit: USD
+    versions:
+      - effective_from: '2025-10-01'
+        formula: household_allotment_input
+"""
+    )
+    rules_file.with_name("a.test.yaml").write_text(
+        """- name: base
+  period: 2026-01
+  input:
+    us:statutes/7/2017/a#input.household_allotment_input: 298
+  output:
+    us:statutes/7/9999/a#snap_regular_month_allotment: 298
+"""
+    )
+
+    pipeline = ValidatorPipeline(
+        policy_repo_path=tmp_path / "rules-us",
+        axiom_rules_path=AXIOM_RULES_PATH,
+        enable_oracles=False,
+    )
+
+    result = pipeline._run_ci(rules_file)
+
+    assert result.passed is False
+    assert any(
+        "output `us:statutes/7/9999/a#snap_regular_month_allotment` points to a RuleSpec file that could not be resolved"
+        in issue
+        for issue in result.issues
+    )
+
+
+def test_rulespec_ci_rejects_repo_backed_input_reference_in_output_position(tmp_path):
+    if not AXIOM_RULES_BINARY.exists():
+        pytest.skip("local axiom-rules binary is not built")
+
+    rules_file = tmp_path / "rules-us" / "statutes" / "7" / "2017" / "a.yaml"
+    rules_file.parent.mkdir(parents=True)
+    rules_file.write_text(
+        """format: rulespec/v1
+module:
+  summary: 7 USC 2017(a) sets the regular SNAP allotment.
+rules:
+  - name: snap_regular_month_allotment
+    kind: derived
+    entity: Household
+    dtype: Money
+    period: Month
+    unit: USD
+    versions:
+      - effective_from: '2025-10-01'
+        formula: household_allotment_input
+"""
+    )
+    rules_file.with_name("a.test.yaml").write_text(
+        """- name: base
+  period: 2026-01
+  input:
+    us:statutes/7/2017/a#input.household_allotment_input: 298
+  output:
+    us:statutes/7/2017/a#input.household_allotment_input: 298
+"""
+    )
+
+    pipeline = ValidatorPipeline(
+        policy_repo_path=tmp_path / "rules-us",
+        axiom_rules_path=AXIOM_RULES_PATH,
+        enable_oracles=False,
+    )
+
+    result = pipeline._run_ci(rules_file)
+
+    assert result.passed is False
+    assert any(
+        "output `us:statutes/7/2017/a#input.household_allotment_input` resolves to an input slot, which is not allowed here"
+        in issue
+        for issue in result.issues
+    )
+
+
 def test_rulespec_ci_rejects_repo_backed_friendly_input_keys(tmp_path):
     if not AXIOM_RULES_BINARY.exists():
         pytest.skip("local axiom-rules binary is not built")
@@ -324,6 +420,104 @@ rules:
 
     assert result.passed is True
     assert result.issues == []
+
+
+def test_rulespec_ci_rejects_repo_backed_unresolved_input_reference_path(tmp_path):
+    if not AXIOM_RULES_BINARY.exists():
+        pytest.skip("local axiom-rules binary is not built")
+
+    rules_file = tmp_path / "rules-us" / "statutes" / "7" / "2017" / "a.yaml"
+    rules_file.parent.mkdir(parents=True)
+    rules_file.write_text(
+        """format: rulespec/v1
+module:
+  summary: 7 USC 2017(a) sets the regular SNAP allotment.
+rules:
+  - name: snap_regular_month_allotment
+    kind: derived
+    entity: Household
+    dtype: Money
+    period: Month
+    unit: USD
+    versions:
+      - effective_from: '2025-10-01'
+        formula: snap_maximum_allotment
+"""
+    )
+    rules_file.with_name("a.test.yaml").write_text(
+        """- name: base
+  period: 2026-01
+  input:
+    us:statutes/7/9999/a#input.snap_maximum_allotment: 298
+  output:
+    us:statutes/7/2017/a#snap_regular_month_allotment: 298
+"""
+    )
+
+    pipeline = ValidatorPipeline(
+        policy_repo_path=tmp_path / "rules-us",
+        axiom_rules_path=AXIOM_RULES_PATH,
+        enable_oracles=False,
+    )
+
+    result = pipeline._run_ci(rules_file)
+
+    assert result.passed is False
+    assert any(
+        "input `us:statutes/7/9999/a#input.snap_maximum_allotment` points to a RuleSpec file that could not be resolved"
+        in issue
+        for issue in result.issues
+    )
+
+
+def test_rulespec_ci_rejects_repo_backed_unresolved_input_reference_fragment(
+    tmp_path,
+):
+    if not AXIOM_RULES_BINARY.exists():
+        pytest.skip("local axiom-rules binary is not built")
+
+    rules_file = tmp_path / "rules-us" / "statutes" / "7" / "2017" / "a.yaml"
+    rules_file.parent.mkdir(parents=True)
+    rules_file.write_text(
+        """format: rulespec/v1
+module:
+  summary: 7 USC 2017(a) sets the regular SNAP allotment.
+rules:
+  - name: snap_regular_month_allotment
+    kind: derived
+    entity: Household
+    dtype: Money
+    period: Month
+    unit: USD
+    versions:
+      - effective_from: '2025-10-01'
+        formula: snap_maximum_allotment
+"""
+    )
+    rules_file.with_name("a.test.yaml").write_text(
+        """- name: base
+  period: 2026-01
+  input:
+    us:statutes/7/2017/a#snap_maximum_allotment: 298
+  output:
+    us:statutes/7/2017/a#snap_regular_month_allotment: 298
+"""
+    )
+
+    pipeline = ValidatorPipeline(
+        policy_repo_path=tmp_path / "rules-us",
+        axiom_rules_path=AXIOM_RULES_PATH,
+        enable_oracles=False,
+    )
+
+    result = pipeline._run_ci(rules_file)
+
+    assert result.passed is False
+    assert any(
+        "input `us:statutes/7/2017/a#snap_maximum_allotment` does not resolve to an input slot, derived rule, or parameter"
+        in issue
+        for issue in result.issues
+    )
 
 
 def test_rulespec_ci_rejects_repo_backed_friendly_relation_child_input_keys(tmp_path):
@@ -422,6 +616,57 @@ rules:
 
     assert result.passed is True
     assert result.issues == []
+
+
+def test_rulespec_ci_rejects_repo_backed_unresolved_relation_reference(tmp_path):
+    if not AXIOM_RULES_BINARY.exists():
+        pytest.skip("local axiom-rules binary is not built")
+
+    rules_file = tmp_path / "rules-us" / "statutes" / "7" / "2012" / "j.yaml"
+    rules_file.parent.mkdir(parents=True)
+    rules_file.write_text(
+        """format: rulespec/v1
+module:
+  summary: 7 USC 2012(j) defines SNAP elderly or disabled household members.
+relations:
+  - name: member_of_household
+    arity: 2
+rules:
+  - name: snap_household_has_elderly_or_disabled_member
+    kind: derived
+    entity: Household
+    dtype: Judgment
+    period: Month
+    versions:
+      - effective_from: '2025-10-01'
+        formula: count_where(member_of_household, snap_member_is_elderly_or_disabled) > 0
+"""
+    )
+    rules_file.with_name("j.test.yaml").write_text(
+        """- name: base
+  period: 2026-01
+  input:
+    us:statutes/7/2012/j#relation.not_member_of_household:
+      - us:statutes/7/2012/j#input.snap_member_is_elderly_or_disabled: true
+  output:
+    us:statutes/7/2012/j#snap_household_has_elderly_or_disabled_member: holds
+"""
+    )
+
+    pipeline = ValidatorPipeline(
+        policy_repo_path=tmp_path / "rules-us",
+        axiom_rules_path=AXIOM_RULES_PATH,
+        enable_oracles=False,
+    )
+
+    result = pipeline._run_ci(rules_file)
+
+    assert result.passed is False
+    assert any(
+        "relation input `us:statutes/7/2012/j#relation.not_member_of_household` does not resolve to a declared relation"
+        in issue
+        for issue in result.issues
+    )
 
 
 def test_oracle_test_extraction_normalizes_legal_output_ids(tmp_path):
