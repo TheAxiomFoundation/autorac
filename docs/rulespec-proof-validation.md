@@ -84,7 +84,10 @@ source hash as soon as ingestion provides those fields.
 ### Claim
 
 Claim proof may reference only accepted claims already listed in
-`module.source_claims`:
+`module.source_claims`. `axiom-encode proof-validate` resolves those IDs against
+local `axiom-corpus/claims` artifacts and fails if a claim is missing,
+unaccepted, executable, not evidence-backed, or uses a friendly placeholder
+subject instead of an absolute legal/corpus/RuleSpec target:
 
 ```yaml
 metadata:
@@ -97,7 +100,10 @@ metadata:
 ```
 
 Proposed, stale, rejected, superseded, or executable claims cannot justify live
-RuleSpec.
+RuleSpec. Claim subjects must be absolute targets such as
+`us:statutes/7/2014/e` or
+`us:statutes/7/2017/a#snap_allotment_before_minimum.input.snap_maximum_allotment`;
+friendly concept IDs such as `snap.maximum_allotment` are invalid.
 
 ### Import
 

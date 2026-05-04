@@ -24,7 +24,9 @@ Supabase is the fallback. If no corpus provision exists, encoding stops before
 calling a model.
 
 `proof-validate` checks explicit RuleSpec proof trees without reviewers or
-oracles. Strict proof validation is enabled per file with
+oracles. It also resolves declared source-claim IDs against local
+`axiom-corpus/claims` artifacts and rejects missing, unaccepted, executable, or
+placeholder-subject claims. Strict proof validation is enabled per file with
 `module.proof_validation.required: true`.
 
 ## Eval suites and readiness gates

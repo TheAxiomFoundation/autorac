@@ -1710,6 +1710,10 @@ _SOURCE_CLAIM_EXECUTABLE_KEYS = frozenset(
         "decision",
     }
 )
+_SOURCE_CLAIM_ABSOLUTE_TARGET_ID = re.compile(r"^[a-z][a-z0-9_.-]*:[^\s]+$")
+_SOURCE_CLAIM_FRIENDLY_CONCEPT_ID = re.compile(
+    r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$"
+)
 
 
 def find_source_claim_reference_issues(content: str) -> list[str]:
@@ -1829,6 +1833,8 @@ def _validate_source_claim_record(
             "case inputs, outputs, tests, runtime traces, decisions, or benefit amounts."
         )
 
+    issues.extend(_validate_source_claim_subject(claim_id=claim_id, claim=claim))
+
     evidence = claim.get("evidence")
     if not isinstance(evidence, list) or not evidence:
         issues.append(
@@ -1871,6 +1877,40 @@ def _validate_source_claim_record(
                     f"`{evidence_path}`."
                 )
 
+    return issues
+
+
+def _validate_source_claim_subject(
+    *,
+    claim_id: str,
+    claim: dict[str, Any],
+) -> list[str]:
+    subject = claim.get("subject")
+    if not isinstance(subject, dict):
+        return [
+            "Source claim subject missing: "
+            f"`{claim_id}` must declare `subject` with an absolute legal or "
+            "RuleSpec target."
+        ]
+
+    subject_id = str(subject.get("id") or "").strip()
+    subject_type = str(subject.get("type") or "").strip()
+    issues: list[str] = []
+    if not _SOURCE_CLAIM_ABSOLUTE_TARGET_ID.match(subject_id):
+        issues.append(
+            "Source claim subject target invalid: "
+            f"`{claim_id}.subject.id` is `{subject_id or '<missing>'}`; use an "
+            "absolute legal, corpus, or RuleSpec target such as "
+            "`us:statutes/7/2014/e`."
+        )
+    if subject_type == "concept" or _SOURCE_CLAIM_FRIENDLY_CONCEPT_ID.match(
+        subject_id
+    ):
+        issues.append(
+            "Source claim subject placeholder not allowed: "
+            f"`{claim_id}` uses `{subject_id or '<missing>'}`; friendly concept "
+            "IDs are not valid claim subjects."
+        )
     return issues
 
 

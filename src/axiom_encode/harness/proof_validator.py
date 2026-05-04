@@ -3,8 +3,9 @@
 This module intentionally validates proof structure without knowing how to
 encode policy. It checks that executable RuleSpec atoms point to direct corpus
 source text, accepted claim references declared by the module, or explicit
-RuleSpec import exports. Claim acceptance and source quote grounding remain in
-the existing source-claim/source-verification validators.
+RuleSpec import exports. `proof-validate` can also run the cross-repo
+source-claim validator so claim IDs must resolve to accepted, corpus-backed
+claim records.
 """
 
 from __future__ import annotations
@@ -52,7 +53,11 @@ def find_rulespec_proof_issues(content: str) -> list[str]:
     return validate_rulespec_proofs(content).issues
 
 
-def validate_rulespec_proofs(content: str) -> ProofValidationResult:
+def validate_rulespec_proofs(
+    content: str,
+    *,
+    validate_claim_records: bool = False,
+) -> ProofValidationResult:
     """Validate explicit proof trees in a RuleSpec YAML document.
 
     Strict proof validation is enabled with:
@@ -91,9 +96,10 @@ def validate_rulespec_proofs(content: str) -> ProofValidationResult:
 
     rules = payload.get("rules")
     if not isinstance(rules, list):
+        issues = _claim_record_issues(content, validate_claim_records)
         return ProofValidationResult(
-            passed=True,
-            issues=[],
+            passed=len(issues) == 0,
+            issues=issues,
             atoms_checked=0,
             proof_required=proof_required,
         )
@@ -125,12 +131,21 @@ def validate_rulespec_proofs(content: str) -> ProofValidationResult:
         issues.extend(rule_issues)
         atoms_checked += rule_atom_count
 
+    issues.extend(_claim_record_issues(content, validate_claim_records))
     return ProofValidationResult(
         passed=len(issues) == 0,
         issues=issues,
         atoms_checked=atoms_checked,
         proof_required=proof_required,
     )
+
+
+def _claim_record_issues(content: str, enabled: bool) -> list[str]:
+    if not enabled:
+        return []
+    from .validator_pipeline import find_source_claim_reference_issues
+
+    return find_source_claim_reference_issues(content)
 
 
 def _module_requires_proofs(module: Any) -> bool:

@@ -948,7 +948,10 @@ def cmd_proof_validate(args):
         sys.exit(1)
 
     rulespec_file = args.file.resolve()
-    result = validate_rulespec_proofs(rulespec_file.read_text(encoding="utf-8"))
+    result = validate_rulespec_proofs(
+        rulespec_file.read_text(encoding="utf-8"),
+        validate_claim_records=True,
+    )
 
     if args.json:
         print(

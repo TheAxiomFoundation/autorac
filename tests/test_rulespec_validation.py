@@ -866,6 +866,40 @@ rules: []
     assert any("Source claim is executable" in issue for issue in issues)
 
 
+def test_rulespec_rejects_source_claim_placeholder_subject(tmp_path, monkeypatch):
+    repo_parent = tmp_path / "repos"
+    corpus_repo = repo_parent / "axiom-corpus"
+    monkeypatch.setenv("AXIOM_CORPUS_REPO", str(corpus_repo))
+    validator_pipeline._fetch_local_source_claim_record.cache_clear()
+
+    _write_local_source_claim(
+        repo_parent,
+        {
+            "id": "claims:us/guidance/example/page-1#sets-maximum-allotment",
+            "kind": "sets",
+            "status": "accepted",
+            "subject": {"type": "concept", "id": "snap.maximum_allotment"},
+            "evidence": [
+                {"corpus_citation_path": "us/guidance/example/page-1"},
+            ],
+        },
+    )
+
+    content = """format: rulespec/v1
+module:
+  source_verification:
+    corpus_citation_path: us/guidance/example/page-1
+  source_claims:
+    - claims:us/guidance/example/page-1#sets-maximum-allotment
+rules: []
+"""
+
+    issues = find_source_claim_reference_issues(content)
+
+    assert any("Source claim subject target invalid" in issue for issue in issues)
+    assert any("Source claim subject placeholder not allowed" in issue for issue in issues)
+
+
 def test_rulespec_proof_validator_accepts_direct_source_and_claim_atom():
     content = """format: rulespec/v1
 module:
@@ -910,6 +944,119 @@ rules:
     assert result.proof_required is True
     assert result.atoms_checked == 1
     assert result.issues == []
+
+
+def test_rulespec_proof_validator_checks_declared_source_claim_records(
+    tmp_path, monkeypatch
+):
+    repo_parent = tmp_path / "repos"
+    corpus_repo = repo_parent / "axiom-corpus"
+    monkeypatch.setenv("AXIOM_CORPUS_REPO", str(corpus_repo))
+    validator_pipeline._fetch_local_source_claim_record.cache_clear()
+    validator_pipeline._fetch_corpus_source_text.cache_clear()
+    validator_pipeline._fetch_local_corpus_source_text.cache_clear()
+
+    _write_local_corpus_provision(
+        repo_parent,
+        "us/guidance/example/page-1",
+        "Table 1 sets the monthly maximum allotment for household size 1 at $298.",
+    )
+    _write_local_source_claim(
+        repo_parent,
+        {
+            "id": "claims:us/guidance/example/page-1#sets-maximum-allotment",
+            "kind": "sets",
+            "status": "accepted",
+            "subject": {
+                "type": "statutory_rule_slot",
+                "id": "us:statutes/7/2017/a#snap_allotment_before_minimum.input.snap_maximum_allotment",
+            },
+            "evidence": [
+                {
+                    "corpus_citation_path": "us/guidance/example/page-1",
+                    "quote": "Table 1 sets the monthly maximum allotment",
+                }
+            ],
+        },
+    )
+
+    content = """format: rulespec/v1
+module:
+  proof_validation:
+    required: true
+  source_verification:
+    corpus_citation_path: us/guidance/example/page-1
+    values:
+      snap_maximum_allotment_table:
+        1: 298
+  source_claims:
+    - claims:us/guidance/example/page-1#sets-maximum-allotment
+rules:
+  - name: snap_maximum_allotment_table
+    kind: parameter
+    dtype: Money
+    unit: USD
+    indexed_by: household_size
+    metadata:
+      proof:
+        atoms:
+          - path: versions[0].values
+            kind: parameter_table
+            source:
+              corpus_citation_path: us/guidance/example/page-1
+              value_key: snap_maximum_allotment_table
+              table:
+                header: Maximum Allotment
+                row_key: household_size
+                column_key: amount
+            claim:
+              id: claims:us/guidance/example/page-1#sets-maximum-allotment
+    versions:
+      - effective_from: '2025-10-01'
+        values:
+          1: 298
+"""
+
+    result = validate_rulespec_proofs(content, validate_claim_records=True)
+
+    assert result.passed is True
+    assert result.issues == []
+
+
+def test_rulespec_proof_validator_rejects_missing_source_claim_record():
+    content = """format: rulespec/v1
+module:
+  proof_validation:
+    required: true
+  source_verification:
+    corpus_citation_path: us/guidance/example/page-1
+    values:
+      source_amount: 298
+  source_claims:
+    - claims:us/guidance/example/page-1#missing
+rules:
+  - name: amount
+    kind: parameter
+    dtype: Money
+    metadata:
+      proof:
+        atoms:
+          - path: versions[0].formula
+            kind: amount
+            source:
+              corpus_citation_path: us/guidance/example/page-1
+              value_key: source_amount
+            claim:
+              id: claims:us/guidance/example/page-1#missing
+    versions:
+      - effective_from: '2025-10-01'
+        formula: '298'
+"""
+
+    result = validate_rulespec_proofs(content, validate_claim_records=True)
+
+    assert result.passed is False
+    assert any("Source claim missing" in issue for issue in result.issues)
 
 
 def test_rulespec_proof_validator_rejects_missing_and_unscoped_proofs():
