@@ -4628,6 +4628,11 @@ class ValidatorPipeline:
                     allow_relations=True,
                     allow_outputs=False,
                 )
+                relation_request_name = (
+                    input_key
+                    if _RULESPEC_ABSOLUTE_REFERENCE.match(input_key)
+                    else relation_name
+                )
                 related_entity = self._related_entity_from_relation(relation_name)
                 for item_index, item in enumerate(value, 1):
                     if not isinstance(item, dict):
@@ -4641,7 +4646,7 @@ class ValidatorPipeline:
                     )
                     relations.append(
                         {
-                            "name": relation_name,
+                            "name": relation_request_name,
                             "tuple": [related_id, query_entity_id],
                             "interval": interval,
                         }
@@ -4664,9 +4669,15 @@ class ValidatorPipeline:
                             allow_relations=False,
                             allow_outputs=True,
                         )
+                        child_input_key = str(child_name)
+                        child_request_name = (
+                            child_input_key
+                            if _RULESPEC_ABSOLUTE_REFERENCE.match(child_input_key)
+                            else child_input_name
+                        )
                         inputs.append(
                             {
-                                "name": child_input_name,
+                                "name": child_request_name,
                                 "entity": related_entity,
                                 "entity_id": related_id,
                                 "interval": interval,
@@ -4689,9 +4700,14 @@ class ValidatorPipeline:
                 allow_relations=False,
                 allow_outputs=True,
             )
+            input_request_name = (
+                input_key
+                if _RULESPEC_ABSOLUTE_REFERENCE.match(input_key)
+                else input_name
+            )
             inputs.append(
                 {
-                    "name": input_name,
+                    "name": input_request_name,
                     "entity": query_entity,
                     "entity_id": query_entity_id,
                     "interval": interval,
