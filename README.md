@@ -29,6 +29,31 @@ oracles. It also resolves declared source-claim IDs against local
 placeholder-subject claims. Strict proof validation is enabled per file with
 `module.proof_validation.required: true`.
 
+## Run telemetry and repair manifests
+
+`axiom-encode encode` records each completed eval-backed run in the local
+encoding DB and creates a linked SDK-style session with
+`session_id=encode-<run_id>`. The session stores concise request/result/issue
+events, token counts, model, cwd, and `axiom-encode` version so the public ops
+dashboard can show run health and session telemetry from the same encode path.
+
+When Supabase write credentials are configured, `encode` syncs both records:
+
+```bash
+export AXIOM_ENCODE_SUPABASE_URL=...
+export AXIOM_ENCODE_SUPABASE_SECRET_KEY=...
+axiom-encode encode "26 USC 32(a)(1)" --output /tmp/axiom-encode-encodings
+```
+
+The command prints `supabase_sync=run+session` when both records are uploaded.
+Use `axiom-encode sync-agent-sessions --session encode-<run_id>` to replay a
+single local session sync.
+
+Failed encode runs write a sibling `*.repair.json` file next to the generated
+RuleSpec candidate. That manifest includes the run ID, session ID, citation,
+trace path, generated output path, and actions for inspecting the trace,
+repairing the RuleSpec candidate, and rerunning the same citation.
+
 ## Eval suites and readiness gates
 
 Use manifest-driven benchmark suites when you want an explicit readiness answer instead

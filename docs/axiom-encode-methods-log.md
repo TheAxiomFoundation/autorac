@@ -35,6 +35,27 @@ As of 2026-04-10:
   - `results.json`
   - `summary.json`
 
+## 2026-05-04: Eval-backed encode runs gained linked session telemetry and repair manifests
+
+- Primary commit: `c6f21b2` `Log encode sessions for eval runs`
+- Hypothesis:
+  - Run health, token usage, and failure repair context should be visible from the same operational path. A failed encode should not require manually correlating local DB rows, traces, and generated YAML before a repair pass can start.
+- Effect:
+  - `axiom-encode encode` now writes `EncodingRun.session_id` as `encode-<run_id>`.
+  - Each eval-backed encode creates a linked SDK-style session with request, result, and issue events, model/version metadata, and token counts.
+  - Supabase sync uploads the encoding run and the linked session together when write credentials are configured.
+  - Failed eval-backed runs emit a sibling `*.repair.json` manifest with the run ID, session ID, citation, trace path, output path, and concrete inspect/repair/rerun actions.
+- Evidence:
+  - Full local suite: `uv run pytest -q` reported `465 passed`.
+  - Live smoke run `600fa816` for `us/guidance/usda/fns/snap-fy2026-cola/page-2` was backfilled to `session_id=encode-600fa816` and synced to Supabase with 3 session events and token columns.
+  - Production `/ops` showed the synced encoder run and SDK-session data after the backfill.
+- Primary evidence paths:
+  - [cli.py](../src/axiom_encode/cli.py)
+  - [encoding_db.py](../src/axiom_encode/harness/encoding_db.py)
+  - [supabase_sync.py](../src/axiom_encode/supabase_sync.py)
+  - [test_cli.py](../tests/test_cli.py)
+  - [test_encoding_db.py](../tests/test_encoding_db.py)
+
 ## Backfill: 2026-03-29 to 2026-04-10
 
 ### 2026-03-29: UK oracle bridge became a first-class harness path
