@@ -1561,8 +1561,7 @@ def _sync_run_to_supabase_if_configured(
             db_path=db_path,
         )
         session_synced = (
-            session_stats.get("synced", 0) > 0
-            and session_stats.get("failed", 0) == 0
+            session_stats.get("synced", 0) > 0 and session_stats.get("failed", 0) == 0
         )
     return {"configured": True, "run": run_synced, "session": session_synced}
 

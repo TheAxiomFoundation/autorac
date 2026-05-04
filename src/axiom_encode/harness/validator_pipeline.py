@@ -3805,6 +3805,100 @@ def _rulespec_item_friendly_name_and_legal_id(item: Any) -> tuple[str, str] | No
     return name, item_id
 
 
+_RULESPEC_ABSOLUTE_REFERENCE = re.compile(r"^[a-z][a-z0-9_-]*:[^\s]+$")
+
+
+def _rulespec_program_has_legal_ids(compiled_payload: dict[str, Any]) -> bool:
+    program = (
+        compiled_payload.get("program") if isinstance(compiled_payload, dict) else {}
+    )
+    if not isinstance(program, dict):
+        return False
+    for collection in ("derived", "parameters"):
+        for item in program.get(collection, []):
+            if _rulespec_item_friendly_name_and_legal_id(item) is not None:
+                return True
+    return False
+
+
+def _rulespec_module_target(compiled_payload: dict[str, Any]) -> str | None:
+    program = (
+        compiled_payload.get("program") if isinstance(compiled_payload, dict) else {}
+    )
+    if not isinstance(program, dict):
+        return None
+    for collection in ("derived", "parameters"):
+        for item in program.get(collection, []):
+            if not isinstance(item, dict):
+                continue
+            item_id = str(item.get("id") or "").strip()
+            if "#" in item_id:
+                return item_id.split("#", 1)[0]
+    return None
+
+
+def _rulespec_runtime_name_from_absolute_test_reference(reference: str) -> str:
+    if not _RULESPEC_ABSOLUTE_REFERENCE.match(reference) or "#" not in reference:
+        return ""
+    fragment = reference.split("#", 1)[1].strip()
+    if ".input." in fragment:
+        return fragment.rsplit(".input.", 1)[1].strip()
+    for prefix in ("input.", "relation."):
+        if fragment.startswith(prefix):
+            return fragment.removeprefix(prefix).strip()
+    return fragment
+
+
+def _rulespec_test_input_key_suggestion(
+    friendly_name: str,
+    *,
+    legal_ids_by_friendly_name: dict[str, list[str]],
+    module_target: str | None,
+) -> str:
+    legal_ids = legal_ids_by_friendly_name.get(friendly_name)
+    if legal_ids:
+        if len(legal_ids) == 1:
+            return f"; use `{legal_ids[0]}`"
+        legal_id_list = ", ".join(f"`{item}`" for item in legal_ids)
+        return f"; use one of {legal_id_list}"
+    if module_target:
+        return (
+            f"; use `{module_target}#input.{friendly_name}` for a local fact slot "
+            "or the upstream absolute RuleSpec target for an imported legal value"
+        )
+    return ""
+
+
+def _rulespec_runtime_name_for_test_input_key(
+    input_key: str,
+    *,
+    label: str,
+    require_legal_input_keys: bool,
+    legal_ids_by_friendly_name: dict[str, list[str]],
+    module_target: str | None,
+) -> str:
+    if _RULESPEC_ABSOLUTE_REFERENCE.match(input_key):
+        runtime_name = _rulespec_runtime_name_from_absolute_test_reference(input_key)
+        if runtime_name:
+            return runtime_name
+        raise ValueError(
+            f"{label} `{input_key}` must include a fragment naming the runtime slot."
+        )
+
+    if require_legal_input_keys:
+        suggestion = _rulespec_test_input_key_suggestion(
+            input_key,
+            legal_ids_by_friendly_name=legal_ids_by_friendly_name,
+            module_target=module_target,
+        )
+        raise ValueError(
+            f"{label} `{input_key}` must use an absolute legal RuleSpec id "
+            f"instead of the friendly name{suggestion}."
+        )
+
+    return input_key
+
+
 class ValidatorPipeline:
     """Runs validators in 3 tiers with session event logging."""
 
@@ -4301,6 +4395,9 @@ class ValidatorPipeline:
         period: dict[str, Any],
         query_entity: str,
         query_entity_id: str,
+        require_legal_input_keys: bool = False,
+        legal_ids_by_friendly_name: dict[str, list[str]] | None = None,
+        module_target: str | None = None,
     ) -> dict[str, Any]:
         """Build an Axiom Rules dataset from compact RuleSpec test inputs."""
         if case_input in (None, ""):
@@ -4311,10 +4408,19 @@ class ValidatorPipeline:
         interval = {"start": period["start"], "end": period["end"]}
         inputs: list[dict[str, Any]] = []
         relations: list[dict[str, Any]] = []
+        legal_ids_by_friendly_name = legal_ids_by_friendly_name or {}
 
         for name, value in case_input.items():
+            input_key = str(name)
             if isinstance(value, list):
-                related_entity = self._related_entity_from_relation(str(name))
+                relation_name = _rulespec_runtime_name_for_test_input_key(
+                    input_key,
+                    label="relation input",
+                    require_legal_input_keys=require_legal_input_keys,
+                    legal_ids_by_friendly_name=legal_ids_by_friendly_name,
+                    module_target=module_target,
+                )
+                related_entity = self._related_entity_from_relation(relation_name)
                 for item_index, item in enumerate(value, 1):
                     if not isinstance(item, dict):
                         raise ValueError(
@@ -4327,7 +4433,7 @@ class ValidatorPipeline:
                     )
                     relations.append(
                         {
-                            "name": str(name),
+                            "name": relation_name,
                             "tuple": [related_id, query_entity_id],
                             "interval": interval,
                         }
@@ -4339,9 +4445,16 @@ class ValidatorPipeline:
                             raise ValueError(
                                 f"relation `{name}` input `{child_name}` must be scalar"
                             )
+                        child_input_name = _rulespec_runtime_name_for_test_input_key(
+                            str(child_name),
+                            label="input",
+                            require_legal_input_keys=require_legal_input_keys,
+                            legal_ids_by_friendly_name=legal_ids_by_friendly_name,
+                            module_target=module_target,
+                        )
                         inputs.append(
                             {
-                                "name": str(child_name),
+                                "name": child_input_name,
                                 "entity": related_entity,
                                 "entity_id": related_id,
                                 "interval": interval,
@@ -4353,9 +4466,16 @@ class ValidatorPipeline:
             if isinstance(value, dict):
                 raise ValueError(f"input `{name}` must be scalar or relation list")
 
+            input_name = _rulespec_runtime_name_for_test_input_key(
+                input_key,
+                label="input",
+                require_legal_input_keys=require_legal_input_keys,
+                legal_ids_by_friendly_name=legal_ids_by_friendly_name,
+                module_target=module_target,
+            )
             inputs.append(
                 {
-                    "name": str(name),
+                    "name": input_name,
                     "entity": query_entity,
                     "entity_id": query_entity_id,
                     "interval": interval,
@@ -4529,6 +4649,9 @@ class ValidatorPipeline:
         period: dict[str, Any],
         output_names: list[str],
         derived_by_key: dict[str, Any],
+        require_legal_input_keys: bool,
+        legal_ids_by_friendly_name: dict[str, list[str]],
+        module_target: str | None,
     ) -> tuple[dict[str, Any] | None, list[str]]:
         """Execute one compact RuleSpec test case through `run-compiled`."""
         query_entity = str(derived_by_key[output_names[0]].get("entity") or "Case")
@@ -4541,6 +4664,9 @@ class ValidatorPipeline:
                 period=period,
                 query_entity=query_entity,
                 query_entity_id=query_entity_id,
+                require_legal_input_keys=require_legal_input_keys,
+                legal_ids_by_friendly_name=legal_ids_by_friendly_name,
+                module_target=module_target,
             )
         except ValueError as exc:
             return None, [f"Test case `{case_name}` input invalid: {exc}"]
@@ -4621,6 +4747,8 @@ class ValidatorPipeline:
         legal_ids_by_friendly_name = self._rulespec_legal_ids_by_friendly_output_name(
             compiled_payload
         )
+        require_legal_input_keys = _rulespec_program_has_legal_ids(compiled_payload)
+        module_target = _rulespec_module_target(compiled_payload)
 
         for index, case in enumerate(cases, 1):
             if not isinstance(case, dict):
@@ -4701,6 +4829,9 @@ class ValidatorPipeline:
                         period=period,
                         output_names=derived_outputs,
                         derived_by_key=derived_by_key,
+                        require_legal_input_keys=require_legal_input_keys,
+                        legal_ids_by_friendly_name=legal_ids_by_friendly_name,
+                        module_target=module_target,
                     )
                 )
                 issues.extend(execution_issues)
