@@ -897,7 +897,9 @@ rules: []
     issues = find_source_claim_reference_issues(content)
 
     assert any("Source claim subject target invalid" in issue for issue in issues)
-    assert any("Source claim subject placeholder not allowed" in issue for issue in issues)
+    assert any(
+        "Source claim subject placeholder not allowed" in issue for issue in issues
+    )
 
 
 def test_rulespec_proof_validator_accepts_direct_source_and_claim_atom():

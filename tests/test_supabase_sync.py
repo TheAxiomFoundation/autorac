@@ -732,8 +732,9 @@ class TestSyncAgentSessionsToSupabase:
 
         assert result["total"] == 1
         session_payload = (
-            mock_client.schema.return_value.table.return_value.upsert.call_args_list[0]
-            .args[0]
+            mock_client.schema.return_value.table.return_value.upsert.call_args_list[
+                0
+            ].args[0]
         )
         assert session_payload["id"] == "axiom-1"
         assert session_payload["encoder_version"] == "0.4.2"

@@ -1711,9 +1711,7 @@ _SOURCE_CLAIM_EXECUTABLE_KEYS = frozenset(
     }
 )
 _SOURCE_CLAIM_ABSOLUTE_TARGET_ID = re.compile(r"^[a-z][a-z0-9_.-]*:[^\s]+$")
-_SOURCE_CLAIM_FRIENDLY_CONCEPT_ID = re.compile(
-    r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$"
-)
+_SOURCE_CLAIM_FRIENDLY_CONCEPT_ID = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")
 
 
 def find_source_claim_reference_issues(content: str) -> list[str]:
@@ -1903,9 +1901,7 @@ def _validate_source_claim_subject(
             "absolute legal, corpus, or RuleSpec target such as "
             "`us:statutes/7/2014/e`."
         )
-    if subject_type == "concept" or _SOURCE_CLAIM_FRIENDLY_CONCEPT_ID.match(
-        subject_id
-    ):
+    if subject_type == "concept" or _SOURCE_CLAIM_FRIENDLY_CONCEPT_ID.match(subject_id):
         issues.append(
             "Source claim subject placeholder not allowed: "
             f"`{claim_id}` uses `{subject_id or '<missing>'}`; friendly concept "
