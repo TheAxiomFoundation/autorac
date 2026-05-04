@@ -112,7 +112,7 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'" },
     { name = "sqlite-utils", specifier = ">=3.30" },
     { name = "supabase", specifier = ">=2.0.0" },
-    { name = "towncrier", marker = "extra == 'dev'" },
+    { name = "towncrier", marker = "extra == 'dev'", specifier = ">=24.8.0" },
 ]
 provides-extras = ["api", "observability", "dev", "all"]
 

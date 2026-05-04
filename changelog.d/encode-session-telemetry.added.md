@@ -1,0 +1,1 @@
+`axiom-encode encode` now logs a linked SDK-style session for each eval-backed run, using `session_id=encode-<run_id>`, and failed eval-backed encode runs now emit a sibling `*.repair.json` manifest with the run/session IDs, trace path, output path, and repair/rerun actions.

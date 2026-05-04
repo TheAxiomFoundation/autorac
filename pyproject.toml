@@ -48,7 +48,7 @@ dev = [
     "pytest-asyncio",
     "pytest-cov",
     "ruff",
-    "towncrier",
+    "towncrier>=24.8.0",
 ]
 all = [
     "axiom-encode[api,dev,observability]",
@@ -78,28 +78,35 @@ addopts = "--cov=src/axiom_encode --cov-report=term-missing"
 [tool.towncrier]
 package = "axiom_encode"
 package_dir = "src"
-directory = "changes"
+directory = "changelog.d"
 filename = "CHANGELOG.md"
-title_format = "{name} {version} ({project_date})"
+title_format = "## [{version}] - {project_date}"
+issue_format = ""
+underlines = ["", "", ""]
 
 [[tool.towncrier.type]]
-directory = "feature"
-name = "Features"
+directory = "breaking"
+name = "Breaking changes"
 showcontent = true
 
 [[tool.towncrier.type]]
-directory = "bugfix"
-name = "Bug fixes"
+directory = "added"
+name = "Added"
 showcontent = true
 
 [[tool.towncrier.type]]
-directory = "misc"
-name = "Miscellaneous"
+directory = "changed"
+name = "Changed"
 showcontent = true
 
 [[tool.towncrier.type]]
-directory = "doc"
-name = "Documentation"
+directory = "fixed"
+name = "Fixed"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "removed"
+name = "Removed"
 showcontent = true
 
 [tool.ruff]
